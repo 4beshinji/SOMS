@@ -50,12 +50,12 @@ WS-A: Git整理 ──────┼──── WS-C: Dashboard/Backend ──
 
 | ID | タスク | 依存 | 工数目安 | 優先度 | 状態 |
 |----|--------|------|---------|--------|------|
-| A.1 | 🔴⚡ 未コミット変更のコミット (4分割) | なし | 30分 | P0 | 未着手 |
-| A.1a | ├ dashboard音声改善コミット | なし | 5分 | - | 未着手 |
-| A.1b | ├ wallet統合UIコミット | なし | 5分 | - | 未着手 |
-| A.1c | ├ wallet service修正コミット | なし | 5分 | - | 未着手 |
-| A.1d | └ docker-compose + PostgreSQL コミット | なし | 5分 | - | 未着手 |
-| A.2 | tsconfig.app.tsbuildinfo を .gitignore に追加 | なし | 5分 | P0 | 未着手 |
+| A.1 | 🔴⚡ 未コミット変更のコミット (4分割) | なし | 30分 | P0 | ✅完了 |
+| A.1a | ├ dashboard音声改善コミット | なし | 5分 | - | ✅完了 |
+| A.1b | ├ wallet統合UIコミット | なし | 5分 | - | ✅完了 |
+| A.1c | ├ wallet service修正コミット | なし | 5分 | - | ✅完了 |
+| A.1d | └ docker-compose + PostgreSQL コミット | なし | 5分 | - | ✅完了 |
+| A.2 | tsconfig.app.tsbuildinfo を .gitignore に追加 | なし | 5分 | P0 | ✅対応不要 (既に *.tsbuildinfo で除外済み) |
 
 > **注**: App.tsx のマージコンフリクトは解決済み (UU → M)。
 
@@ -65,12 +65,12 @@ WS-A: Git整理 ──────┼──── WS-C: Dashboard/Backend ──
 
 | ID | タスク | 依存 | 工数目安 | 優先度 | 状態 |
 |----|--------|------|---------|--------|------|
-| B.1 | 🔴 Event Store 設計・技術選定 | A.1 | 2h | P1 | 未着手 |
-| B.2 | 🔴 Event Store 実装 (TimescaleDB or SQLite時系列) | B.1 | 8h | P1 | 未着手 |
-| B.3 | 🔴 WorldModel → Event Store イベント記録パイプライン | B.2 | 4h | P1 | 未着手 |
-| B.4 | 🔴 Data Mart 集約バッチジョブ (1時間) | B.2 | 4h | P1 | 未着手 |
-| B.5 | Data Mart JSON スキーマ定義 | B.1 | 2h | P1 | 未着手 |
-| B.6 | LLM判断ログ → Event Store 記録 | B.2, B.3 | 3h | P2 | 未着手 |
+| B.1 | 🔴 Event Store 設計・技術選定 | A.1 | 2h | P1 | ✅完了 (PostgreSQL + BRIN) |
+| B.2 | 🔴 Event Store 実装 (TimescaleDB or SQLite時系列) | B.1 | 8h | P1 | ✅完了 (events スキーマ, 4テーブル) |
+| B.3 | 🔴 WorldModel → Event Store イベント記録パイプライン | B.2 | 4h | P1 | ✅完了 (EventWriter + _add_event統合) |
+| B.4 | 🔴 Data Mart 集約バッチジョブ (1時間) | B.2 | 4h | P1 | ✅完了 (HourlyAggregator 10分毎) |
+| B.5 | Data Mart JSON スキーマ定義 | B.1 | 2h | P1 | ✅完了 (CITY_SCALE_VISION準拠) |
+| B.6 | LLM判断ログ → Event Store 記録 | B.2, B.3 | 3h | P2 | ✅完了 (cognitive_cycle末尾で記録) |
 
 **依存チェーン**: A.1 → B.1 → B.2 → B.3 → B.4 → Phase 0 完了判定
 
@@ -80,7 +80,7 @@ WS-A: Git整理 ──────┼──── WS-C: Dashboard/Backend ──
 
 | ID | タスク | 依存 | 工数目安 | 優先度 | 状態 |
 |----|--------|------|---------|--------|------|
-| C.1 | 🟢 users.py スタブ → DB 連携に置換 | A.1 | 3h | P1 | 未着手 |
+| C.1 | 🟢 users.py スタブ → DB 連携に置換 | A.1 | 3h | P1 | ✅完了 (AsyncSession CRUD実装済み) |
 | C.2 | バッテリー監視ダッシュボード (get_swarm_status 可視化) | A.1 | 4h | P2 | 未着手 |
 | C.3 | フロントエンドエラーバウンダリ追加 | なし | 2h | P2 | 未着手 |
 | C.4 | 認証レイヤー (nginx / API 基本認証) | C.1 | 4h | P2 | 未着手 |
@@ -113,8 +113,8 @@ WS-A: Git整理 ──────┼──── WS-C: Dashboard/Backend ──
 
 | ID | タスク | 依存 | 工数目安 | 優先度 | 状態 |
 |----|--------|------|---------|--------|------|
-| F.1 | 🔴 Wallet サービス統合テスト (PostgreSQL) | A.1 | 4h | P1 | 未着手 |
-| F.2 | XP scorer 統合テスト | F.1 | 2h | P2 | 未着手 |
+| F.1 | 🔴 Wallet サービス統合テスト (PostgreSQL) | A.1 | 4h | P1 | ✅完了 (18/19 pass, nginx proxy除く) |
+| F.2 | XP scorer 統合テスト | F.1 | 2h | P2 | ✅完了 (F.1テスト内Test 8で検証済み) |
 | F.3 | Wallet ↔ Dashboard E2E テスト | F.1, C.1 | 3h | P2 | 未着手 |
 
 ---
@@ -238,16 +238,16 @@ CITY_SCALE_VISION.md の Phase 0 完了条件に対応:
 |---|------|-----------|------|
 | 1 | 全サービスが Docker で安定稼働 (24時間連続) | 安定稼働テスト | 未実施 |
 | 2 | センサー → LLM判断 → タスク作成 → 完了の E2E フロー | 既存E2Eテストで確認済み | ✅ |
-| 3 | Event Store への全イベント記録 | B.2, B.3 | 未着手 |
-| 4 | Data Mart 集約ジョブの自動実行 | B.4 | 未着手 |
+| 3 | Event Store への全イベント記録 | B.2, B.3 | ✅ (2026-02-16 実装完了) |
+| 4 | Data Mart 集約ジョブの自動実行 | B.4 | ✅ (HourlyAggregator 10分毎実行) |
 
 ### 追加の Phase 0 健全性条件 (暗黙要件)
 
 | # | 条件 | 対応タスク | 現状 |
 |---|------|-----------|------|
-| 5 | Git が clean 状態 (未コミットなし) | A.1 | 未着手 |
-| 6 | users.py がスタブでなくDB連携 | C.1 | スタブ |
-| 7 | Wallet E2E 動作確認 | F.1 | 未テスト |
+| 5 | Git が clean 状態 (未コミットなし) | A.1 | ✅ |
+| 6 | users.py がスタブでなくDB連携 | C.1 | ✅ (AsyncSession CRUD実装済み) |
+| 7 | Wallet E2E 動作確認 | F.1 | ✅ (18/19 pass on PostgreSQL) |
 | 8 | 本番LLM (Ollama qwen2.5:14b) での動作確認 | 過去テスト済み | ✅ |
 
 ---
