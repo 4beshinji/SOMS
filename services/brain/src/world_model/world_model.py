@@ -24,6 +24,9 @@ class WorldModel:
         self.zones: Dict[str, ZoneState] = {}
         self.sensor_fusion = SensorFusion()
 
+        # Optional event store writer (set by Brain after init)
+        self.event_writer = None
+
         # Cache for LLM context (optimization)
         self._llm_context_cache: Optional[str] = None
         self._cache_timestamp: float = 0
@@ -31,12 +34,23 @@ class WorldModel:
         # Sensor readings buffer for fusion
         self._sensor_readings: Dict[str, List] = {}
 
-    @staticmethod
-    def _add_event(zone: ZoneState, event: Event):
+    def _add_event(self, zone: ZoneState, event: Event):
         """Append an event to a zone, trimming oldest entries if over limit."""
         zone.events.append(event)
         if len(zone.events) > MAX_EVENTS_PER_ZONE:
             zone.events = zone.events[-MAX_EVENTS_PER_ZONE:]
+
+        # Forward to event store if available
+        if self.event_writer:
+            try:
+                self.event_writer.record_world_event(
+                    zone=zone.zone_id,
+                    event_type=event.event_type,
+                    severity=event.severity,
+                    data=event.data,
+                )
+            except Exception:
+                pass  # Non-blocking — never disrupt WorldModel
     
     def update_from_mqtt(self, topic: str, payload: dict):
         """

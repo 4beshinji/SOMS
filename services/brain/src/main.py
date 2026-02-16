@@ -18,6 +18,7 @@ from tool_registry import get_tools
 from system_prompt import build_system_message
 from device_registry import DeviceRegistry
 from wallet_bridge import WalletBridge
+from event_store import init_db, EventWriter, HourlyAggregator
 
 load_dotenv()
 
@@ -55,6 +56,7 @@ class Brain:
         self.sanitizer = Sanitizer()
         self.world_model = WorldModel()
         self.device_registry = DeviceRegistry()
+        self.event_writer: EventWriter | None = None
 
         # Initialized in run() with shared session
         self.llm = None
@@ -96,6 +98,21 @@ class Brain:
     def _process_mqtt_message(self, topic: str, payload: dict):
         """Process MQTT message on the asyncio thread (thread-safe)."""
         self.world_model.update_from_mqtt(topic, payload)
+
+        # Record sensor telemetry to event store
+        if self.event_writer:
+            parts = topic.split("/")
+            # office/{zone}/sensor/{device_id}/{channel}
+            if len(parts) >= 5 and parts[0] == "office" and parts[2] == "sensor":
+                value = payload.get(parts[4]) or payload.get("value")
+                if value is not None:
+                    self.event_writer.record_sensor(
+                        zone=parts[1],
+                        channel=parts[4],
+                        value=value,
+                        device_id=parts[3],
+                        topic=topic,
+                    )
 
         # Forward heartbeat messages to DeviceRegistry and Wallet
         if "/heartbeat" in topic:
@@ -334,6 +351,30 @@ class Brain:
 
             # Continue loop - LLM will see tool results and decide next action
 
+        # Record decision to event store
+        elapsed = time.time() - cycle_start
+        if self.event_writer and (total_tool_calls > 0 or iteration > 0):
+            # Collect tool call summaries for logging
+            cycle_tool_calls = [
+                {"tool": a["tool"], "summary": a.get("summary", ""), "success": a.get("success", True)}
+                for a in self._action_history
+                if a["time"] >= cycle_start
+            ]
+            # Snapshot recent events that triggered this cycle
+            trigger = [
+                {"zone": zid, "event": e.event_type, "severity": e.severity}
+                for zid, z in self.world_model.zones.items()
+                for e in z.events
+                if cycle_start - e.timestamp < 60  # events in the last minute
+            ][:20]
+            self.event_writer.record_decision(
+                cycle_duration=elapsed,
+                iterations=iteration,
+                total_tool_calls=total_tool_calls,
+                trigger_events=trigger,
+                tool_calls=cycle_tool_calls,
+            )
+
         # Layer 5: Prune old action history (older than 2 hours)
         cutoff_2h = time.time() - 7200
         self._action_history = [a for a in self._action_history if a["time"] > cutoff_2h]
@@ -356,7 +397,6 @@ class Brain:
                 action_type = "task" if action["tool"] == "create_task" else "decision"
                 self.device_registry.record_zone_action(zone, action_type)
 
-        elapsed = time.time() - cycle_start
         logger.info(
             f"Cycle complete: iterations={iteration}, tool_calls={total_tool_calls}, elapsed={elapsed:.1f}s"
         )
@@ -384,6 +424,21 @@ class Brain:
         except Exception as e:
             logger.error(f"Failed to connect to MQTT: {e}")
             return
+
+        # Initialize event store (PostgreSQL)
+        try:
+            engine = await init_db()
+            if engine:
+                self.event_writer = EventWriter(engine)
+                self.world_model.event_writer = self.event_writer
+                asyncio.create_task(self.event_writer.start())
+                aggregator = HourlyAggregator(engine)
+                asyncio.create_task(aggregator.start())
+                logger.info("Event store and aggregator started")
+            else:
+                logger.warning("Event store disabled (no DATABASE_URL)")
+        except Exception as e:
+            logger.error(f"Event store init failed (non-fatal): {e}")
 
         # Shared HTTP session for all components (Layer 2)
         async with aiohttp.ClientSession() as session:
