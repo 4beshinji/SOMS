@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 WALLET_SERVICE_URL = os.getenv("WALLET_SERVICE_URL", "http://wallet:8000")
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mosquitto")
+MQTT_USER = os.getenv("MQTT_USER", "soms")
+MQTT_PASS = os.getenv("MQTT_PASS", "soms_dev_mqtt")
 
 
 async def _grant_device_xp(zone: str, task_id: int, xp_amount: int, event_type: str):
@@ -61,7 +63,10 @@ def _publish_task_report(task: "models.Task"):
     })
     try:
         import paho.mqtt.publish as mqtt_publish
-        mqtt_publish.single(topic, payload, hostname=MQTT_BROKER)
+        mqtt_publish.single(
+            topic, payload, hostname=MQTT_BROKER,
+            auth={"username": MQTT_USER, "password": MQTT_PASS},
+        )
         logger.info("Published task report to %s", topic)
     except Exception as e:
         logger.warning("MQTT publish failed for task %d: %s", task.id, e)
