@@ -32,6 +32,7 @@ class DeviceInfo:
         "device_id", "device_type", "power_mode", "state",
         "parent_id", "children", "hops_to_mqtt", "battery_pct",
         "last_seen", "next_wake_epoch", "capabilities", "queue_status",
+        "utility_score", "_last_used",
     )
 
     def __init__(self, device_id: str, device_type: str = "unknown"):
@@ -47,6 +48,8 @@ class DeviceInfo:
         self.next_wake_epoch: float | None = None
         self.capabilities: list[str] = []
         self.queue_status: dict | None = None        # {"queued_count": N, "targets": [...]}
+        self.utility_score: float = 1.0
+        self._last_used: float = 0.0                 # last time data influenced a decision
 
     def to_dict(self) -> dict:
         return {
@@ -58,6 +61,7 @@ class DeviceInfo:
             "hops_to_mqtt": self.hops_to_mqtt,
             "battery_pct": self.battery_pct,
             "children": list(self.children.keys()),
+            "utility_score": self.utility_score,
         }
 
 
@@ -231,6 +235,52 @@ class DeviceRegistry:
                 device.next_wake_epoch = time.time() + wake_sec
             else:
                 device.next_wake_epoch = None
+
+    def record_zone_action(self, zone_id: str, action_type: str):
+        """Record that a cognitive cycle used data from devices in a zone.
+
+        Call after cognitive_cycle tool execution to boost utility_score
+        for devices whose data contributed to a decision.
+
+        Args:
+            zone_id: Zone identifier (e.g. "main")
+            action_type: "decision" (+0.3) or "task" (+0.5, task creation)
+        """
+        boost = 0.5 if action_type == "task" else 0.3
+        now = time.time()
+        affected = 0
+        for d in self.devices.values():
+            # Match zone: device_id starts with zone or contains zone prefix
+            if d.device_id.startswith(zone_id) or zone_id in d.device_id:
+                d.utility_score = min(d.utility_score + boost, 2.0)
+                d._last_used = now
+                affected += 1
+        if affected:
+            logger.debug(
+                "Utility boost: zone=%s, type=%s, boost=+%.1f, devices=%d",
+                zone_id, action_type, boost, affected,
+            )
+
+    def decay_utility_scores(self):
+        """Decay utility_score for idle devices.
+
+        Grace period: 7 days (no decay).
+        Full decay: 30 days (score capped at 0.5).
+        Linear interpolation between 7d and 30d.
+        """
+        now = time.time()
+        GRACE_DAYS = 7
+        FULL_DECAY_DAYS = 30
+        for d in self.devices.values():
+            days_idle = (now - d._last_used) / 86400 if d._last_used else FULL_DECAY_DAYS
+            if days_idle <= GRACE_DAYS:
+                continue
+            # Linear decay: ceiling goes from 2.0 → 0.5 over (30-7)=23 days
+            decay_progress = min(
+                (days_idle - GRACE_DAYS) / (FULL_DECAY_DAYS - GRACE_DAYS), 1.0
+            )
+            ceiling = 2.0 - 1.5 * decay_progress  # 2.0 → 0.5
+            d.utility_score = max(0.5, min(d.utility_score, ceiling))
 
     def _update_device_states(self):
         """Update all device states based on last_seen."""

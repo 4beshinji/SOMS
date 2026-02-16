@@ -93,3 +93,70 @@ def compute_reward_multiplier(device_xp: int) -> float:
     """
     multiplier = 1.0 + (device_xp / 1000.0) * 0.5
     return min(multiplier, 3.0)
+
+
+def compute_contribution_weight(device: Device) -> float:
+    """Compute total contribution weight: hardware_weight × utility_score.
+
+    hardware_weight (static, based on physical characteristics):
+      Base: 1.0 (AC power, 0 hops)
+      +0.5: Battery-powered (DEEP_SLEEP / ULTRA_LOW / LIGHT_SLEEP)
+      +0.2/hop: Relay burden (max +0.6)
+      Range: 1.0 ~ 2.0
+
+    utility_score (dynamic, from Brain):
+      Range: 0.5 ~ 2.0
+
+    total_weight Range: 0.5 ~ 4.0
+    """
+    hw = 1.0
+    if device.power_mode in ("DEEP_SLEEP", "ULTRA_LOW", "LIGHT_SLEEP"):
+        hw += 0.5
+    hops = device.hops_to_mqtt or 0
+    hw += min(hops * 0.2, 0.6)
+    hw = min(hw, 2.0)
+
+    utility = device.utility_score if device.utility_score else 1.0
+    return hw * utility
+
+
+async def grant_xp_to_zone_weighted(
+    db: AsyncSession,
+    zone: str,
+    task_id: int,
+    base_xp: int,
+    event_type: str = "task_created",
+) -> Tuple[int, int, List[str]]:
+    """Grant weighted XP to all active devices in a zone.
+
+    Each device receives base_xp * contribution_weight.
+
+    Returns:
+        (devices_awarded, total_xp_granted, device_ids)
+    """
+    devices = await find_zone_devices(db, zone)
+
+    if not devices:
+        logger.info(
+            "Weighted XP grant (%s) for zone=%s task=%d: no devices found",
+            event_type, zone, task_id,
+        )
+        return 0, 0, []
+
+    device_ids = []
+    total_xp = 0
+    for device in devices:
+        w = compute_contribution_weight(device)
+        xp_grant = int(base_xp * w)
+        device.xp += xp_grant
+        device_ids.append(device.device_id)
+        total_xp += xp_grant
+
+    await db.flush()
+
+    logger.info(
+        "Weighted XP grant (%s) for zone=%s task=%d: %d devices, %d total XP [%s]",
+        event_type, zone, task_id, len(devices), total_xp,
+        ", ".join(device_ids),
+    )
+    return len(devices), total_xp, device_ids

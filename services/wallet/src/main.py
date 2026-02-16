@@ -7,7 +7,7 @@ from sqlalchemy.future import select
 
 from database import engine, Base, AsyncSessionLocal
 from models import Wallet, RewardRate, SupplyStats
-from routers import wallets, transactions, devices, admin
+from routers import wallets, transactions, devices, admin, stakes, pools
 from services.ledger import SYSTEM_USER_ID
 from services.demurrage import apply_demurrage
 from services.monetary_policy import DEMURRAGE_INTERVAL
@@ -18,6 +18,8 @@ SEED_REWARD_RATES = [
     {"device_type": "llm_node", "rate_per_hour": 5000, "min_uptime_for_reward": 300},
     {"device_type": "sensor_node", "rate_per_hour": 500, "min_uptime_for_reward": 300},
     {"device_type": "hub", "rate_per_hour": 1000, "min_uptime_for_reward": 300},
+    {"device_type": "relay_node", "rate_per_hour": 300, "min_uptime_for_reward": 300},
+    {"device_type": "remote_node", "rate_per_hour": 200, "min_uptime_for_reward": 600},
 ]
 
 
@@ -80,6 +82,10 @@ app.include_router(wallets.router)
 app.include_router(transactions.router)
 app.include_router(devices.router)
 app.include_router(admin.router)
+app.include_router(stakes.router)
+app.include_router(stakes.portfolio_router)
+app.include_router(pools.admin_router)
+app.include_router(pools.public_router)
 
 
 @app.get("/")

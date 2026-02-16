@@ -17,6 +17,7 @@ from tool_executor import ToolExecutor
 from tool_registry import get_tools
 from system_prompt import build_system_message
 from device_registry import DeviceRegistry
+from wallet_bridge import WalletBridge
 
 load_dotenv()
 
@@ -61,6 +62,7 @@ class Brain:
         self.task_queue = None
         self.task_reminder = None
         self.tool_executor = None
+        self.wallet_bridge = None
 
         # Event-driven trigger
         self._cycle_triggered = asyncio.Event()
@@ -95,13 +97,21 @@ class Brain:
         """Process MQTT message on the asyncio thread (thread-safe)."""
         self.world_model.update_from_mqtt(topic, payload)
 
-        # Forward heartbeat messages to DeviceRegistry
+        # Forward heartbeat messages to DeviceRegistry and Wallet
         if "/heartbeat" in topic:
             parts = topic.split("/")
             # Extract device_id from topic (e.g., office/main/sensor/env_01/heartbeat)
             if len(parts) >= 4:
                 device_id = parts[3]
                 self.device_registry.update_from_heartbeat(device_id, payload)
+                # Forward to Wallet service for reward distribution
+                if self.wallet_bridge and self._loop:
+                    asyncio.ensure_future(
+                        self.wallet_bridge.forward_heartbeat(device_id, payload)
+                    )
+                    asyncio.ensure_future(
+                        self.wallet_bridge.forward_children(device_id, payload)
+                    )
 
         # Check if new events were generated -> trigger cycle
         current_event_counts = {
@@ -328,10 +338,38 @@ class Brain:
         cutoff_2h = time.time() - 7200
         self._action_history = [a for a in self._action_history if a["time"] > cutoff_2h]
 
+        # Record utility_score boosts for devices in zones where actions were taken
+        recent_actions = [
+            a for a in self._action_history
+            if a["time"] > cycle_start and a.get("success", True)
+        ]
+        for action in recent_actions:
+            summary = action.get("summary", "")
+            zone = None
+            # Extract zone from summary (e.g., "zone=main, ...")
+            if "zone=" in summary:
+                zone = summary.split("zone=")[1].split(",")[0].strip()
+            elif "title=" in summary:
+                # create_task doesn't always have zone in summary; skip
+                pass
+            if zone:
+                action_type = "task" if action["tool"] == "create_task" else "decision"
+                self.device_registry.record_zone_action(zone, action_type)
+
         elapsed = time.time() - cycle_start
         logger.info(
             f"Cycle complete: iterations={iteration}, tool_calls={total_tool_calls}, elapsed={elapsed:.1f}s"
         )
+
+    async def _utility_decay_loop(self):
+        """Periodically decay utility_scores for idle devices (every hour)."""
+        while True:
+            await asyncio.sleep(3600)
+            try:
+                self.device_registry.decay_utility_scores()
+                logger.debug("Utility score decay applied")
+            except Exception as e:
+                logger.error(f"Utility decay error: {e}")
 
     async def run(self):
         self._loop = asyncio.get_running_loop()
@@ -363,11 +401,15 @@ class Brain:
                 session=session,
                 device_registry=self.device_registry,
             )
+            self.wallet_bridge = WalletBridge(session, self.device_registry)
             logger.info("All components initialized with shared HTTP session")
 
             # Start reminder service
             asyncio.create_task(self.task_reminder.run_periodic_check())
             logger.info("TaskReminder service started")
+
+            # Start periodic utility_score decay (every hour)
+            asyncio.create_task(self._utility_decay_loop())
 
             logger.info("Brain is running (ReAct mode)...")
             last_cycle_time = 0.0

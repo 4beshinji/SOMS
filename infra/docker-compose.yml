@@ -40,6 +40,7 @@ services:
       - LOG_LEVEL=INFO
       - LLM_API_URL=${LLM_API_URL:-http://mock-llm:8000/v1}
       - LLM_MODEL=${LLM_MODEL}
+      - WALLET_SERVICE_URL=http://wallet:8000
     volumes:
       - ../services/brain/src:/app
     networks:

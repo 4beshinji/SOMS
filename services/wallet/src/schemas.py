@@ -96,6 +96,14 @@ class DeviceResponse(BaseModel):
     is_active: bool
     last_heartbeat_at: Optional[datetime] = None
     xp: int = 0
+    total_shares: int = 100
+    available_shares: int = 0
+    share_price: int = 100
+    funding_open: bool = False
+    power_mode: str = "ALWAYS_ON"
+    hops_to_mqtt: int = 0
+    battery_pct: Optional[int] = None
+    utility_score: float = 1.0
 
     class Config:
         from_attributes = True
@@ -159,3 +167,135 @@ class SupplyResponse(BaseModel):
 class HistoryParams(BaseModel):
     limit: int = 50
     offset: int = 0
+
+
+# Stake funding (Model A)
+class FundingOpenRequest(BaseModel):
+    owner_id: int
+    shares_to_list: int
+    share_price: int  # milli-units per share
+
+
+class StakeBuyRequest(BaseModel):
+    user_id: int
+    shares: int  # >= 1
+
+
+class StakeReturnRequest(BaseModel):
+    user_id: int
+    shares: int
+
+
+class StakeResponse(BaseModel):
+    id: int
+    device_id: int
+    user_id: int
+    shares: int
+    percentage: float  # shares / total_shares * 100
+    acquired_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DeviceFundingResponse(BaseModel):
+    device_id: str
+    total_shares: int
+    available_shares: int
+    share_price: int
+    funding_open: bool
+    stakeholders: List[StakeResponse]
+    estimated_reward_per_hour: int
+
+
+class FundingCloseRequest(BaseModel):
+    owner_id: int
+
+
+# Heartbeat with optional metrics
+class HeartbeatRequest(BaseModel):
+    power_mode: Optional[str] = None
+    battery_pct: Optional[int] = None
+    hops_to_mqtt: Optional[int] = None
+    utility_score: Optional[float] = None
+
+
+# Utility score update
+class UtilityScoreUpdate(BaseModel):
+    score: float
+
+
+# Portfolio
+class PortfolioEntry(BaseModel):
+    device_id: str
+    device_type: str
+    shares: int
+    total_shares: int
+    percentage: float
+    estimated_reward_per_hour: int
+
+
+class PortfolioResponse(BaseModel):
+    user_id: int
+    stakes: List[PortfolioEntry]
+    total_estimated_reward_per_hour: int
+
+
+# Pool funding (Model B)
+class PoolCreateRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    goal_jpy: int
+    share_price: int = 100
+    total_shares: int = 100
+
+
+class PoolContributeRequest(BaseModel):
+    user_id: int
+    amount_jpy: int
+
+
+class PoolActivateRequest(BaseModel):
+    device_id: str  # device_id string to link
+
+
+class PoolContributionResponse(BaseModel):
+    id: int
+    pool_id: int
+    user_id: int
+    amount_jpy: int
+    shares_allocated: int
+    contributed_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PoolResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    goal_jpy: int
+    raised_jpy: int
+    share_price: int
+    total_shares: int
+    status: str
+    device_id: Optional[int] = None
+    created_at: datetime
+    contributions: List[PoolContributionResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class PoolListResponse(BaseModel):
+    id: int
+    title: str
+    goal_jpy: int
+    raised_jpy: int
+    status: str
+    progress_pct: float
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

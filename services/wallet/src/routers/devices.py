@@ -11,10 +11,11 @@ from models import Device, RewardRate
 from schemas import (
     DeviceCreate, DeviceUpdate, DeviceResponse,
     DeviceXpGrantRequest, DeviceXpResponse, DeviceXpStatsResponse,
-    HeartbeatResponse,
+    HeartbeatResponse, HeartbeatRequest, UtilityScoreUpdate,
 )
 from services.ledger import transfer, SYSTEM_USER_ID
 from services.xp_scorer import grant_xp_to_zone, compute_reward_multiplier, find_zone_devices
+from services.stake_service import distribute_reward
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +93,19 @@ async def xp_grant(body: DeviceXpGrantRequest, db: AsyncSession = Depends(get_db
 
 
 @router.post("/{device_id}/heartbeat", response_model=HeartbeatResponse)
-async def device_heartbeat(device_id: str, db: AsyncSession = Depends(get_db)):
+async def device_heartbeat(
+    device_id: str,
+    body: HeartbeatRequest = None,
+    db: AsyncSession = Depends(get_db),
+):
     """Record device heartbeat and auto-grant infrastructure reward if eligible.
 
     Compares last_heartbeat_at with now to determine uptime since last beat.
     If the device has been active longer than min_uptime_for_reward for its
-    device_type, grant a prorated infrastructure reward to the device owner.
+    device_type, grant a prorated infrastructure reward proportionally to
+    all stakeholders (or 100% to owner if no stakes exist).
+
+    Optional body fields update device metrics from Brain heartbeat.
     """
     result = await db.execute(
         select(Device).filter(Device.device_id == device_id)
@@ -107,6 +115,17 @@ async def device_heartbeat(device_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Device not found")
     if not device.is_active:
         raise HTTPException(status_code=400, detail="Device is inactive")
+
+    # Update device metrics from optional body
+    if body:
+        if body.power_mode is not None:
+            device.power_mode = body.power_mode
+        if body.battery_pct is not None:
+            device.battery_pct = body.battery_pct
+        if body.hops_to_mqtt is not None:
+            device.hops_to_mqtt = body.hops_to_mqtt
+        if body.utility_score is not None:
+            device.utility_score = max(0.5, min(body.utility_score, 2.0))
 
     now = sa_func.now()
     prev_heartbeat = device.last_heartbeat_at
@@ -133,16 +152,9 @@ async def device_heartbeat(device_id: str, db: AsyncSession = Depends(get_db)):
             reward_granted = int(rate.rate_per_hour * uptime_seconds / 3600)
             if reward_granted > 0:
                 try:
-                    ref = f"infra:{device.device_id}:{int(device.last_heartbeat_at.timestamp())}"
-                    await transfer(
-                        db,
-                        from_user_id=SYSTEM_USER_ID,
-                        to_user_id=device.owner_id,
-                        amount=reward_granted,
-                        transaction_type="INFRASTRUCTURE_REWARD",
-                        description=f"Infra reward: {device.device_id}",
-                        reference_id=ref,
-                    )
+                    ts = int(device.last_heartbeat_at.timestamp())
+                    ref_prefix = f"infra:{device.device_id}:{ts}"
+                    await distribute_reward(db, device, reward_granted, ref_prefix)
                 except ValueError as e:
                     logger.warning("Heartbeat reward skip %s: %s", device_id, e)
                     reward_granted = 0
@@ -154,6 +166,25 @@ async def device_heartbeat(device_id: str, db: AsyncSession = Depends(get_db)):
         reward_granted=reward_granted,
         uptime_seconds=uptime_seconds,
     )
+
+
+@router.post("/{device_id}/utility-score")
+async def update_utility_score(
+    device_id: str,
+    body: UtilityScoreUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Brain updates a device's utility_score (clamped to 0.5-2.0)."""
+    result = await db.execute(
+        select(Device).filter(Device.device_id == device_id)
+    )
+    device = result.scalars().first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    device.utility_score = max(0.5, min(body.score, 2.0))
+    await db.commit()
+    return {"device_id": device_id, "utility_score": device.utility_score}
 
 
 @router.get("/zone-multiplier/{zone}")
