@@ -197,10 +197,12 @@ Routers: `routers/tasks.py` (CRUD + wallet integration), `routers/users.py` (stu
 | `GET /api/voice/rejection/random` | Random pre-generated rejection voice from stock |
 | `GET /api/voice/rejection/status` | Rejection stock count / generation status |
 | `POST /api/voice/rejection/clear` | Clear and regenerate rejection stock |
+| `GET /api/voice/currency-units/status` | Currency unit name stock status + sample |
+| `POST /api/voice/currency-units/clear` | Clear currency unit stock and force regeneration |
 | `GET /audio/{filename}` | Serve generated MP3 files |
 | `GET /audio/rejections/{filename}` | Serve rejection stock audio files |
 
-VOICEVOX speaker ID 47 (ナースロボ_タイプT). `rejection_stock.py` pre-generates up to 100 rejection voices during idle time (LLM text gen + VOICEVOX synthesis).
+VOICEVOX speaker ID 47 (ナースロボ_タイプT). `rejection_stock.py` pre-generates up to 100 rejection voices during idle time (LLM text gen + VOICEVOX synthesis). `currency_unit_stock.py` pre-generates humorous currency unit names (text only, max 50) for randomized task announcements.
 
 ### Wallet Service API (`services/wallet/src/`)
 
@@ -210,7 +212,7 @@ Routers: `routers/wallets.py` (balance/create), `routers/transactions.py` (histo
 
 ### Mock Infrastructure (`infra/`)
 
-- `mock_llm/` — Keyword-based LLM simulator (FastAPI, OpenAI-compatible). Dual-mode: when `tools` present in request → generates tool calls (Brain mode); when absent → generates natural text (Voice text gen mode). Matches temperature/CO2/supply keywords → tool calls
+- `mock_llm/` — Keyword-based LLM simulator (FastAPI, OpenAI-compatible). Dual-mode: when `tools` present in request → generates tool calls (Brain mode); when absent → generates natural text (Voice text gen mode). Matches temperature/CO2/supply keywords → tool calls. Also handles currency unit name generation requests
 - `virtual_edge/` — Virtual ESP32 device emulator for testing without hardware
 - `virtual_camera/` — RTSP server (mediamtx + ffmpeg) for virtual camera feed
 - `docker-compose.edge-mock.yml` — Lightweight compose for virtual-edge + mock-llm + virtual-camera
