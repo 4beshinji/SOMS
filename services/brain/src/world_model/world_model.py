@@ -79,7 +79,21 @@ class WorldModel:
         
         # Route to appropriate handler
         if device_type == "sensor":
-            self._update_environment(zone, channel, payload, device_id)
+            if channel == "status":
+                # Bulk payload: {"temperature": X, "humidity": Y, ...}
+                # Fan out each key as an individual channel update.
+                _KNOWN_CHANNELS = {
+                    "temperature", "humidity", "co2", "pressure",
+                    "gas", "gas_resistance", "illuminance", "motion", "door",
+                }
+                for key, val in payload.items():
+                    if key in _KNOWN_CHANNELS:
+                        ch = "gas_resistance" if key == "gas" else key
+                        self._update_environment(
+                            zone, ch, {"value": val}, device_id
+                        )
+            else:
+                self._update_environment(zone, channel, payload, device_id)
         elif device_type in ("camera", "occupancy"):
             self._update_occupancy(zone, payload)
         elif device_type == "activity":
