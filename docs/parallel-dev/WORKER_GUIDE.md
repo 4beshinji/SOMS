@@ -229,7 +229,7 @@ Adding new route prefixes: coordinate with L4 (nginx.conf owner).
 
 ### L6 — Brain
 
-- [ ] Integration test: `python3 infra/scripts/integration_test_mock.py`
+- [ ] Integration test: `python3 infra/tests/integration/integration_test_mock.py`
 - [ ] ReAct loop terminates within `REACT_MAX_ITERATIONS` (5)
 - [ ] No duplicate tool calls within a single cycle
 - [ ] Speak calls respect zone cooldown (5 min)

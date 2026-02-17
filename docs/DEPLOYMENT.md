@@ -45,7 +45,7 @@
 
 起動サービス: Brain, Dashboard (Backend+Frontend), Mock LLM, Voice Service, VOICEVOX, Wallet, PostgreSQL, Mosquitto, Virtual Edge, Virtual Camera
 
--   **検証方法**: `python3 infra/scripts/e2e_full_test.py` でE2Eテスト (7シナリオ) を実行
+-   **検証方法**: `python3 infra/tests/e2e/e2e_full_test.py` でE2Eテスト (7シナリオ) を実行
 
 ### シナリオ B: 実機本番環境 (AMD ROCm GPU + エッジデバイス)
 

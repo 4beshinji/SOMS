@@ -5,7 +5,7 @@ Tests ollama (qwen2.5:14b) on RX 9700 GPU via OpenAI-compatible API.
 No external dependencies — uses only Python standard library.
 
 Usage:
-    python3 infra/scripts/benchmark_llm.py [--url http://localhost:11434/v1]
+    python3 infra/tests/benchmark/benchmark_llm.py [--url http://localhost:11434/v1]
 """
 
 import json

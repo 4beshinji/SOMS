@@ -148,14 +148,14 @@ Python + MQTT による純粋なイベント駆動アーキテクチャ。重量
 
 ```bash
 # E2E integration test (7 scenarios)
-python3 infra/scripts/e2e_full_test.py
+python3 infra/tests/e2e/e2e_full_test.py
 
 # Individual tests
-python3 infra/scripts/integration_test_mock.py
-python3 infra/scripts/test_task_scheduling.py
-python3 infra/scripts/test_world_model.py
-python3 infra/scripts/test_wallet_integration.py
-python3 infra/scripts/test_demurrage.py
+python3 infra/tests/integration/integration_test_mock.py
+python3 infra/tests/integration/test_task_scheduling.py
+python3 infra/tests/integration/test_world_model.py
+python3 infra/tests/integration/test_wallet_integration.py
+python3 infra/tests/integration/test_demurrage.py
 ```
 
 ## License

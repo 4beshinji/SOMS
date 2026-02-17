@@ -43,22 +43,22 @@ npm run lint     # ESLint
 
 ### Testing
 
-Tests are standalone Python scripts (no pytest framework):
+Tests are standalone Python scripts (no pytest framework) in `infra/tests/`:
 
 ```bash
 # Integration test (end-to-end with mock LLM)
-python3 infra/scripts/integration_test_mock.py
+python3 infra/tests/integration/integration_test_mock.py
 
 # Individual test scripts
-python3 infra/scripts/test_task_scheduling.py
-python3 infra/scripts/test_world_model.py
-python3 infra/scripts/test_human_task.py
+python3 infra/tests/integration/test_task_scheduling.py
+python3 infra/tests/integration/test_world_model.py
+python3 infra/tests/integration/test_human_task.py
 ```
 
 Wallet integration tests (requires running services):
 ```bash
-python3 infra/scripts/test_wallet_integration.py        # F.1: Wallet service direct
-python3 infra/scripts/test_wallet_dashboard_e2e.py      # F.3: Wallet <-> Dashboard cross-service
+python3 infra/tests/integration/test_wallet_integration.py        # F.1: Wallet service direct
+python3 infra/tests/e2e/test_wallet_dashboard_e2e.py              # F.3: Wallet <-> Dashboard cross-service
 ```
 
 Perception service tests in `services/perception/`:

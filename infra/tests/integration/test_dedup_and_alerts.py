@@ -10,8 +10,8 @@ Tests the following fixes:
   5. world_model.py — alert section in get_llm_context()
 
 Usage:
-  python3 infra/scripts/test_dedup_and_alerts.py          # unit tests only
-  python3 infra/scripts/test_dedup_and_alerts.py --live    # + backend integration
+  python3 infra/tests/integration/test_dedup_and_alerts.py          # unit tests only
+  python3 infra/tests/integration/test_dedup_and_alerts.py --live    # + backend integration
 """
 import sys
 import os
