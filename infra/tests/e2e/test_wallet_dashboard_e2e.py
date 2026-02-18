@@ -16,6 +16,7 @@ Test Groups:
   5. No bounty without assignment
 """
 import json
+import os
 import sys
 import time
 import threading
@@ -30,12 +31,12 @@ try:
 except ImportError:
     HAS_MQTT = False
 
-BACKEND_URL = "http://localhost:8000"
-WALLET_URL = "http://localhost:8003"
-MQTT_HOST = "localhost"
-MQTT_PORT = 1883
-MQTT_USER = "soms"
-MQTT_PASS = "soms_dev_mqtt"
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+WALLET_URL = os.getenv("WALLET_URL", "http://localhost:8003")
+MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.getenv("SOMS_PORT_MQTT", "1883"))
+MQTT_USER = os.getenv("MQTT_USER", "soms")
+MQTT_PASS = os.getenv("MQTT_PASS", "soms_dev_mqtt")
 
 # Unique suffix to avoid collisions across test runs
 _TS = str(int(time.time()))[-6:]
@@ -188,6 +189,8 @@ def test1_setup():
 
 
 def test1_grant_xp():
+    if "uid" not in state1:
+        raise SkipTest("setup skipped")
     # Grant 2000 XP -> multiplier = 1.0 + (2000/1000)*0.5 = 2.0x
     resp = grant_xp(state1["zone"], 0, 2000, "manual_e2e")
     assert resp["devices_awarded"] >= 1, f"No devices awarded: {resp}"
@@ -195,6 +198,8 @@ def test1_grant_xp():
 
 
 def test1_verify_multiplier():
+    if "uid" not in state1:
+        raise SkipTest("setup skipped")
     resp = api(f"{WALLET_URL}/devices/zone-multiplier/{state1['zone']}")
     assert resp["device_count"] >= 1, f"No devices: {resp}"
     # 2000 XP -> multiplier = 2.0
@@ -202,6 +207,8 @@ def test1_verify_multiplier():
 
 
 def test1_task_lifecycle():
+    if "uid" not in state1:
+        raise SkipTest("setup skipped")
     task = create_task(f"Multiplier E2E {_TS}", 1000, state1["zone"])
     state1["task_id"] = task["id"]
     accept_task(task["id"], state1["uid"])
@@ -214,6 +221,8 @@ def test1_task_lifecycle():
 
 
 def test1_verify_bounty():
+    if "task_id" not in state1:
+        raise SkipTest("lifecycle skipped")
     balance_after = get_balance(state1["uid"])
     bounty_received = balance_after - state1["balance_before"]
     state1["bounty_received"] = bounty_received
@@ -225,6 +234,8 @@ def test1_verify_bounty():
 
 
 def test1_verify_ledger():
+    if "bounty_received" not in state1:
+        raise SkipTest("bounty verification skipped")
     history = get_history(state1["uid"], limit=10)
     rewards = [
         e for e in history
@@ -324,6 +335,9 @@ def test3_setup():
 
 
 def test3_concurrent_complete():
+    if "task_ids" not in state3:
+        raise SkipTest("setup skipped")
+
     def do_complete(tid):
         return complete_task(tid)
 
@@ -337,6 +351,8 @@ def test3_concurrent_complete():
 
 
 def test3_verify_balance():
+    if "uid" not in state3:
+        raise SkipTest("setup skipped")
     balance_after = get_balance(state3["uid"])
     total_received = balance_after - state3["balance_before"]
     # 5 x 500 x multiplier (>=1.0) = at least 2500
@@ -345,6 +361,8 @@ def test3_verify_balance():
 
 
 def test3_verify_ledger():
+    if "uid" not in state3:
+        raise SkipTest("setup skipped")
     history = get_history(state3["uid"], limit=50)
     rewards = [
         e for e in history
@@ -372,6 +390,8 @@ def test4_setup():
 
 
 def test4_task_cycle_1():
+    if "uid" not in state4:
+        raise SkipTest("setup skipped")
     zone = state4["zone"]
     task = create_task(f"XP Accum E2E 1 {_TS}", 500, zone)
     accept_task(task["id"], state4["uid"])
@@ -380,6 +400,8 @@ def test4_task_cycle_1():
 
 
 def test4_task_cycle_2():
+    if "uid" not in state4:
+        raise SkipTest("setup skipped")
     zone = state4["zone"]
     task = create_task(
         f"XP Accum E2E 2 {_TS}", 500, zone,
@@ -438,12 +460,16 @@ def test5_complete_without_accept():
 
 
 def test5_verify_no_bounty():
+    if "uid" not in state5:
+        raise SkipTest("setup skipped")
     balance_after = get_balance(state5["uid"])
     assert balance_after == state5["balance_before"], \
         f"Balance changed without assignment: {state5['balance_before']} -> {balance_after}"
 
 
 def test5_verify_no_reward_entry():
+    if "uid" not in state5:
+        raise SkipTest("setup skipped")
     history = get_history(state5["uid"], limit=50)
     # This user was created fresh and never accepted a task,
     # so there should be zero TASK_REWARD entries
