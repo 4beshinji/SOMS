@@ -6,6 +6,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **SOMS (Symbiotic Office Management System)** — an autonomous, event-driven office management system combining an LLM "brain" with IoT edge devices, computer vision, and a credit-based economy for human-AI collaboration. The LLM makes real-time decisions about the office environment (lighting, HVAC, task delegation) using sensor data and camera feeds.
 
+## Python Environment
+
+Use **uv** for all Python package management. A project-level virtual environment lives at `.venv/`.
+
+```bash
+# Create venv (first time)
+uv venv .venv
+
+# Install a package
+uv pip install <package> --python .venv/bin/python
+
+# Run a script inside the venv
+.venv/bin/python infra/tests/integration/test_sensor_api.py
+
+# Or activate and use normally
+source .venv/bin/activate
+python infra/tests/...
+```
+
+**Never use `pip install` directly** (system pip is restricted). Always use `uv pip install`.
+
 ## Build & Run Commands
 
 All services run via Docker Compose from the `infra/` directory.
@@ -35,10 +56,10 @@ Service names in docker-compose: `mosquitto`, `brain`, `postgres`, `backend`, `f
 
 ```bash
 cd services/dashboard/frontend
-npm install
-npm run dev      # Vite dev server
-npm run build    # tsc -b && vite build
-npm run lint     # ESLint
+pnpm install
+pnpm run dev      # Vite dev server
+pnpm run build    # tsc -b && vite build
+pnpm run lint     # ESLint
 ```
 
 ### Testing
@@ -88,12 +109,12 @@ python3 services/perception/test_yolo_detect.py
 | Dashboard Backend API | 8000 | soms-backend |
 | Mock LLM | 8001 | soms-mock-llm |
 | Voice Service | 8002 | soms-voice |
-| Wallet Service | (internal only) | soms-wallet |
+| Wallet Service | 127.0.0.1:8003 (localhost only) | soms-wallet |
 | Wallet App (PWA) | 8004 | soms-wallet-app |
-| PostgreSQL | 5432 | soms-postgres |
+| PostgreSQL | 127.0.0.1:5432 (localhost only) | soms-postgres |
 | VOICEVOX Engine | 50021 | soms-voicevox |
 | Ollama (LLM) | 11434 | soms-ollama |
-| MQTT | 1883 | soms-mqtt |
+| MQTT | 1883 (TCP) / 9001 (WebSocket) | soms-mqtt |
 
 ### MQTT Topic Structure
 
@@ -123,7 +144,7 @@ office/{zone}/task_report/{task_id}
 {topic_prefix}/heartbeat
 ```
 
-Brain subscribes to `office/#`, `hydro/#`, `aqua/#` and `mcp/+/response/#`.
+Brain subscribes to `office/#` and `mcp/+/response/#`.
 
 ### Inter-Service Communication
 
@@ -142,7 +163,7 @@ Brain subscribes to `office/#`, `hydro/#`, `aqua/#` and `mcp/+/response/#`.
 - `mcp_bridge.py` — MQTT ↔ JSON-RPC 2.0 translation layer (10s timeout per call)
 - `world_model/` — `WorldModel` maintains unified zone state from MQTT; `SensorFusion` aggregates readings; `ZoneState`/`EnvironmentData`/`Event` dataclasses
 - `task_scheduling/` — `TaskQueueManager` with priority scoring and decision logic
-- `tool_registry.py` — OpenAI function-calling schema definitions (5 tools)
+- `tool_registry.py` — OpenAI function-calling schema definitions (6 tools)
 - `tool_executor.py` — Routes and executes tool calls with sanitizer validation
 - `system_prompt.py` — Constitutional AI system prompt builder
 - `sanitizer.py` — Input validation and security
