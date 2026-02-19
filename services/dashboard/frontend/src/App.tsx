@@ -77,14 +77,14 @@ function App() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks'] }),
   });
 
-  const tasks = tasksQuery.data ?? [];
+  const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
   const loading = tasksQuery.isLoading;
   const systemStats = statsQuery.data ?? null;
   const supply = supplyQuery.data ?? null;
 
   // Restore accepted state from server on data load
   useEffect(() => {
-    if (!tasksQuery.data) return;
+    if (!Array.isArray(tasksQuery.data)) return;
     const serverAccepted = new Set(
       tasksQuery.data
         .filter(t => t.assigned_to != null && !t.is_completed)

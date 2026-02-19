@@ -19,7 +19,9 @@ export interface SupplyStats {
 export const fetchTasks = async (): Promise<Task[]> => {
   const res = await fetch('/api/tasks/');
   if (!res.ok) throw new Error('Failed to fetch tasks');
-  return res.json();
+  const data = await res.json();
+  if (!Array.isArray(data)) throw new Error('Invalid tasks response: expected array');
+  return data;
 };
 
 export const fetchStats = async (): Promise<SystemStats> => {
