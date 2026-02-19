@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy import text
@@ -13,6 +14,8 @@ from services.demurrage import apply_demurrage
 from services.monetary_policy import DEMURRAGE_INTERVAL
 
 logger = logging.getLogger(__name__)
+
+REGION_ID = os.getenv("SOMS_REGION_ID", "local")
 
 SEED_REWARD_RATES = [
     {"device_type": "llm_node", "rate_per_hour": 5000, "min_uptime_for_reward": 300},
@@ -30,6 +33,18 @@ async def lifespan(app: FastAPI):
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS wallet"))
         await conn.run_sync(Base.metadata.create_all)
 
+        # Federation Phase 1: add region columns to existing tables
+        for stmt in [
+            "ALTER TABLE wallet.wallets ADD COLUMN IF NOT EXISTS region_id VARCHAR(32) NOT NULL DEFAULT 'local'",
+            "ALTER TABLE wallet.wallets ADD COLUMN IF NOT EXISTS global_user_id VARCHAR(200)",
+            "ALTER TABLE wallet.ledger_entries ADD COLUMN IF NOT EXISTS region_id VARCHAR(32) NOT NULL DEFAULT 'local'",
+            "ALTER TABLE wallet.ledger_entries ADD COLUMN IF NOT EXISTS sync_status VARCHAR(20) NOT NULL DEFAULT 'confirmed'",
+            "ALTER TABLE wallet.devices ADD COLUMN IF NOT EXISTS home_region VARCHAR(32) NOT NULL DEFAULT 'local'",
+            "ALTER TABLE wallet.devices ADD COLUMN IF NOT EXISTS cross_region_share_cap FLOAT NOT NULL DEFAULT 0.49",
+            "ALTER TABLE wallet.supply_stats ADD COLUMN IF NOT EXISTS region_id VARCHAR(32) NOT NULL DEFAULT 'local'",
+        ]:
+            await conn.execute(text(stmt))
+
     # Seed data
     async with AsyncSessionLocal() as db:
         # System wallet
@@ -37,7 +52,7 @@ async def lifespan(app: FastAPI):
             select(Wallet).filter(Wallet.user_id == SYSTEM_USER_ID)
         )
         if not result.scalars().first():
-            db.add(Wallet(user_id=SYSTEM_USER_ID, balance=0))
+            db.add(Wallet(user_id=SYSTEM_USER_ID, balance=0, region_id=REGION_ID))
 
         # Reward rates
         for rate_data in SEED_REWARD_RATES:
@@ -52,7 +67,7 @@ async def lifespan(app: FastAPI):
         # Supply stats (single row)
         result = await db.execute(select(SupplyStats))
         if not result.scalars().first():
-            db.add(SupplyStats(total_issued=0, total_burned=0, circulating=0))
+            db.add(SupplyStats(total_issued=0, total_burned=0, circulating=0, region_id=REGION_ID))
 
         await db.commit()
 

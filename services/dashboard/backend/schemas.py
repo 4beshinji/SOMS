@@ -11,18 +11,21 @@ class TaskBase(BaseModel):
     bounty_xp: int = 50
     expires_at: Optional[datetime] = None
     task_type: Optional[List[str]] = None
-    
+
     # Intelligent scheduling fields
     urgency: int = 2  # 0-4 (DEFERRED to CRITICAL)
     zone: Optional[str] = None
     min_people_required: int = 1
     estimated_duration: int = 10  # minutes
-    
+
     # Voice data (optional, provided by Brain if voice enabled)
     announcement_audio_url: Optional[str] = None
     announcement_text: Optional[str] = None
     completion_audio_url: Optional[str] = None
     completion_text: Optional[str] = None
+
+    # Federation
+    region_id: str = "local"
 
 class TaskCreate(TaskBase):
     pass
@@ -96,6 +99,7 @@ class VoiceEvent(VoiceEventCreate):
 class UserBase(BaseModel):
     username: str
     display_name: Optional[str] = None
+    region_id: str = "local"
 
 class UserCreate(UserBase):
     pass
@@ -108,6 +112,7 @@ class User(UserBase):
     id: int
     is_active: bool = True
     created_at: datetime
+    global_user_id: Optional[str] = None
 
     class Config:
         from_attributes = True

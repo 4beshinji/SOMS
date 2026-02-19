@@ -42,6 +42,9 @@ class Task(Base):
     assigned_to = Column(Integer, nullable=True)
     accepted_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Federation
+    region_id = Column(String(32), default="local")
+
 class VoiceEvent(Base):
     __tablename__ = "voice_events"
     id = Column(Integer, primary_key=True, index=True)
@@ -79,3 +82,7 @@ class User(Base):
     display_name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Federation
+    region_id = Column(String(32), default="local")
+    global_user_id = Column(String(200), nullable=True)

@@ -28,6 +28,7 @@ class EventWriter:
         self._spatial_last_ts: dict[str, float] = {}  # zone -> last record time
         self._lock = asyncio.Lock()
         self._running = False
+        self.region_id: str = "local"
 
     # ------------------------------------------------------------------
     # Public record methods (called from MQTT thread via call_soon_threadsafe
@@ -41,6 +42,7 @@ class EventWriter:
         value: Any,
         device_id: str | None = None,
         topic: str | None = None,
+        region_id: str | None = None,
     ):
         """Buffer a sensor reading as a raw_event."""
         self._events.append({
@@ -53,6 +55,7 @@ class EventWriter:
                 "value": value,
                 "topic": topic,
             }),
+            "region_id": region_id or self.region_id,
         })
 
     def record_world_event(
@@ -61,6 +64,7 @@ class EventWriter:
         event_type: str,
         severity: str,
         data: dict,
+        region_id: str | None = None,
     ):
         """Buffer a WorldModel event (person_entered, co2_threshold, etc.)."""
         self._events.append({
@@ -69,6 +73,7 @@ class EventWriter:
             "event_type": f"world_model_{event_type}",
             "source_device": None,
             "data": json.dumps({"severity": severity, **data}),
+            "region_id": region_id or self.region_id,
         })
 
     def record_spatial_snapshot(
@@ -76,6 +81,7 @@ class EventWriter:
         zone: str,
         camera_id: str | None = None,
         data: dict | None = None,
+        region_id: str | None = None,
     ):
         """Buffer a spatial snapshot (deduplicated per zone, 10s interval)."""
         now = time.time()
@@ -88,6 +94,7 @@ class EventWriter:
             "zone": zone,
             "camera_id": camera_id,
             "data": json.dumps(data or {}),
+            "region_id": region_id or self.region_id,
         })
 
     def record_decision(
@@ -98,6 +105,7 @@ class EventWriter:
         trigger_events: list | None = None,
         tool_calls: list | None = None,
         world_state_snapshot: dict | None = None,
+        region_id: str | None = None,
     ):
         """Buffer an LLM cognitive cycle decision."""
         self._decisions.append({
@@ -108,6 +116,7 @@ class EventWriter:
             "trigger_events": json.dumps(trigger_events or []),
             "tool_calls": json.dumps(tool_calls or []),
             "world_state_snapshot": json.dumps(world_state_snapshot or {}),
+            "region_id": region_id or self.region_id,
         })
 
     # ------------------------------------------------------------------
@@ -149,9 +158,9 @@ class EventWriter:
                 await conn.execute(
                     text("""
                         INSERT INTO events.raw_events
-                            (timestamp, zone, event_type, source_device, data)
+                            (timestamp, zone, event_type, source_device, data, region_id)
                         VALUES
-                            (:timestamp, :zone, :event_type, :source_device, CAST(:data AS jsonb))
+                            (:timestamp, :zone, :event_type, :source_device, CAST(:data AS jsonb), :region_id)
                     """),
                     events,
                 )
@@ -163,11 +172,12 @@ class EventWriter:
                         INSERT INTO events.llm_decisions
                             (timestamp, cycle_duration_sec, iterations,
                              total_tool_calls, trigger_events, tool_calls,
-                             world_state_snapshot)
+                             world_state_snapshot, region_id)
                         VALUES
                             (:timestamp, :cycle_duration_sec, :iterations,
                              :total_tool_calls, CAST(:trigger_events AS jsonb),
-                             CAST(:tool_calls AS jsonb), CAST(:world_state_snapshot AS jsonb))
+                             CAST(:tool_calls AS jsonb), CAST(:world_state_snapshot AS jsonb),
+                             :region_id)
                     """),
                     decisions,
                 )
@@ -177,9 +187,9 @@ class EventWriter:
                 await conn.execute(
                     text("""
                         INSERT INTO events.spatial_snapshots
-                            (timestamp, zone, camera_id, data)
+                            (timestamp, zone, camera_id, data, region_id)
                         VALUES
-                            (:timestamp, :zone, :camera_id, CAST(:data AS jsonb))
+                            (:timestamp, :zone, :camera_id, CAST(:data AS jsonb), :region_id)
                     """),
                     spatial,
                 )

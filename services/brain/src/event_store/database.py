@@ -85,6 +85,11 @@ CREATE TABLE IF NOT EXISTS events.spatial_heatmap_hourly (
     person_count_avg REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (zone, period_start)
 );
+
+ALTER TABLE events.raw_events ADD COLUMN IF NOT EXISTS region_id TEXT NOT NULL DEFAULT 'local';
+ALTER TABLE events.llm_decisions ADD COLUMN IF NOT EXISTS region_id TEXT NOT NULL DEFAULT 'local';
+ALTER TABLE events.hourly_aggregates ADD COLUMN IF NOT EXISTS region_id TEXT NOT NULL DEFAULT 'local';
+ALTER TABLE events.spatial_snapshots ADD COLUMN IF NOT EXISTS region_id TEXT NOT NULL DEFAULT 'local';
 """
 
 

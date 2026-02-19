@@ -101,6 +101,13 @@ python3 services/perception/test_yolo_detect.py
 5. **SensorSwarm** (`edge/swarm/`, `edge/lib/swarm/`) — Hub+Leaf 2-tier sensor network. Hub (ESP32 with WiFi+MQTT) aggregates Leaf nodes via ESP-NOW, UART, I2C, or BLE. Binary protocol (5-245 bytes, MAGIC 0x53, XOR checksum). Device IDs use dot notation: `swarm_hub_01.leaf_env_01`. See `edge/swarm/README.md`.
 6. **Wallet** (`services/wallet/`) — Double-entry credit ledger. System wallet (user_id=0) issues credits. Task bounty (500-5000), device XP with dynamic multiplier (1.0x-3.0x).
 
+### Federation (Phase 1)
+
+- `config/federation.yaml` — Region identity configuration
+- `SOMS_REGION_ID` env var overrides the YAML config
+- All models include `region_id` column (default: "local")
+- reference_id format: `{region_id}:{type}:{id}` (e.g., "local:task:42")
+
 ### Service Ports
 
 | Service | Port | Container Name |

@@ -18,6 +18,8 @@ class Wallet(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, unique=True, nullable=False, index=True)
     balance = Column(BigInteger, default=0, nullable=False)
+    region_id = Column(String(32), nullable=False, default="local")
+    global_user_id = Column(String(200), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -28,6 +30,7 @@ class LedgerEntry(Base):
         Index("ix_ledger_transaction_id", "transaction_id"),
         Index("ix_ledger_wallet_created", "wallet_id", "created_at"),
         Index("ix_ledger_reference", "reference_id"),
+        Index("ix_ledger_region", "region_id"),
         {"schema": "wallet"},
     )
 
@@ -41,6 +44,8 @@ class LedgerEntry(Base):
     description = Column(Text, nullable=True)
     reference_id = Column(String(200), nullable=True)  # idempotency key
     counterparty_wallet_id = Column(Integer, ForeignKey("wallet.wallets.id"), nullable=True)
+    region_id = Column(String(32), nullable=False, default="local")
+    sync_status = Column(String(20), nullable=False, default="confirmed")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -70,6 +75,10 @@ class Device(Base):
     hops_to_mqtt = Column(Integer, default=0)
     battery_pct = Column(Integer, nullable=True)
 
+    # Federation
+    home_region = Column(String(32), nullable=False, default="local")
+    cross_region_share_cap = Column(Float, nullable=False, default=0.49)
+
     # Utility score (dynamic, updated from Brain)
     utility_score = Column(Float, default=1.0, nullable=False)
 
@@ -92,6 +101,7 @@ class SupplyStats(Base):
     total_issued = Column(BigInteger, default=0)
     total_burned = Column(BigInteger, default=0)
     circulating = Column(BigInteger, default=0)
+    region_id = Column(String(32), nullable=False, default="local")
 
 
 class DeviceStake(Base):

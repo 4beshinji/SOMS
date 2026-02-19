@@ -21,27 +21,27 @@ logger = logging.getLogger(__name__)
 SYSTEM_USER_ID = 0  # System wallet (currency issuer)
 
 
-async def ensure_system_wallet(db: AsyncSession) -> Wallet:
+async def ensure_system_wallet(db: AsyncSession, region_id: str = "local") -> Wallet:
     """Create the system wallet (user_id=0) if it doesn't exist."""
     result = await db.execute(
         select(Wallet).filter(Wallet.user_id == SYSTEM_USER_ID)
     )
     wallet = result.scalars().first()
     if not wallet:
-        wallet = Wallet(user_id=SYSTEM_USER_ID, balance=0)
+        wallet = Wallet(user_id=SYSTEM_USER_ID, balance=0, region_id=region_id)
         db.add(wallet)
         await db.flush()
     return wallet
 
 
-async def get_or_create_wallet(db: AsyncSession, user_id: int) -> Wallet:
+async def get_or_create_wallet(db: AsyncSession, user_id: int, region_id: str = "local") -> Wallet:
     """Get wallet by user_id, creating one if it doesn't exist."""
     result = await db.execute(
         select(Wallet).filter(Wallet.user_id == user_id)
     )
     wallet = result.scalars().first()
     if not wallet:
-        wallet = Wallet(user_id=user_id, balance=0)
+        wallet = Wallet(user_id=user_id, balance=0, region_id=region_id)
         db.add(wallet)
         await db.flush()
     return wallet
@@ -55,6 +55,7 @@ async def transfer(
     transaction_type: str,
     description: Optional[str] = None,
     reference_id: Optional[str] = None,
+    region_id: str = "local",
 ) -> uuid.UUID:
     """Execute a double-entry transfer between two wallets.
 
@@ -119,6 +120,7 @@ async def transfer(
         description=description,
         reference_id=reference_id,
         counterparty_wallet_id=to_wallet.id,
+        region_id=region_id,
     )
 
     # Credit entry (to)
@@ -132,6 +134,7 @@ async def transfer(
         description=description,
         reference_id=reference_id,
         counterparty_wallet_id=from_wallet.id,
+        region_id=region_id,
     )
 
     db.add(debit)
@@ -139,7 +142,7 @@ async def transfer(
 
     # Update supply stats for issuance (system → user)
     if from_user_id == SYSTEM_USER_ID:
-        await _update_supply(db, issued=amount)
+        await _update_supply(db, issued=amount, region_id=region_id)
 
     await db.flush()
     logger.info(
@@ -156,6 +159,7 @@ async def burn(
     transaction_type: str,
     description: Optional[str] = None,
     reference_id: Optional[str] = None,
+    region_id: str = "local",
 ) -> uuid.UUID:
     """Burn (destroy) currency from a user wallet.
 
@@ -191,10 +195,11 @@ async def burn(
         description=description,
         reference_id=reference_id,
         counterparty_wallet_id=None,
+        region_id=region_id,
     )
     db.add(entry)
 
-    await _update_supply(db, burned=amount)
+    await _update_supply(db, burned=amount, region_id=region_id)
     await db.flush()
     logger.info(
         "Burn %s: user=%d, amount=%d, type=%s",
@@ -203,14 +208,14 @@ async def burn(
     return txn_id
 
 
-async def _update_supply(db: AsyncSession, issued: int = 0, burned: int = 0):
+async def _update_supply(db: AsyncSession, issued: int = 0, burned: int = 0, region_id: str = "local"):
     """Update the single-row supply_stats tracker."""
     result = await db.execute(
         select(SupplyStats).with_for_update()
     )
     stats = result.scalars().first()
     if not stats:
-        stats = SupplyStats(total_issued=0, total_burned=0, circulating=0)
+        stats = SupplyStats(total_issued=0, total_burned=0, circulating=0, region_id=region_id)
         db.add(stats)
         await db.flush()
         # Re-select with lock

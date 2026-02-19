@@ -19,6 +19,7 @@ WALLET_SERVICE_URL = os.getenv("WALLET_SERVICE_URL", "http://wallet:8000")
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mosquitto")
 MQTT_USER = os.getenv("MQTT_USER", "soms")
 MQTT_PASS = os.getenv("MQTT_PASS", "soms_dev_mqtt")
+REGION_ID = os.getenv("SOMS_REGION_ID", "local")
 
 
 async def _grant_device_xp(zone: str, task_id: int, xp_amount: int, event_type: str):
@@ -143,6 +144,7 @@ def _task_to_response(task_model: models.Task) -> schemas.Task:
         last_reminded_at=task_model.last_reminded_at,
         report_status=task_model.report_status,
         completion_note=task_model.completion_note,
+        region_id=task_model.region_id or "local",
     )
 
 @router.post("/", response_model=schemas.Task)
@@ -216,7 +218,8 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
         announcement_audio_url=getattr(task, 'announcement_audio_url', None),
         announcement_text=getattr(task, 'announcement_text', None),
         completion_audio_url=getattr(task, 'completion_audio_url', None),
-        completion_text=getattr(task, 'completion_text', None)
+        completion_text=getattr(task, 'completion_text', None),
+        region_id=REGION_ID,
     )
     db.add(new_task)
 

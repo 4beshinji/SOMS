@@ -21,13 +21,16 @@ from services.monetary_policy import (
     get_circulating,
 )
 
+import os
+REGION_ID = os.getenv("SOMS_REGION_ID", "local")
+
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
 @router.post("/task-reward", response_model=TransactionResponse)
 async def task_reward(body: TaskRewardRequest, db: AsyncSession = Depends(get_db)):
     """Pay task bounty from system wallet to user wallet."""
-    reference = f"task:{body.task_id}"
+    reference = f"{REGION_ID}:task:{body.task_id}"
     description = body.description or f"Task #{body.task_id} reward"
 
     try:

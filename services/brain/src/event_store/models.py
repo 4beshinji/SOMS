@@ -24,6 +24,7 @@ class RawEvent(Base):
     event_type: Mapped[str] = mapped_column(Text, nullable=False)
     source_device: Mapped[str | None] = mapped_column(Text, nullable=True)
     data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    region_id: Mapped[str] = mapped_column(Text, nullable=False, default="local")
 
 
 class LLMDecision(Base):
@@ -38,6 +39,7 @@ class LLMDecision(Base):
     trigger_events: Mapped[dict] = mapped_column(JSONB, nullable=False, default=list)
     tool_calls: Mapped[dict] = mapped_column(JSONB, nullable=False, default=list)
     world_state_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    region_id: Mapped[str] = mapped_column(Text, nullable=False, default="local")
 
 
 class HourlyAggregate(Base):
@@ -52,6 +54,7 @@ class HourlyAggregate(Base):
     tasks_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     llm_cycles: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     device_health: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    region_id: Mapped[str] = mapped_column(Text, nullable=False, default="local")
 
 
 class AggregationState(Base):

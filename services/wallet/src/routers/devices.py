@@ -17,6 +17,9 @@ from services.ledger import transfer, SYSTEM_USER_ID
 from services.xp_scorer import grant_xp_to_zone, compute_reward_multiplier, find_zone_devices
 from services.stake_service import distribute_reward
 
+import os
+REGION_ID = os.getenv("SOMS_REGION_ID", "local")
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -36,6 +39,7 @@ async def register_device(body: DeviceCreate, db: AsyncSession = Depends(get_db)
         device_type=body.device_type,
         display_name=body.display_name,
         topic_prefix=body.topic_prefix,
+        home_region=body.home_region,
     )
     db.add(device)
     await db.commit()
@@ -153,7 +157,7 @@ async def device_heartbeat(
             if reward_granted > 0:
                 try:
                     ts = int(device.last_heartbeat_at.timestamp())
-                    ref_prefix = f"infra:{device.device_id}:{ts}"
+                    ref_prefix = f"{REGION_ID}:infra:{device.device_id}:{ts}"
                     await distribute_reward(db, device, reward_granted, ref_prefix)
                 except ValueError as e:
                     logger.warning("Heartbeat reward skip %s: %s", device_id, e)

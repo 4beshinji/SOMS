@@ -20,6 +20,7 @@ from device_registry import DeviceRegistry
 from wallet_bridge import WalletBridge
 from event_store import init_db, EventWriter, HourlyAggregator
 from spatial_config import load_spatial_config
+from federation_config import load_federation_config, get_region_id
 
 load_dotenv()
 
@@ -60,6 +61,10 @@ class Brain:
         self.world_model = WorldModel(spatial_config=spatial_config)
         self.device_registry = DeviceRegistry()
         self.event_writer: EventWriter | None = None
+
+        # Load federation configuration
+        fed_config = load_federation_config("config/federation.yaml")
+        self.region_id = fed_config.region.id
 
         # Initialized in run() with shared session
         self.llm = None
@@ -115,6 +120,7 @@ class Brain:
                         value=value,
                         device_id=parts[3],
                         topic=topic,
+                        region_id=self.region_id,
                     )
 
         # Forward heartbeat messages to DeviceRegistry and Wallet
@@ -382,6 +388,7 @@ class Brain:
                 total_tool_calls=total_tool_calls,
                 trigger_events=trigger,
                 tool_calls=cycle_tool_calls,
+                region_id=self.region_id,
             )
 
         # Layer 5: Prune old action history (older than 2 hours)
@@ -479,6 +486,7 @@ class Brain:
             engine = await init_db()
             if engine:
                 self.event_writer = EventWriter(engine)
+                self.event_writer.region_id = self.region_id
                 self.world_model.event_writer = self.event_writer
                 asyncio.create_task(self.event_writer.start())
                 aggregator = HourlyAggregator(engine)

@@ -177,6 +177,7 @@ class ZoneMetadata(BaseModel):
 class ZoneState(BaseModel):
     """Complete state of a zone (room/area)."""
     zone_id: str
+    region_id: str = "local"
 
     environment: EnvironmentData = Field(default_factory=EnvironmentData)
     occupancy: OccupancyData = Field(default_factory=OccupancyData)

@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import Device, DeviceStake
 from services.ledger import transfer, SYSTEM_USER_ID
 
+import os
+REGION_ID = os.getenv("SOMS_REGION_ID", "local")
+
 logger = logging.getLogger(__name__)
 
 
@@ -132,7 +135,7 @@ async def buy_shares(
 
     cost = shares_count * device.share_price
     epoch = int(time.time())
-    ref = f"stake:buy:{device.device_id}:{user_id}:{epoch}"
+    ref = f"{REGION_ID}:stake:buy:{device.device_id}:{user_id}:{epoch}"
 
     # Transfer SOMS from buyer to owner
     await transfer(
@@ -203,7 +206,7 @@ async def return_shares(
 
     refund_amount = shares_count * device.share_price
     epoch = int(time.time())
-    ref = f"stake:return:{device.device_id}:{user_id}:{epoch}"
+    ref = f"{REGION_ID}:stake:return:{device.device_id}:{user_id}:{epoch}"
 
     # System buys back
     await transfer(

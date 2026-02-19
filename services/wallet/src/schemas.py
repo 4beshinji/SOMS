@@ -7,11 +7,13 @@ from uuid import UUID
 # Wallet
 class WalletCreate(BaseModel):
     user_id: int
+    region_id: str = "local"
 
 class WalletResponse(BaseModel):
     id: int
     user_id: int
     balance: int  # milli-units
+    region_id: str = "local"
     created_at: datetime
     updated_at: datetime
 
@@ -31,6 +33,7 @@ class LedgerEntryResponse(BaseModel):
     description: Optional[str] = None
     reference_id: Optional[str] = None
     counterparty_wallet_id: Optional[int] = None
+    region_id: str = "local"
     created_at: datetime
 
     class Config:
@@ -79,6 +82,7 @@ class DeviceCreate(BaseModel):
     device_type: str  # llm_node / sensor_node / hub
     display_name: Optional[str] = None
     topic_prefix: Optional[str] = None
+    home_region: str = "local"
 
 class DeviceUpdate(BaseModel):
     display_name: Optional[str] = None
@@ -104,6 +108,8 @@ class DeviceResponse(BaseModel):
     hops_to_mqtt: int = 0
     battery_pct: Optional[int] = None
     utility_score: float = 1.0
+    home_region: str = "local"
+    cross_region_share_cap: float = 0.49
 
     class Config:
         from_attributes = True
@@ -158,6 +164,7 @@ class SupplyResponse(BaseModel):
     total_issued: int
     total_burned: int
     circulating: int
+    region_id: str = "local"
 
     class Config:
         from_attributes = True

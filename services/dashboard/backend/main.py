@@ -39,6 +39,9 @@ def _migrate_add_columns(conn):
         ("users", "display_name", "VARCHAR", None),
         ("users", "is_active", "BOOLEAN", "TRUE"),
         ("users", "created_at", "TIMESTAMP WITH TIME ZONE", "NOW()"),
+        ("tasks", "region_id", "VARCHAR(32)", "'local'"),
+        ("users", "region_id", "VARCHAR(32)", "'local'"),
+        ("users", "global_user_id", "VARCHAR(200)", None),
     ]
     for table, col_name, col_type, default in migrations:
         if table in table_columns and col_name not in table_columns[table]:
