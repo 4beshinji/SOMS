@@ -1,7 +1,7 @@
 # SOMS (Symbiotic Office Management System) — システム全体像
 
-**最終更新**: 2026-02-18
-**対象バージョン**: main ブランチ (未コミット変更含む)
+**最終更新**: 2026-02-20
+**対象バージョン**: main ブランチ (`a0a3fc0`)
 
 ---
 
@@ -648,7 +648,7 @@ Office_as_AI_ToyBox/
 │   │   ├── sanitizer.py        #   入力検証・安全弁
 │   │   ├── dashboard_client.py #   REST API クライアント
 │   │   ├── task_reminder.py    #   定期リマインダー (1時間)
-│   │   ├── device_registry.py  #   デバイス状態追跡・適応型タイムアウト
+│   │   ├── device_registry.py  #   デバイス状態追跡・適応型タイムアウト・デバイス信頼メカニズム
 │   │   ├── wallet_bridge.py    #   MQTT→Wallet ハートビート中継
 │   │   ├── spatial_config.py   #   空間レイアウト設定読み込み
 │   │   ├── federation_config.py#   リージョンID設定読み込み
@@ -691,6 +691,8 @@ Office_as_AI_ToyBox/
 │   │   └── leaf-arduino/       #   I2C/BLE リーフ (Arduino)
 │   ├── test-edge/              # C++ ファームウェア
 │   │   └── camera-node/        #   OV2640 カメラ (ESP32 WROVER)
+│   ├── enclosure/              # 3Dプリント筐体 (OpenSCAD)
+│   │   └── sensor-node-v1/     #   BME680 + PIR 2チャンバー式
 │   └── tools/                  # 診断スクリプト (17本)
 ├── infra/
 │   ├── docker-compose.yml      # メイン構成 (12サービス)
@@ -700,13 +702,17 @@ Office_as_AI_ToyBox/
 │   ├── virtual_camera/         # RTSP テストパターン生成
 │   ├── mosquitto/              # MQTT ブローカー設定
 │   └── scripts/                # セットアップ・テストスクリプト
+├── tools/
+│   └── import_floorplan.py     # DXF→YAML フロアプランインポーター
+├── config/
+│   ├── spatial.yaml            # GITY Office フロアプラン (9ゾーン)
+│   └── federation.yaml         # リージョンID設定
 ├── docs/
 │   ├── SYSTEM_OVERVIEW.md      # 本文書 (技術全体像)
 │   ├── CITY_SCALE_VISION.md    # 都市規模ビジョン
 │   ├── CURRENCY_SYSTEM.md      # 経済システム詳細
-│   └── architecture/           # 初期設計ドキュメント (設計時点の記録)
+│   └── architecture/           # 設計ドキュメント (ADR + detailed_design)
 ├── CLAUDE.md                   # 開発者ガイド
-├── HANDOFF.md                  # 作業引き継ぎ
 └── .env                        # 環境設定
 ```
 
@@ -767,5 +773,8 @@ docker compose -f infra/docker-compose.yml up -d --build
 | `docs/architecture/detailed_design/05_edge_engineering.md` | エッジデバイス実装 |
 | `docs/architecture/detailed_design/06_security_privacy.md` | セキュリティ・プライバシー |
 | `docs/architecture/detailed_design/07_container_architecture.md` | コンテナ構成 |
+| `docs/architecture/adr-federation.md` | 多リージョン連邦アーキテクチャ |
+| `docs/architecture/adr-sensor-api-repository-pattern.md` | センサーAPI Repositoryパターン |
+| `docs/architecture/adr-spatial-map-service.md` | 空間マップサービス設計 |
 | `CLAUDE.md` | 開発者向けクイックリファレンス |
-| `HANDOFF.md` | 直近の作業引き継ぎ |
+| `docs/handoff/CURRENT_STATE.md` | 直近の作業引き継ぎ |

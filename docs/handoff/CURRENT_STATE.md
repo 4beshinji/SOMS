@@ -2,9 +2,12 @@
 
 **更新日時**: 2026-02-20
 **ブランチ**: main
-**HEAD**: `bdfabfc` (feat: add federation Phase 1 region identity to all services)
+**HEAD**: `a0a3fc0` (docs: sync documentation with device trust, spatial map, and enclosure features)
 
-**最新セッションの成果 (Session O-Q)**:
+**最新セッションの成果 (Session O-S)**:
+- **Device Trust**: 未検証デバイスをLLMコンテキストからフィルタリングする信頼メカニズム追加
+- **Sensor Node Enclosure v1**: BME680 + PIR バリアントの3Dプリンタブル筐体 (OpenSCAD)
+- **Real Floor Plan**: DXF からの実オフィスフロアプランのインポート
 - **Federation Phase 1**: 全サービスのモデルに `region_id` カラム追加、`config/federation.yaml` + `SOMS_REGION_ID` 環境変数
 - **Spatial Map Service**: フロアプラン可視化、センサー配置GUI、`routers/spatial.py` + `routers/devices.py` 追加
 - **Sensor Data API**: Repository パターン導入 (`SensorDataRepository` ABC + `PgSensorRepository`)、5エンドポイント追加
@@ -28,10 +31,11 @@
 | P | Sensor Data API + Repository パターン, HEMS キャラクター設定 | `bad0cac` |
 | Q | Spatial Map Service (フロアプラン可視化 + デバイス配置GUI) | `352c88c`, `4101019` |
 | R | Federation Phase 1 (全サービスに region_id 追加) | `bdfabfc` |
+| S | Device Trust, 3D筐体, 実フロアプラン (DXF), ドキュメント整理 | `a0a3fc0` |
 
 ---
 
-## 1. ISSUES.md — 全32件の解決状態
+## 1. 既知の問題 — 全32件解決済み
 
 ### 全件解決済み (32/32 = 100%)
 
@@ -41,8 +45,6 @@
 | HIGH (8) | 8/8 | H-1~H-8 (H-5: Sanitizer timing 修正済み, H-6: WalletBadge 削除済み, H-7/H-8: Session J 修正) |
 | MEDIUM (12) | 12/12 | M-1~M-12 (M-1: PG 127.0.0.1 制限, M-2: MQTT 認証有効化, M-5: Perception networks 除去) |
 | LOW (8) | 8/8 | L-1~L-8 (L-1: Perception tag 固定, L-2: build-essential 除去, L-7: healthcheck 全12サービス) |
-
-**注**: ISSUES.md ファイル自体は 2026-02-13 時点の記載のまま。内容は全件対応完了。
 
 ---
 
@@ -129,7 +131,7 @@ utility_score (動的, 0.5~2.0):
 | Wallet E2E (52テスト) | ALL PASSED | `infra/scripts/test_phase1_5.py` |
 | Brain 統合 (9テスト) | ALL PASSED | 手動実行 (docker exec) |
 
-テスト詳細: `docs/phase1.5-session-notes.md`
+テスト詳細: `infra/scripts/test_phase1_5.py` 参照
 
 ---
 
@@ -350,7 +352,7 @@ cat infra/.env 2>/dev/null || echo ".env not found"
 
 ## 11. 残作業 / 次セッションの候補
 
-ISSUES.md の 32件は全件解決済み。以下は新規タスク候補:
+初期の 32 件は全件解決済み。以下は新規タスク候補:
 
 | タスク | 優先度 | 備考 |
 |--------|--------|------|

@@ -3,7 +3,7 @@
 All concurrent workers MUST read this document before starting.
 See also:
 - [API_CONTRACTS.md](./API_CONTRACTS.md) — Inter-service API details
-- [DISPATCH.md](./DISPATCH.md) — Current lane assignments and per-worker instructions
+- [`docs/handoff/CURRENT_STATE.md`](../handoff/CURRENT_STATE.md) — Current state and session history
 
 ---
 
@@ -253,12 +253,8 @@ Adding new route prefixes: coordinate with L4 (nginx.conf owner).
 
 | Document | Purpose |
 |----------|---------|
-| `docs/handoff/CURRENT_STATE.md` | Latest session state, uncommitted changes, issue tracker |
-| `docs/TASK_SCHEDULE.md` | Development roadmap and task priorities |
+| `docs/handoff/CURRENT_STATE.md` | Latest session state, issue tracker |
+| `docs/IMPLEMENTATION_STATUS.md` | File-level implementation details |
 | `docs/architecture/wallet-separation.md` | Wallet/dashboard separation design |
 | `docs/SYSTEM_OVERVIEW.md` | High-level architecture |
 | `CLAUDE.md` | Build commands, architecture reference, conventions |
-
-### Known Issues
-
-ISSUES.md 全32件解決済み。DISPATCH.md の Issue トラッカーを参照。

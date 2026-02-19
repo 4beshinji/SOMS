@@ -59,12 +59,12 @@ Only structured data (person count, activity classification, pose metrics) leave
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| MQTT Authentication | **Not implemented** | `allow_anonymous true` in mosquitto.conf |
+| MQTT Authentication | **実装済み** | Username/password 認証 (`soms`/`soms_dev_mqtt`) |
 | Dashboard Authentication | **Not implemented** | No login, no session management |
 | RBAC | **Not implemented** | No roles (User/Admin distinction) |
 | VLAN Isolation | **Not implemented** | All services on single Docker bridge `soms-net` |
 | TLS | **Not implemented** | All traffic is plaintext |
-| PostgreSQL | **Exposed** | Port 5432 on all interfaces with default password |
+| PostgreSQL | **制限済み** | `127.0.0.1:5432` にバインド |
 
 ### 5.2 Implemented Security Measures
 
@@ -79,13 +79,13 @@ Only structured data (person count, activity classification, pose metrics) leave
 
 ### 5.3 Planned Improvements
 
-| Priority | Improvement | Reference |
-|----------|-------------|-----------|
-| Medium | PostgreSQL port binding to `127.0.0.1` | ISSUES.md M-1 |
-| Medium | MQTT username/password authentication | ISSUES.md M-2 |
-| Medium | Dashboard basic auth (nginx) | TASK_SCHEDULE.md C.4 |
-| Low | Docker healthchecks for all services | ISSUES.md L-7 |
-| Low | Perception Dockerfile version pinning | ISSUES.md L-1 |
+| Priority | Improvement | Status |
+|----------|-------------|--------|
+| ~~Medium~~ | ~~PostgreSQL port binding to `127.0.0.1`~~ | **解決済み** |
+| ~~Medium~~ | ~~MQTT username/password authentication~~ | **解決済み** (`soms`/`soms_dev_mqtt`) |
+| Medium | Dashboard basic auth (nginx) | 未実装 |
+| ~~Low~~ | ~~Docker healthchecks for all services~~ | **解決済み** |
+| ~~Low~~ | ~~Perception Dockerfile version pinning~~ | **解決済み** |
 | Future | VLAN isolation for IoT devices | — |
 | Future | TLS for MQTT and HTTP | — |
 
@@ -109,13 +109,13 @@ Since there is no visual verification (no `verify_state` tool), the system relie
 
 ## 7. Known Security Issues
 
-| ID | Severity | Issue |
-|----|----------|-------|
-| M-1 | Medium | PostgreSQL port exposed on all interfaces |
-| M-2 | Medium | MQTT anonymous access enabled |
-| M-9 | Medium | Wallet service port unnecessarily exposed |
-| — | Medium | No authentication on any API endpoint |
-| — | Low | No audit logging for administrative actions |
-| — | Low | Default PostgreSQL password in env.example |
+| ID | Severity | Issue | Status |
+|----|----------|-------|--------|
+| ~~M-1~~ | ~~Medium~~ | ~~PostgreSQL port exposed on all interfaces~~ | **解決済み** (127.0.0.1 制限) |
+| ~~M-2~~ | ~~Medium~~ | ~~MQTT anonymous access enabled~~ | **解決済み** (認証有効化) |
+| ~~M-9~~ | ~~Medium~~ | ~~Wallet service port unnecessarily exposed~~ | **解決済み** (127.0.0.1 制限) |
+| — | Medium | No authentication on any API endpoint | 未対応 (PoC) |
+| — | Low | No audit logging for administrative actions | 未対応 |
+| — | Low | Default PostgreSQL password in env.example | 未対応 |
 
-See `ISSUES.md` for complete issue tracking.
+**注**: M-1 (PG 127.0.0.1 制限) と M-2 (MQTT 認証) は解決済み。

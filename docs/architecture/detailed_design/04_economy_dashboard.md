@@ -84,7 +84,7 @@ Key fields:
 
 ### 4.3 User Model (Dashboard Backend)
 - `id`, `username`, `credits`
-- **Note**: `users.py` router is currently a stub with hardcoded mock data. DB integration pending (see TASK_SCHEDULE.md C.1).
+- **Note**: `users.py` router は AsyncSession による DB 連携実装済み。
 - `credits` field is legacy — Wallet Service `balance` is the authoritative source.
 
 ### 4.4 Wallet Data Models (Wallet Service, PostgreSQL)
@@ -147,15 +147,13 @@ User: "無視" (Ignore)
   → Task remains available for other users
 ```
 
-## 7. Known Issues
+## 7. 既知の制約
 
-| ID | Issue | Impact |
-|----|-------|--------|
-| C-2 | Task model missing `assigned_to`/`accepted_at` columns | Accept endpoint fails with AttributeError |
-| H-6 | setState in useEffect (React anti-pattern) | Cascade re-renders on initial load |
-| H-7 | useEffect missing `prevTaskIds` dependency | Stale closure may miss new tasks |
-| — | `users.py` is a stub | Hardcoded mock data, no DB integration |
-| — | No authentication | Anyone can accept/complete tasks as any user |
-| — | WalletPanel endpoint mismatch | Frontend expects `/transactions/{userId}` but API provides `/wallets/{userId}/history` |
+> 以下の問題はすべて解決済み: C-2 (Task モデルカラム追加), H-6/H-7 (React 修正), users.py DB 連携, WalletPanel エンドポイント修正。
 
-See `ISSUES.md` for full issue list and `CURRENCY_SYSTEM.md` for detailed wallet documentation.
+| 項目 | 詳細 |
+|------|------|
+| 認証なし | 全 API に認証レイヤーなし (PoC 段階) |
+| 時間ベース報酬未実装 | `reward_rates` テーブルのみ定義済み |
+
+詳細は `docs/CURRENCY_SYSTEM.md` を参照。

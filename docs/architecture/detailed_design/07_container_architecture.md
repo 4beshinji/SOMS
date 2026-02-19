@@ -174,4 +174,4 @@ docker compose -f infra/docker-compose.yml up -d --build brain
 | L-2 | Unnecessary `build-essential` in Python service Dockerfiles | +90MB image size |
 | L-7 | No Docker healthchecks defined | Failure detection difficulty |
 
-See `ISSUES.md` for complete issue tracking.
+**注**: M-1 (PG 127.0.0.1 制限) と L-7 (healthcheck) は解決済み。残りは PoC 段階の許容範囲。

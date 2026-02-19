@@ -1,4 +1,7 @@
-# Local LLM Engine (vLLM)
+# Local LLM Engine (vLLM) — Alternative Setup
+
+> **注意**: SOMS の標準 LLM バックエンドは **Ollama** (`docker-compose.yml` の `ollama` サービス) です。
+> 本ディレクトリは vLLM を使用する**代替構成**であり、Hugging Face モデルを直接実行する場合に使用します。
 
 このディレクトリは、SOMSシステムから独立して動作するローカルLLMエンジンの構成を含みます。
 AMD Radeon GPU (ROCm) 環境向けに最適化されています。

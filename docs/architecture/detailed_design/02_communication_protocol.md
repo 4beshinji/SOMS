@@ -178,12 +178,13 @@ Edge Devices
 ## 7. Security Status
 
 **Current state (PoC)**:
-- MQTT: `allow_anonymous true` — no authentication.
+- MQTT: Username/password 認証有効化済み (`soms`/`soms_dev_mqtt`)。
 - Dashboard/API: No authentication layer.
 - Network: Single Docker bridge network (`soms-net`), no VLAN isolation.
-- PostgreSQL: Port 5432 exposed on all interfaces (should be `127.0.0.1:5432:5432`).
+- PostgreSQL: `127.0.0.1:5432` に制限済み。
 
-**Planned improvements** (see ISSUES.md M-1, M-2):
-- MQTT username/password authentication.
-- Dashboard basic auth or OAuth2.
-- PostgreSQL port binding restriction.
+**改善済み**:
+- MQTT username/password 認証有効化済み (デフォルト: `soms`/`soms_dev_mqtt`)。
+- PostgreSQL ポートを `127.0.0.1:5432` に制限済み。
+
+**未実装**: Dashboard 認証 (basic auth / OAuth2)。
