@@ -55,6 +55,13 @@ infra/.env.ports
 .DS_Store
 Thumbs.db
 
+# CAD / Architecture
+*.dwg
+*.dxf
+
+# 3D Printing (generated)
+*.gcode
+
 # Project Specific
 /data/
 /models/

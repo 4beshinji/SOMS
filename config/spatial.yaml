@@ -1,59 +1,270 @@
 building:
-  name: "SOMS Office"
-  width_m: 15.0
-  height_m: 10.0
-  floor_plan_image: null  # Optional: "floor_plan.svg"
-
+  name: GITY Office
+  width_m: 29.3
+  height_m: 20.1
+  floor_plan_image: null
 zones:
-  main:
-    display_name: "メインエリア"
-    polygon: [[0,0],[10,0],[10,7],[0,7]]
-    area_m2: 70.0
+  zone_01:
+    display_name: 会議ブース１
+    polygon:
+    - [23.13, 9.34]
+    - [23.13, 11.57]
+    - [25.54, 11.57]
+    - [25.54, 9.16]
+    area_m2: 5.6
     floor: 1
-    adjacent_zones: [kitchen, entrance]
-    grid_cols: 10
-    grid_rows: 7
-  kitchen:
-    display_name: "キッチン"
-    polygon: [[10,0],[15,0],[15,4],[10,4]]
-    area_m2: 20.0
+    adjacent_zones:
+    - room_01
+    grid_cols: 2
+    grid_rows: 2
+  room_01:
+    display_name: room_01
+    polygon:
+    - [26.13, 11.84]
+    - [28.79, 11.84]
+    - [28.79, 9.07]
+    - [26.13, 9.07]
+    area_m2: 7.4
     floor: 1
-    adjacent_zones: [main]
-    grid_cols: 5
-    grid_rows: 4
-  entrance:
-    display_name: "エントランス"
-    polygon: [[0,7],[5,7],[5,10],[0,10]]
+    adjacent_zones:
+    - zone_01
+    grid_cols: 3
+    grid_rows: 3
+  room_02:
+    display_name: room_02
+    polygon:
+    - [23.3, 1.7]
+    - [23.3, 2.5]
+    - [25.89, 2.5]
+    - [25.89, 1.7]
+    area_m2: 2.1
+    floor: 1
+    adjacent_zones: []
+    grid_cols: 3
+    grid_rows: 1
+  office:
+    display_name: オフィスブース3
+    polygon:
+    - [15.08, 2.39]
+    - [15.01, 7.16]
+    - [19.67, 7.01]
+    - [19.67, 5.56]
+    - [18.77, 5.3]
+    - [18.54, 3.39]
+    - [18.18, 3.59]
+    - [18.18, 5.3]
+    - [17.5, 5.32]
+    - [17.35, 5.69]
+    - [19.18, 5.89]
+    - [19.18, 6.69]
+    - [16.68, 6.69]
+    - [16.68, 5.89]
+    - [17.05, 5.64]
+    - [16.77, 5.3]
+    - [17.02, 4.05]
+    - [16.68, 3.85]
+    - [16.68, 3.34]
+    - [17.02, 3.12]
+    - [16.77, 2.84]
+    - [16.89, 1.85]
+    - [19.98, 1.89]
+    - [19.9, 5.69]
+    - [20.74, 5.76]
+    - [20.77, 4.39]
+    - [20.48, 4.19]
+    - [20.77, 3.71]
+    - [20.48, 3.25]
+    - [20.77, 2.77]
+    - [20.64, 1.33]
+    - [16.38, 1.3]
+    - [16.18, 2.39]
+    area_m2: 17.3
+    floor: 1
+    adjacent_zones: []
+    grid_cols: 6
+    grid_rows: 6
+  reception:
+    display_name: 受付
+    polygon:
+    - [17.78, 10.41]
+    - [18.01, 12.35]
+    - [18.37, 12.15]
+    - [18.37, 10.75]
+    - [20.18, 10.75]
+    - [20.18, 12.98]
+    - [20.7, 13.11]
+    - [20.7, 10.23]
+    - [18.01, 10.16]
+    area_m2: 3.5
+    floor: 1
+    adjacent_zones: []
+    grid_cols: 3
+    grid_rows: 3
+  room_03:
+    display_name: room_03
+    polygon:
+    - [11.94, 17.59]
+    - [12.31, 20.13]
+    - [12.58, 19.9]
+    - [12.59, 17.85]
+    - [15.71, 17.93]
+    - [15.18, 18.53]
+    - [13.41, 18.61]
+    - [13.34, 19.9]
+    - [13.56, 20.13]
+    - [14.37, 19.81]
+    - [13.84, 19.03]
+    - [15.71, 19.03]
+    - [15.23, 19.91]
+    - [16.9, 20.13]
+    - [17.13, 19.03]
+    - [17.6, 18.76]
+    - [19.35, 18.53]
+    - [20.45, 18.76]
+    - [20.67, 18.54]
+    - [20.52, 18.05]
+    - [19.57, 18.03]
+    - [19.51, 16.17]
+    - [18.66, 16.09]
+    - [18.46, 18.03]
+    - [17.45, 18.07]
+    - [17.34, 18.53]
+    - [16.72, 18.59]
+    - [16.21, 19.5]
+    - [16.21, 17.86]
+    - [17.4, 17.85]
+    - [17.6, 17.56]
+    - [15.66, 17.33]
+    - [15.75, 15.35]
+    - [15.43, 14.63]
+    - [14.81, 15.1]
+    - [14.81, 16.58]
+    - [15.16, 16.8]
+    - [15.16, 17.33]
+    - [12.98, 17.33]
+    - [13.06, 16.19]
+    - [12.71, 15.82]
+    - [12.14, 16.17]
+    - [12.48, 17.32]
     area_m2: 15.0
     floor: 1
-    adjacent_zones: [main]
-    grid_cols: 5
-    grid_rows: 3
-  meeting_room_a:
-    display_name: "会議室A"
-    polygon: [[10,4],[15,4],[15,10],[10,10]]
-    area_m2: 30.0
+    adjacent_zones: []
+    grid_cols: 9
+    grid_rows: 5
+  room_04:
+    display_name: room_04
+    polygon:
+    - [12.13, 12.88]
+    - [12.36, 13.18]
+    - [16.83, 13.18]
+    - [17.08, 12.84]
+    - [16.85, 12.59]
+    - [12.38, 12.59]
+    area_m2: 2.8
     floor: 1
-    adjacent_zones: [kitchen]
+    adjacent_zones: []
     grid_cols: 5
-    grid_rows: 6
-
-devices:
-  env_01:
-    zone: main
-    position: [3.0, 3.5]
-    type: sensor
-    channels: [temperature, humidity, co2, pressure]
-  env_02:
-    zone: kitchen
-    position: [12.5, 2.0]
-    type: sensor
-    channels: [temperature, humidity]
-
-cameras:
-  camera_node_01:
-    zone: meeting_room_a
-    position: [12.5, 6.5]
-    resolution: [640, 480]
-    fov_deg: 90
-    orientation_deg: 180
+    grid_rows: 1
+  room_05:
+    display_name: room_05
+    polygon:
+    - [8.58, 4.3]
+    - [9.67, 4.19]
+    - [9.38, 3.71]
+    - [9.38, 1.8]
+    - [8.58, 1.8]
+    area_m2: 2.0
+    floor: 1
+    adjacent_zones: []
+    grid_cols: 1
+    grid_rows: 2
+  room_06:
+    display_name: room_06
+    polygon:
+    - [0.5, 9.22]
+    - [0.5, 11.85]
+    - [4.94, 11.85]
+    - [4.94, 9.22]
+    area_m2: 11.7
+    floor: 1
+    adjacent_zones:
+    - zone_05
+    grid_cols: 4
+    grid_rows: 3
+  zone_05:
+    display_name: 会議ブース２
+    polygon:
+    - [5.53, 11.72]
+    - [7.94, 11.72]
+    - [7.94, 9.33]
+    - [5.53, 9.31]
+    area_m2: 5.8
+    floor: 1
+    adjacent_zones:
+    - room_06
+    grid_cols: 2
+    grid_rows: 2
+  zone_06:
+    display_name: オープンブース１
+    polygon:
+    - [2.73, 3.0]
+    - [2.73, 4.25]
+    - [3.02, 4.45]
+    - [2.73, 4.93]
+    - [3.02, 5.39]
+    - [2.73, 5.87]
+    - [2.8, 7.27]
+    - [4.12, 7.14]
+    - [4.01, 6.79]
+    - [3.52, 6.75]
+    - [3.52, 3.34]
+    - [6.16, 3.25]
+    - [6.82, 3.25]
+    - [6.44, 7.17]
+    - [7.24, 7.27]
+    - [7.31, 5.87]
+    - [7.03, 5.64]
+    - [7.31, 5.17]
+    - [7.24, 2.83]
+    - [2.98, 2.75]
+    area_m2: 7.8
+    floor: 1
+    adjacent_zones: []
+    grid_cols: 5
+    grid_rows: 5
+  zone_07:
+    display_name: アメニティブース
+    polygon:
+    - [15.38, 10.48]
+    - [14.82, 9.64]
+    - [13.83, 9.44]
+    - [12.99, 10.01]
+    - [12.79, 11.0]
+    - [13.35, 11.84]
+    - [14.35, 12.04]
+    - [15.19, 11.48]
+    area_m2: 4.9
+    floor: 1
+    adjacent_zones:
+    - zone_08
+    grid_cols: 3
+    grid_rows: 3
+  zone_08:
+    display_name: オープンスペース
+    polygon:
+    - [15.39, 8.15]
+    - [14.8, 7.26]
+    - [13.75, 7.05]
+    - [12.86, 7.64]
+    - [12.65, 8.69]
+    - [13.25, 9.58]
+    - [14.29, 9.79]
+    - [15.18, 9.19]
+    area_m2: 5.5
+    floor: 1
+    adjacent_zones:
+    - zone_07
+    grid_cols: 3
+    grid_rows: 3
+devices: {}
+cameras: {}
