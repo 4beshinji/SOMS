@@ -21,6 +21,7 @@ class HourlyAggregator:
     LOOP_INTERVAL = 600  # 10 minutes
     RAW_RETENTION_DAYS = 730       # 2 years (ML seasonal pattern learning)
     DECISION_RETENTION_DAYS = 730  # 2 years (LLM quality trend analysis)
+    SPATIAL_RETENTION_DAYS = 90    # 90 days (spatial snapshots)
     CLEANUP_HOUR_UTC = 3
 
     def __init__(self, engine: AsyncEngine):
@@ -36,6 +37,7 @@ class HourlyAggregator:
             await asyncio.sleep(self.LOOP_INTERVAL)
             try:
                 await self.aggregate_pending_hours()
+                await self._aggregate_spatial_heatmaps()
                 await self._maybe_cleanup()
             except Exception as e:
                 logger.error("HourlyAggregator error: {}", e)
@@ -193,6 +195,125 @@ class HourlyAggregator:
             },
         )
 
+    async def _aggregate_spatial_heatmaps(self):
+        """Aggregate spatial_snapshots into spatial_heatmap_hourly for completed hours."""
+        import json
+
+        now = datetime.now(timezone.utc)
+        current_hour_start = now.replace(minute=0, second=0, microsecond=0)
+
+        async with self._engine.begin() as conn:
+            # Find the latest aggregated spatial hour
+            row = await conn.execute(
+                text("""
+                    SELECT MAX(period_start) FROM events.spatial_heatmap_hourly
+                """)
+            )
+            last_spatial_hour = row.scalar()
+
+            if last_spatial_hour is None:
+                # Find earliest spatial snapshot
+                row = await conn.execute(
+                    text("SELECT MIN(timestamp) FROM events.spatial_snapshots")
+                )
+                earliest = row.scalar()
+                if earliest is None:
+                    return  # No spatial data yet
+                last_spatial_hour = earliest.replace(minute=0, second=0, microsecond=0)
+            else:
+                if last_spatial_hour.tzinfo is None:
+                    last_spatial_hour = last_spatial_hour.replace(tzinfo=timezone.utc)
+                last_spatial_hour = last_spatial_hour + timedelta(hours=1)
+
+            # Process each completed hour
+            hour = last_spatial_hour
+            hours_processed = 0
+            while hour < current_hour_start:
+                next_hour = hour + timedelta(hours=1)
+
+                # Query spatial snapshots for this hour
+                result = await conn.execute(
+                    text("""
+                        SELECT zone, data
+                        FROM events.spatial_snapshots
+                        WHERE timestamp >= :start AND timestamp < :end
+                    """),
+                    {"start": hour, "end": next_hour},
+                )
+
+                # Aggregate per zone
+                zone_data: dict[str, dict] = {}
+                for row in result.fetchall():
+                    zone_id = row[0]
+                    data = row[1] if isinstance(row[1], dict) else json.loads(row[1])
+                    if zone_id not in zone_data:
+                        zone_data[zone_id] = {
+                            "person_counts": [],
+                            "grid_cols": 10,
+                            "grid_rows": 10,
+                            "cell_counts": None,
+                        }
+                    zd = zone_data[zone_id]
+                    person_count = data.get("person_count", len(data.get("persons", [])))
+                    zd["person_counts"].append(person_count)
+
+                    # Accumulate person positions into grid
+                    persons = data.get("persons", [])
+                    image_size = data.get("image_size", [640, 480])
+                    img_w, img_h = image_size[0], image_size[1]
+                    cols = zd["grid_cols"]
+                    rows_grid = zd["grid_rows"]
+
+                    if zd["cell_counts"] is None:
+                        zd["cell_counts"] = [[0] * cols for _ in range(rows_grid)]
+
+                    if img_w > 0 and img_h > 0:
+                        for p in persons:
+                            cx_list = p.get("center_px", [])
+                            if len(cx_list) >= 2:
+                                cx, cy = cx_list[0], cx_list[1]
+                                gc = int(cx / img_w * cols)
+                                gr = int(cy / img_h * rows_grid)
+                                gc = max(0, min(gc, cols - 1))
+                                gr = max(0, min(gr, rows_grid - 1))
+                                zd["cell_counts"][gr][gc] += 1
+
+                # UPSERT aggregated data
+                for zone_id, zd in zone_data.items():
+                    avg_persons = (
+                        sum(zd["person_counts"]) / len(zd["person_counts"])
+                        if zd["person_counts"] else 0
+                    )
+                    await conn.execute(
+                        text("""
+                            INSERT INTO events.spatial_heatmap_hourly
+                                (zone, period_start, grid_cols, grid_rows,
+                                 cell_counts, person_count_avg)
+                            VALUES
+                                (:zone, :period_start, :grid_cols, :grid_rows,
+                                 CAST(:cell_counts AS jsonb), :person_count_avg)
+                            ON CONFLICT (zone, period_start) DO UPDATE SET
+                                cell_counts = EXCLUDED.cell_counts,
+                                person_count_avg = EXCLUDED.person_count_avg
+                        """),
+                        {
+                            "zone": zone_id,
+                            "period_start": hour,
+                            "grid_cols": zd["grid_cols"],
+                            "grid_rows": zd["grid_rows"],
+                            "cell_counts": json.dumps(zd["cell_counts"] or []),
+                            "person_count_avg": round(avg_persons, 2),
+                        },
+                    )
+
+                hour = next_hour
+                hours_processed += 1
+                if hours_processed >= 24:
+                    break
+
+            if hours_processed > 0:
+                logger.info("Aggregated {} spatial heatmap hour(s)", hours_processed)
+
     async def _maybe_cleanup(self):
         """Run retention cleanup once per day at CLEANUP_HOUR_UTC."""
         now = datetime.now(timezone.utc)
@@ -206,6 +327,7 @@ class HourlyAggregator:
         self._last_cleanup_date = today
         raw_cutoff = now - timedelta(days=self.RAW_RETENTION_DAYS)
         decision_cutoff = now - timedelta(days=self.DECISION_RETENTION_DAYS)
+        spatial_cutoff = now - timedelta(days=self.SPATIAL_RETENTION_DAYS)
 
         async with self._engine.begin() as conn:
             r1 = await conn.execute(
@@ -216,7 +338,11 @@ class HourlyAggregator:
                 text("DELETE FROM events.llm_decisions WHERE timestamp < :cutoff"),
                 {"cutoff": decision_cutoff},
             )
+            r3 = await conn.execute(
+                text("DELETE FROM events.spatial_snapshots WHERE timestamp < :cutoff"),
+                {"cutoff": spatial_cutoff},
+            )
             logger.info(
-                "Retention cleanup: deleted {} raw events, {} decisions",
-                r1.rowcount, r2.rowcount,
+                "Retention cleanup: deleted {} raw events, {} decisions, {} spatial snapshots",
+                r1.rowcount, r2.rowcount, r3.rowcount,
             )

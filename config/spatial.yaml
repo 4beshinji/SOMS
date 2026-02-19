@@ -1,0 +1,59 @@
+building:
+  name: "SOMS Office"
+  width_m: 15.0
+  height_m: 10.0
+  floor_plan_image: null  # Optional: "floor_plan.svg"
+
+zones:
+  main:
+    display_name: "メインエリア"
+    polygon: [[0,0],[10,0],[10,7],[0,7]]
+    area_m2: 70.0
+    floor: 1
+    adjacent_zones: [kitchen, entrance]
+    grid_cols: 10
+    grid_rows: 7
+  kitchen:
+    display_name: "キッチン"
+    polygon: [[10,0],[15,0],[15,4],[10,4]]
+    area_m2: 20.0
+    floor: 1
+    adjacent_zones: [main]
+    grid_cols: 5
+    grid_rows: 4
+  entrance:
+    display_name: "エントランス"
+    polygon: [[0,7],[5,7],[5,10],[0,10]]
+    area_m2: 15.0
+    floor: 1
+    adjacent_zones: [main]
+    grid_cols: 5
+    grid_rows: 3
+  meeting_room_a:
+    display_name: "会議室A"
+    polygon: [[10,4],[15,4],[15,10],[10,10]]
+    area_m2: 30.0
+    floor: 1
+    adjacent_zones: [kitchen]
+    grid_cols: 5
+    grid_rows: 6
+
+devices:
+  env_01:
+    zone: main
+    position: [3.0, 3.5]
+    type: sensor
+    channels: [temperature, humidity, co2, pressure]
+  env_02:
+    zone: kitchen
+    position: [12.5, 2.0]
+    type: sensor
+    channels: [temperature, humidity]
+
+cameras:
+  camera_node_01:
+    zone: meeting_room_a
+    position: [12.5, 6.5]
+    resolution: [640, 480]
+    fov_deg: 90
+    orientation_deg: 180

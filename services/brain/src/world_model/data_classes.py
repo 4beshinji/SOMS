@@ -144,13 +144,45 @@ class Event(BaseModel):
         return f"イベント: {self.event_type}"
 
 
+class SpatialDetection(BaseModel):
+    """A single detected object with pixel-space position."""
+    class_name: str = "person"
+    center_px: List[float] = Field(default_factory=list)   # [cx, cy]
+    bbox_px: List[float] = Field(default_factory=list)      # [x1, y1, x2, y2]
+    confidence: float = 0.0
+
+
+class ZoneSpatialData(BaseModel):
+    """Real-time spatial detection data for a zone."""
+    camera_id: Optional[str] = None
+    image_size: List[int] = Field(default_factory=lambda: [640, 480])
+    persons: List[SpatialDetection] = Field(default_factory=list)
+    objects: List[SpatialDetection] = Field(default_factory=list)
+    last_spatial_update: float = 0.0
+    heatmap_counts: List[List[int]] = Field(default_factory=list)  # grid_rows × grid_cols
+    heatmap_window_start: float = 0.0
+
+
+class ZoneMetadata(BaseModel):
+    """Static spatial metadata for a zone (from config/spatial.yaml)."""
+    display_name: str = ""
+    polygon: List[List[float]] = Field(default_factory=list)
+    area_m2: float = 0.0
+    floor: int = 1
+    adjacent_zones: List[str] = Field(default_factory=list)
+    grid_cols: int = 10
+    grid_rows: int = 10
+
+
 class ZoneState(BaseModel):
     """Complete state of a zone (room/area)."""
     zone_id: str
-    
+
     environment: EnvironmentData = Field(default_factory=EnvironmentData)
     occupancy: OccupancyData = Field(default_factory=OccupancyData)
     devices: Dict[str, DeviceState] = Field(default_factory=dict)
+    spatial: ZoneSpatialData = Field(default_factory=ZoneSpatialData)
+    metadata: ZoneMetadata = Field(default_factory=ZoneMetadata)
     
     # Event history (recent events only)
     events: List[Event] = Field(default_factory=list)

@@ -29,21 +29,44 @@ class OccupancyMonitor(MonitorBase):
         """人物検出のみ"""
         results = self.yolo.infer(image, conf_threshold=0.5)
         persons = self.yolo.filter_by_class(results, "person")
-        return persons
-    
-    async def process_results(self, detections):
+        return {"persons": persons, "image_shape": image.shape}
+
+    async def process_results(self, analysis):
         """占有状態を送信"""
+        detections = analysis["persons"]
         count = len(detections)
         occupied = count > 0
-        
+
         payload = {
             "zone": self.zone_name,
             "occupied": occupied,
             "person_count": count,
             "timestamp": time.time()
         }
-        
+
         topic = f"office/{self.zone_name}/occupancy"
         await self.publisher.publish(topic, payload)
-        
+
         logger.info(f"[{self.name}] Occupancy: {count} person(s)")
+
+        # Publish spatial detection data
+        if detections:
+            h, w = analysis["image_shape"][:2]
+            persons_spatial = [
+                {
+                    "center_px": det["center"],
+                    "bbox_px": det["bbox"],
+                    "confidence": det["confidence"],
+                }
+                for det in detections
+            ]
+            spatial_payload = {
+                "zone": self.zone_name,
+                "camera_id": self.camera_id,
+                "timestamp": time.time(),
+                "image_size": [w, h],
+                "persons": persons_spatial,
+                "objects": [],
+            }
+            spatial_topic = f"office/{self.zone_name}/spatial/{self.camera_id}"
+            await self.publisher.publish(spatial_topic, spatial_payload)

@@ -46,6 +46,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-soms}:${POSTGRES_PASSWORD:-soms_dev_password}@postgres:5432/soms
     volumes:
       - ../services/brain/src:/app
+      - ../config:/app/config:ro
     networks:
       - soms-net
     healthcheck:
@@ -91,6 +92,7 @@ services:
         condition: service_healthy
     volumes:
       - ../services/dashboard/backend:/app
+      - ../config:/app/config:ro
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-soms}:${POSTGRES_PASSWORD:-soms_dev_password}@postgres:5432/soms
       - MQTT_BROKER=mosquitto

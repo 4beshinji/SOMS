@@ -48,7 +48,13 @@ class ActivityMonitor(MonitorBase):
         persons_det = self.yolo.filter_by_class(detections, "person")
 
         if not persons_det:
-            return {"person_count": 0, "persons_pose": [], "image_shape": image.shape}
+            return {
+                "person_count": 0,
+                "persons_pose": [],
+                "image_shape": image.shape,
+                "all_detections": detections,
+                "person_detections": [],
+            }
 
         # Tier 2: pose estimation (only runs when we have persons)
         persons_pose = self.pose.estimate(image, conf_threshold=0.4)
@@ -57,6 +63,8 @@ class ActivityMonitor(MonitorBase):
             "person_count": len(persons_det),
             "persons_pose": persons_pose,
             "image_shape": image.shape,
+            "all_detections": detections,
+            "person_detections": persons_det,
         }
 
     async def process_results(self, analysis):
@@ -92,3 +100,37 @@ class ActivityMonitor(MonitorBase):
             f"({result['posture_duration_sec']:.0f}s) "
             f"buf={result['buffer_depth']}"
         )
+
+        # Publish spatial detection data (bbox centers + classes, no raw images)
+        person_detections = analysis.get("person_detections", [])
+        all_detections = analysis.get("all_detections", [])
+        if person_detections or all_detections:
+            h, w = analysis["image_shape"][:2]
+            persons_spatial = [
+                {
+                    "center_px": det["center"],
+                    "bbox_px": det["bbox"],
+                    "confidence": det["confidence"],
+                }
+                for det in person_detections
+            ]
+            objects_spatial = [
+                {
+                    "class_name": det["class"],
+                    "center_px": det["center"],
+                    "bbox_px": det["bbox"],
+                    "confidence": det["confidence"],
+                }
+                for det in all_detections
+                if det["class"] != "person"
+            ]
+            spatial_payload = {
+                "zone": self.zone_name,
+                "camera_id": self.camera_id,
+                "timestamp": time.time(),
+                "image_size": [w, h],
+                "persons": persons_spatial,
+                "objects": objects_spatial,
+            }
+            spatial_topic = f"office/{self.zone_name}/spatial/{self.camera_id}"
+            await self.publisher.publish(spatial_topic, spatial_payload)

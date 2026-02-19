@@ -5,7 +5,10 @@ import json
 import logging
 import time
 from typing import Dict, Optional, List
-from .data_classes import ZoneState, EnvironmentData, OccupancyData, DeviceState, Event
+from .data_classes import (
+    ZoneState, EnvironmentData, OccupancyData, DeviceState, Event,
+    SpatialDetection, ZoneSpatialData, ZoneMetadata,
+)
 from .sensor_fusion import SensorFusion
 
 logger = logging.getLogger(__name__)
@@ -30,7 +33,7 @@ class WorldModel:
         "high_humidity": 1200,
     }
 
-    def __init__(self):
+    def __init__(self, spatial_config=None):
         self.zones: Dict[str, ZoneState] = {}
         self.sensor_fusion = SensorFusion()
 
@@ -47,6 +50,33 @@ class WorldModel:
         # Alert suppression: {(zone_id, alert_type): expiry_timestamp}
         # Prevents repeated task creation for slow-changing conditions.
         self._suppressed_alerts: Dict[tuple, float] = {}
+
+        # Spatial config
+        self._spatial_config = spatial_config
+        if spatial_config:
+            self._apply_spatial_config(spatial_config)
+
+    def _apply_spatial_config(self, config):
+        """Apply spatial configuration to pre-create zones with metadata."""
+        for zone_id, geom in config.zones.items():
+            if zone_id not in self.zones:
+                self.zones[zone_id] = ZoneState(zone_id=zone_id)
+            zone = self.zones[zone_id]
+            zone.metadata = ZoneMetadata(
+                display_name=geom.display_name,
+                polygon=geom.polygon,
+                area_m2=geom.area_m2,
+                floor=geom.floor,
+                adjacent_zones=geom.adjacent_zones,
+                grid_cols=geom.grid_cols,
+                grid_rows=geom.grid_rows,
+            )
+            # Initialize heatmap grid
+            zone.spatial.heatmap_counts = [
+                [0] * geom.grid_cols for _ in range(geom.grid_rows)
+            ]
+            zone.spatial.heatmap_window_start = time.time()
+        logger.info("Spatial config applied: %d zones pre-created", len(config.zones))
 
     def _add_event(self, zone: ZoneState, event: Event):
         """Append an event to a zone, trimming oldest entries if over limit."""
@@ -148,6 +178,8 @@ class WorldModel:
             self._update_occupancy(zone, payload)
         elif device_type == "activity":
             self._update_activity(zone, payload)
+        elif device_type == "spatial":
+            self._update_spatial(zone, payload, device_id)
         elif device_type == "task_report":
             self._handle_task_report(zone, payload, device_id)
         elif device_type in ["hvac", "light", "coffee_machine"]:
@@ -287,6 +319,83 @@ class WorldModel:
             zone.occupancy.posture_duration_sec = payload["posture_duration_sec"]
         if "posture_status" in payload:
             zone.occupancy.posture_status = payload["posture_status"]
+
+    def _update_spatial(self, zone: ZoneState, payload: dict, camera_id: str):
+        """Update spatial detection data from Perception spatial publish."""
+        current_time = time.time()
+        zone.spatial.camera_id = payload.get("camera_id", camera_id)
+        zone.spatial.image_size = payload.get("image_size", [640, 480])
+        zone.spatial.last_spatial_update = current_time
+
+        # Parse person detections
+        zone.spatial.persons = [
+            SpatialDetection(
+                class_name="person",
+                center_px=p.get("center_px", []),
+                bbox_px=p.get("bbox_px", []),
+                confidence=p.get("confidence", 0.0),
+            )
+            for p in payload.get("persons", [])
+        ]
+
+        # Parse object detections
+        zone.spatial.objects = [
+            SpatialDetection(
+                class_name=o.get("class_name", "unknown"),
+                center_px=o.get("center_px", []),
+                bbox_px=o.get("bbox_px", []),
+                confidence=o.get("confidence", 0.0),
+            )
+            for o in payload.get("objects", [])
+        ]
+
+        # Accumulate heatmap
+        self._accumulate_heatmap(zone, current_time)
+
+        # Record to event store
+        if self.event_writer:
+            try:
+                self.event_writer.record_spatial_snapshot(
+                    zone=zone.zone_id,
+                    camera_id=zone.spatial.camera_id,
+                    data={
+                        "image_size": zone.spatial.image_size,
+                        "person_count": len(zone.spatial.persons),
+                        "object_count": len(zone.spatial.objects),
+                        "persons": [p.model_dump() for p in zone.spatial.persons],
+                        "objects": [o.model_dump() for o in zone.spatial.objects],
+                    },
+                )
+            except Exception:
+                pass  # Non-blocking
+
+    def _accumulate_heatmap(self, zone: ZoneState, current_time: float):
+        """Map pixel-space person positions to grid cells for heatmap."""
+        # Reset heatmap every hour
+        if current_time - zone.spatial.heatmap_window_start >= 3600:
+            rows = zone.metadata.grid_rows or 10
+            cols = zone.metadata.grid_cols or 10
+            zone.spatial.heatmap_counts = [[0] * cols for _ in range(rows)]
+            zone.spatial.heatmap_window_start = current_time
+
+        if not zone.spatial.heatmap_counts:
+            return
+
+        img_w, img_h = zone.spatial.image_size
+        rows = len(zone.spatial.heatmap_counts)
+        cols = len(zone.spatial.heatmap_counts[0]) if rows > 0 else 0
+        if rows == 0 or cols == 0 or img_w == 0 or img_h == 0:
+            return
+
+        for person in zone.spatial.persons:
+            if len(person.center_px) < 2:
+                continue
+            cx, cy = person.center_px
+            grid_col = int(cx / img_w * cols)
+            grid_row = int(cy / img_h * rows)
+            grid_col = max(0, min(grid_col, cols - 1))
+            grid_row = max(0, min(grid_row, rows - 1))
+            zone.spatial.heatmap_counts[grid_row][grid_col] += 1
 
     def _update_device(self, zone: ZoneState, device_type: str, device_id: str, payload: dict):
         """Update device state."""
@@ -576,6 +685,42 @@ class WorldModel:
                 for device_id, device in zone.devices.items():
                     summary += f"  - {device.device_type} ({device_id}): {device.power_state}\n"
             
+            # Spatial summary
+            if zone.spatial.persons and current_time - zone.spatial.last_spatial_update < 30:
+                n_persons = len(zone.spatial.persons)
+                # Summarize person distribution using image thirds
+                if zone.spatial.image_size[0] > 0:
+                    img_w = zone.spatial.image_size[0]
+                    left = sum(1 for p in zone.spatial.persons if len(p.center_px) >= 1 and p.center_px[0] < img_w / 3)
+                    center = sum(1 for p in zone.spatial.persons if len(p.center_px) >= 1 and img_w / 3 <= p.center_px[0] < 2 * img_w / 3)
+                    right = n_persons - left - center
+                    parts = []
+                    if left > 0:
+                        parts.append(f"左側{left}人")
+                    if center > 0:
+                        parts.append(f"中央{center}人")
+                    if right > 0:
+                        parts.append(f"右側{right}人")
+                    if parts:
+                        summary += f"- 配置: {', '.join(parts)}\n"
+
+                # Object summary
+                if zone.spatial.objects:
+                    from collections import Counter
+                    obj_counts = Counter(o.class_name for o in zone.spatial.objects)
+                    obj_str = ", ".join(f"{name}x{cnt}" for name, cnt in obj_counts.most_common(5))
+                    summary += f"- 検出物: {obj_str}\n"
+
+            # Adjacent zone occupancy
+            if zone.metadata.adjacent_zones:
+                adj_parts = []
+                for adj_id in zone.metadata.adjacent_zones:
+                    adj_zone = self.zones.get(adj_id)
+                    if adj_zone and adj_zone.occupancy.person_count > 0:
+                        adj_parts.append(f"{adj_id}({adj_zone.occupancy.person_count}人)")
+                if adj_parts:
+                    summary += f"- 隣接在室: {', '.join(adj_parts)}\n"
+
             # Recent events (last 10 minutes)
             recent_events = [
                 e for e in zone.events
@@ -585,7 +730,7 @@ class WorldModel:
                 summary += "- 最近のイベント:\n"
                 for event in recent_events[-3:]:  # Last 3 events
                     summary += f"  - {event.description}\n"
-            
+
             context_parts.append(summary)
         
         context = "\n".join(context_parts)

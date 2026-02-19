@@ -1,4 +1,5 @@
 import { Task, TaskReport } from './components/TaskCard';
+import type { SpatialConfig, LiveSpatialData, HeatmapData } from './types/spatial';
 
 export interface SystemStats {
   total_xp: number;
@@ -64,5 +65,28 @@ export const completeTask = async ({
     }),
   });
   if (!res.ok) throw new Error('Failed to complete task');
+  return res.json();
+};
+
+// ── Spatial API ──────────────────────────────────────────────────────
+
+export const fetchSpatialConfig = async (): Promise<SpatialConfig> => {
+  const res = await fetch('/api/sensors/spatial/config');
+  if (!res.ok) throw new Error('Failed to fetch spatial config');
+  return res.json();
+};
+
+export const fetchLiveSpatial = async (zone?: string): Promise<LiveSpatialData[]> => {
+  const params = zone ? `?zone=${encodeURIComponent(zone)}` : '';
+  const res = await fetch(`/api/sensors/spatial/live${params}`);
+  if (!res.ok) throw new Error('Failed to fetch live spatial');
+  return res.json();
+};
+
+export const fetchHeatmap = async (zone?: string, period: string = 'hour'): Promise<HeatmapData[]> => {
+  const params = new URLSearchParams({ period });
+  if (zone) params.set('zone', zone);
+  const res = await fetch(`/api/sensors/spatial/heatmap?${params}`);
+  if (!res.ok) throw new Error('Failed to fetch heatmap');
   return res.json();
 };

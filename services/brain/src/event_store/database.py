@@ -61,6 +61,30 @@ CREATE TABLE IF NOT EXISTS events.aggregation_state (
 
 INSERT INTO events.aggregation_state (id) VALUES (1)
 ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS events.spatial_snapshots (
+    id          BIGSERIAL PRIMARY KEY,
+    timestamp   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    zone        TEXT NOT NULL,
+    camera_id   TEXT,
+    data        JSONB NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_spatial_snapshots_ts
+    ON events.spatial_snapshots USING BRIN (timestamp);
+
+CREATE INDEX IF NOT EXISTS idx_spatial_snapshots_zone
+    ON events.spatial_snapshots (zone);
+
+CREATE TABLE IF NOT EXISTS events.spatial_heatmap_hourly (
+    zone            TEXT NOT NULL,
+    period_start    TIMESTAMPTZ NOT NULL,
+    grid_cols       INTEGER NOT NULL,
+    grid_rows       INTEGER NOT NULL,
+    cell_counts     JSONB NOT NULL DEFAULT '[]',
+    person_count_avg REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (zone, period_start)
+);
 """
 
 

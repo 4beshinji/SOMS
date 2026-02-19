@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import TaskCard, { TaskReport } from './components/TaskCard';
+import { FloorPlanView } from './components/FloorPlan';
 import { useAudioQueue, AudioPriority } from './audio';
 import {
   fetchTasks,
@@ -11,6 +12,8 @@ import {
   acceptTask,
   completeTask,
 } from './api';
+
+type ActiveView = 'tasks' | 'floorplan';
 
 const ACCEPT_PHRASES = [
   "承知しました。よろしくお願いします。",
@@ -25,6 +28,7 @@ function pickRandom<T>(arr: T[]): T {
 function App() {
   const queryClient = useQueryClient();
 
+  const [activeView, setActiveView] = useState<ActiveView>('tasks');
   const [isAudioEnabled, setIsAudioEnabled] = useState(false);
   const [prevTaskIds, setPrevTaskIds] = useState<Set<number>>(new Set());
   const [playedVoiceEventIds, setPlayedVoiceEventIds] = useState<Set<number>>(new Set());
@@ -230,6 +234,30 @@ function App() {
               </p>
             </div>
 
+            {/* View Tabs */}
+            <div className="flex items-center gap-1 bg-[var(--gray-100)] rounded-lg p-1">
+              <button
+                onClick={() => setActiveView('tasks')}
+                className={`px-4 py-2 text-sm rounded-md transition-all ${
+                  activeView === 'tasks'
+                    ? 'bg-white text-[var(--primary-600)] shadow-sm font-medium'
+                    : 'text-[var(--gray-500)] hover:text-[var(--gray-700)]'
+                }`}
+              >
+                Tasks
+              </button>
+              <button
+                onClick={() => setActiveView('floorplan')}
+                className={`px-4 py-2 text-sm rounded-md transition-all ${
+                  activeView === 'floorplan'
+                    ? 'bg-white text-[var(--primary-600)] shadow-sm font-medium'
+                    : 'text-[var(--gray-500)] hover:text-[var(--gray-700)]'
+                }`}
+              >
+                Floor Plan
+              </button>
+            </div>
+
             {/* System Stats + Supply */}
             <div className="flex items-center gap-4">
               {systemStats && (
@@ -272,51 +300,67 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-6 py-8">
-        <div className="mb-6">
-          <h2 className="text-2xl font-semibold text-[var(--gray-900)] mb-2">
-            お願い事一覧
-          </h2>
-          <p className="text-[var(--gray-600)]">
-            タスクを完了して報酬を受け取りましょう。スマホのウォレットアプリで QR コードを読み取ってください。
-          </p>
-        </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[var(--primary-500)] border-t-transparent"></div>
-              <p className="text-[var(--gray-600)] mt-4">タスクを読み込み中...</p>
+        {activeView === 'tasks' ? (
+          <>
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold text-[var(--gray-900)] mb-2">
+                お願い事一覧
+              </h2>
+              <p className="text-[var(--gray-600)]">
+                タスクを完了して報酬を受け取りましょう。スマホのウォレットアプリで QR コードを読み取ってください。
+              </p>
             </div>
-          </div>
-        ) : tasks.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-[var(--gray-500)] text-lg">現在利用可能なタスクはありません。</p>
-            <p className="text-[var(--gray-400)] text-sm mt-2">新しいタスクが追加されるまでお待ちください！</p>
-          </div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-          >
-            {visibleTasks.map((task, index) => (
+
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[var(--primary-500)] border-t-transparent"></div>
+                  <p className="text-[var(--gray-600)] mt-4">タスクを読み込み中...</p>
+                </div>
+              </div>
+            ) : tasks.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-[var(--gray-500)] text-lg">現在利用可能なタスクはありません。</p>
+                <p className="text-[var(--gray-400)] text-sm mt-2">新しいタスクが追加されるまでお待ちください！</p>
+              </div>
+            ) : (
               <motion.div
-                key={task.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5 }}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
               >
-                <TaskCard
-                  task={task}
-                  isAccepted={acceptedTaskIds.has(task.id)}
-                  onAccept={handleAccept}
-                  onComplete={handleComplete}
-                  onIgnore={handleIgnore}
-                />
+                {visibleTasks.map((task, index) => (
+                  <motion.div
+                    key={task.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                  >
+                    <TaskCard
+                      task={task}
+                      isAccepted={acceptedTaskIds.has(task.id)}
+                      onAccept={handleAccept}
+                      onComplete={handleComplete}
+                      onIgnore={handleIgnore}
+                    />
+                  </motion.div>
+                ))}
               </motion.div>
-            ))}
-          </motion.div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold text-[var(--gray-900)] mb-2">
+                Floor Plan
+              </h2>
+              <p className="text-[var(--gray-600)]">
+                Office spatial overview with real-time occupancy data.
+              </p>
+            </div>
+            <FloorPlanView />
+          </>
         )}
       </main>
     </div>

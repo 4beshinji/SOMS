@@ -18,11 +18,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 class EventWriter:
     FLUSH_INTERVAL = 5  # seconds
+    SPATIAL_DEDUP_INTERVAL = 10  # seconds per zone
 
     def __init__(self, engine: AsyncEngine):
         self._engine = engine
         self._events: list[dict] = []
         self._decisions: list[dict] = []
+        self._spatial: list[dict] = []
+        self._spatial_last_ts: dict[str, float] = {}  # zone -> last record time
         self._lock = asyncio.Lock()
         self._running = False
 
@@ -68,6 +71,25 @@ class EventWriter:
             "data": json.dumps({"severity": severity, **data}),
         })
 
+    def record_spatial_snapshot(
+        self,
+        zone: str,
+        camera_id: str | None = None,
+        data: dict | None = None,
+    ):
+        """Buffer a spatial snapshot (deduplicated per zone, 10s interval)."""
+        now = time.time()
+        last = self._spatial_last_ts.get(zone, 0)
+        if now - last < self.SPATIAL_DEDUP_INTERVAL:
+            return  # Skip — too recent
+        self._spatial_last_ts[zone] = now
+        self._spatial.append({
+            "timestamp": datetime.now(timezone.utc),
+            "zone": zone,
+            "camera_id": camera_id,
+            "data": json.dumps(data or {}),
+        })
+
     def record_decision(
         self,
         cycle_duration: float,
@@ -110,14 +132,16 @@ class EventWriter:
         logger.info("EventWriter stopped")
 
     async def _flush(self):
-        """Bulk INSERT buffered events and decisions, then clear buffers."""
+        """Bulk INSERT buffered events, decisions, and spatial snapshots."""
         async with self._lock:
             events = self._events[:]
             decisions = self._decisions[:]
+            spatial = self._spatial[:]
             self._events.clear()
             self._decisions.clear()
+            self._spatial.clear()
 
-        if not events and not decisions:
+        if not events and not decisions and not spatial:
             return
 
         async with self._engine.begin() as conn:
@@ -148,3 +172,15 @@ class EventWriter:
                     decisions,
                 )
                 logger.debug("Flushed {} LLM decisions", len(decisions))
+
+            if spatial:
+                await conn.execute(
+                    text("""
+                        INSERT INTO events.spatial_snapshots
+                            (timestamp, zone, camera_id, data)
+                        VALUES
+                            (:timestamp, :zone, :camera_id, CAST(:data AS jsonb))
+                    """),
+                    spatial,
+                )
+                logger.debug("Flushed {} spatial snapshots", len(spatial))

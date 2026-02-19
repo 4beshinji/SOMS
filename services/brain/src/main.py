@@ -19,6 +19,7 @@ from system_prompt import build_system_message
 from device_registry import DeviceRegistry
 from wallet_bridge import WalletBridge
 from event_store import init_db, EventWriter, HourlyAggregator
+from spatial_config import load_spatial_config
 
 load_dotenv()
 
@@ -54,7 +55,9 @@ class Brain:
         self.client.on_message = self.on_message
         self.mcp = MCPBridge(self.client)
         self.sanitizer = Sanitizer()
-        self.world_model = WorldModel()
+        # Load spatial configuration
+        spatial_config = load_spatial_config("config/spatial.yaml")
+        self.world_model = WorldModel(spatial_config=spatial_config)
         self.device_registry = DeviceRegistry()
         self.event_writer: EventWriter | None = None
 
