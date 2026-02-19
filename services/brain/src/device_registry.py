@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 ONLINE_THRESHOLD = 120       # 2 minutes
 STALE_THRESHOLD = 900        # 15 minutes
 
+# Trust: cumulative online seconds before device is considered trusted
+TRUST_THRESHOLD_SEC = 3600  # 1 hour
+
 # Adaptive timeouts by device state
 TIMEOUT_BY_STATE = {
     "online": 10.0,
@@ -33,6 +36,7 @@ class DeviceInfo:
         "parent_id", "children", "hops_to_mqtt", "battery_pct",
         "last_seen", "next_wake_epoch", "capabilities", "queue_status",
         "utility_score", "_last_used",
+        "_cumulative_online_sec", "_online_since", "trusted",
     )
 
     def __init__(self, device_id: str, device_type: str = "unknown"):
@@ -50,6 +54,9 @@ class DeviceInfo:
         self.queue_status: dict | None = None        # {"queued_count": N, "targets": [...]}
         self.utility_score: float = 1.0
         self._last_used: float = 0.0                 # last time data influenced a decision
+        self._cumulative_online_sec: float = 0.0     # total time spent online
+        self._online_since: float | None = None      # current online session start
+        self.trusted: bool = False                    # promoted after TRUST_THRESHOLD_SEC
 
     def to_dict(self) -> dict:
         return {
@@ -122,21 +129,36 @@ class DeviceRegistry:
         return TIMEOUT_BY_STATE.get(device.state, 10.0)
 
     def get_status_summary(self, zone_id: str | None = None) -> str:
-        """Generate LLM-friendly device status summary."""
+        """Generate LLM-friendly device status summary.
+
+        Only trusted devices are shown in detail. Untrusted devices are
+        summarised as a single count line so the LLM does not create
+        investigation tasks for transient or unverified devices.
+        """
         if not self.devices:
             return ""
 
         self._update_device_states()
 
         # Filter by zone if specified (zone is the first part of device_id path)
-        devices = list(self.devices.values())
+        all_devices = list(self.devices.values())
         if zone_id:
-            devices = [d for d in devices if d.device_id.startswith(zone_id)]
+            all_devices = [d for d in all_devices if d.device_id.startswith(zone_id)]
+
+        if not all_devices:
+            return ""
+
+        # Split trusted / untrusted
+        devices = [d for d in all_devices if d.trusted]
+        untrusted_count = len(all_devices) - len(devices)
+
+        if not devices and untrusted_count:
+            return f"※未確認デバイス: {untrusted_count}台（稼働実績不足・対応不要）"
 
         if not devices:
             return ""
 
-        # Count by state
+        # Count by state (trusted only)
         counts = {"online": 0, "sleeping": 0, "stale": 0, "offline": 0}
         low_battery = []
         for d in devices:
@@ -167,30 +189,44 @@ class DeviceRegistry:
                 mins_ago = int((time.time() - d.last_seen) / 60)
                 lines.append(f"✗ オフライン: {d.device_id} ({mins_ago}分前)")
 
+        if untrusted_count > 0:
+            lines.append(f"※未確認デバイス: {untrusted_count}台（稼働実績不足・対応不要）")
+
         return "\n".join(lines)
 
     def get_device_tree(self, zone_id: str | None = None) -> str:
-        """Generate tree-format device network display for LLM."""
+        """Generate tree-format device network display for LLM.
+
+        Only trusted devices appear in the tree. Untrusted devices are
+        collapsed into a single summary line.
+        """
         if not self.devices:
             return "デバイスネットワーク: デバイス未登録"
 
         self._update_device_states()
 
-        # Find root devices (no parent)
-        roots = [d for d in self.devices.values() if d.parent_id is None]
+        # Find root devices (no parent) — trusted only
+        all_roots = [d for d in self.devices.values() if d.parent_id is None]
         if zone_id:
-            roots = [d for d in roots if d.device_id.startswith(zone_id)]
+            all_roots = [d for d in all_roots if d.device_id.startswith(zone_id)]
 
-        if not roots:
+        trusted_roots = [d for d in all_roots if d.trusted]
+        untrusted_count = sum(1 for d in self.devices.values() if not d.trusted)
+
+        if not trusted_roots and not untrusted_count:
             return "デバイスネットワーク: 該当デバイスなし"
 
         lines = ["デバイスネットワーク:"]
-        for root in sorted(roots, key=lambda d: d.device_id):
-            self._render_tree_node(root, lines, indent=0)
+        for root in sorted(trusted_roots, key=lambda d: d.device_id):
+            self._render_tree_node(root, lines, indent=0, trusted_only=True)
+
+        if untrusted_count > 0:
+            lines.append(f"  (未確認: {untrusted_count}台)")
 
         return "\n".join(lines)
 
-    def _render_tree_node(self, device: DeviceInfo, lines: list, indent: int):
+    def _render_tree_node(self, device: DeviceInfo, lines: list, indent: int,
+                          trusted_only: bool = False):
         """Recursively render a device tree node."""
         prefix = "  " * indent + ("├─ " if indent > 0 else "")
         state_icon = {"online": "●", "sleeping": "◐", "stale": "◌", "offline": "✗"}.get(device.state, "?")
@@ -206,8 +242,23 @@ class DeviceRegistry:
 
         lines.append(f"{prefix}{' | '.join(info_parts)}")
 
-        for child in sorted(device.children.values(), key=lambda d: d.device_id):
-            self._render_tree_node(child, lines, indent + 1)
+        children = sorted(device.children.values(), key=lambda d: d.device_id)
+        if trusted_only:
+            children = [c for c in children if c.trusted]
+        for child in children:
+            self._render_tree_node(child, lines, indent + 1, trusted_only=trusted_only)
+
+    def get_trust_stats(self) -> dict:
+        """Return trust statistics for debugging / logging."""
+        self._update_device_states()
+        trusted = [d for d in self.devices.values() if d.trusted]
+        untrusted = [d for d in self.devices.values() if not d.trusted]
+        return {
+            "trusted_count": len(trusted),
+            "untrusted_count": len(untrusted),
+            "trusted_ids": [d.device_id for d in trusted],
+            "untrusted_ids": [d.device_id for d in untrusted],
+        }
 
     def _ensure_device(self, device_id: str) -> DeviceInfo:
         """Get or create a DeviceInfo entry."""
@@ -290,11 +341,18 @@ class DeviceRegistry:
     def _update_single_state(self, device: DeviceInfo):
         """Update a single device's state based on last_seen and power_mode."""
         elapsed = time.time() - device.last_seen
+        prev_state = device.state
 
         # Sleeping devices stay sleeping if they have a scheduled wake
         if device.power_mode in ("DEEP_SLEEP", "ULTRA_LOW") and device.next_wake_epoch is not None:
             if elapsed < STALE_THRESHOLD:
                 device.state = "sleeping"
+                # Trust tracking: accumulate if was online before sleeping
+                if prev_state == "online" and device._online_since is not None:
+                    session_dur = device.last_seen - device._online_since
+                    device._cumulative_online_sec += max(0, session_dur)
+                    device._online_since = None
+                self._check_trust_promotion(device)
                 return
 
         if elapsed < ONLINE_THRESHOLD:
@@ -303,3 +361,30 @@ class DeviceRegistry:
             device.state = "stale"
         else:
             device.state = "offline"
+
+        # Trust tracking: accumulate online time
+        if device.state == "online":
+            if device._online_since is None:
+                device._online_since = device.last_seen
+        else:
+            # Transitioned away from online: record session duration
+            if device._online_since is not None:
+                session_dur = device.last_seen - device._online_since
+                device._cumulative_online_sec += max(0, session_dur)
+                device._online_since = None
+
+        self._check_trust_promotion(device)
+
+    def _check_trust_promotion(self, device: DeviceInfo):
+        """Promote device to trusted if cumulative online time exceeds threshold."""
+        if device.trusted:
+            return
+        total = device._cumulative_online_sec
+        if device._online_since is not None:
+            total += time.time() - device._online_since
+        if total >= TRUST_THRESHOLD_SEC:
+            device.trusted = True
+            logger.info(
+                "Device trusted: %s (cumulative online: %.1fh)",
+                device.device_id, total / 3600,
+            )

@@ -463,7 +463,11 @@ class Brain:
             await asyncio.sleep(3600)
             try:
                 self.device_registry.decay_utility_scores()
-                logger.debug("Utility score decay applied")
+                stats = self.device_registry.get_trust_stats()
+                logger.debug(
+                    "Utility decay applied | trust: %d trusted, %d untrusted",
+                    stats["trusted_count"], stats["untrusted_count"],
+                )
             except Exception as e:
                 logger.error(f"Utility decay error: {e}")
 
