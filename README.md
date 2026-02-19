@@ -68,7 +68,7 @@
 
 | Layer | Directory | Description |
 |-------|-----------|-------------|
-| Central Intelligence | `services/brain/` | LLM-driven ReAct 認知ループ (Think→Act→Observe, 5ツール, 3層安全機構) |
+| Central Intelligence | `services/brain/` | LLM-driven ReAct 認知ループ (Think→Act→Observe, 6ツール, 3層安全機構) |
 | Perception | `services/perception/` | YOLOv11 — 在室検知, ホワイトボード, 活動分析 (4層姿勢バッファ) |
 | Communication | MQTT (Mosquitto) | MCP over MQTT — JSON-RPC 2.0 でエッジデバイスを直接制御 |
 | Edge | `edge/` | SensorSwarm Hub-Leaf 2層ネットワーク (ESP-NOW/UART/I2C/BLE) |
@@ -83,7 +83,8 @@
 | Dashboard Backend API | 8000 | soms-backend |
 | Mock LLM | 8001 | soms-mock-llm |
 | Voice Service | 8002 | soms-voice |
-| Wallet Service | 8003 | soms-wallet |
+| Wallet Service | 127.0.0.1:8003 | soms-wallet |
+| Wallet App (PWA) | 8004 | soms-wallet-app |
 | PostgreSQL | 5432 | soms-postgres |
 | VOICEVOX Engine | 50021 | soms-voicevox |
 | Ollama (LLM) | 11434 | soms-ollama |
@@ -134,13 +135,13 @@ See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed setup. See [CITY_SCALE_VISI
 ## Tech Stack
 
 - **LLM**: Ollama + Qwen2.5:14b (ROCm, AMD GPU)
-- **Backend**: Python 3.11, FastAPI, SQLAlchemy (async), PostgreSQL 16 (asyncpg) / SQLite fallback
-- **Frontend**: React 19, TypeScript, Vite 7, Tailwind CSS 4, Framer Motion
+- **Backend**: Python 3.11, FastAPI, SQLAlchemy (async), PostgreSQL 16 (asyncpg)
+- **Frontend**: React 19, TypeScript, Vite 7, Tailwind CSS 4, TanStack Query 5, Framer Motion
 - **Vision**: YOLOv11 (yolo11s.pt + yolo11s-pose.pt), OpenCV, PyTorch (ROCm)
 - **TTS**: VOICEVOX (Japanese, Speaker ID 47)
 - **Edge**: ESP32 MicroPython + SensorSwarm (Hub-Leaf, binary protocol) + PlatformIO C++
 - **Economy**: Double-entry ledger, demurrage 2%/day, 5% burn, device XP multiplier
-- **Infra**: Docker Compose (11 services), Mosquitto MQTT, nginx
+- **Infra**: Docker Compose (12 services), Mosquitto MQTT, nginx
 
 Python + MQTT による純粋なイベント駆動アーキテクチャ。重量級ミドルウェア不使用。
 

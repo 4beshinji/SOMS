@@ -138,6 +138,17 @@ WS-A: Git整理 ──────┼──── WS-C: Dashboard/Backend ──
 
 ---
 
+### WS-H: データ可視化 & API 拡張 (Session O-R で完了)
+
+| ID | タスク | 依存 | 工数目安 | 優先度 | 状態 |
+|----|--------|------|---------|--------|------|
+| H.1 | TanStack Query 移行 + pnpm 移行 | なし | 3h | P1 | ✅完了 (`30a996f`) |
+| H.2 | Sensor Data API + Repository パターン | B.2 | 4h | P1 | ✅完了 (`bad0cac`) |
+| H.3 | Spatial Map Service (フロアプラン + デバイス配置GUI) | H.2 | 6h | P2 | ✅完了 (`352c88c`, `4101019`) |
+| H.4 | Federation Phase 1 (全サービスに region_id) | なし | 4h | P2 | ✅完了 (`bdfabfc`) |
+
+---
+
 ## 3. 依存関係グラフ
 
 ```
@@ -301,17 +312,21 @@ CITY_SCALE_VISION.md の Phase 0 完了条件に対応:
 
 | ID | タスク | 工数 | 依存 |
 |----|--------|------|------|
-| B.6 | LLM判断ログ記録 | 3h | B.2 |
+| B.6 | LLM判断ログ記録 | 3h | B.2 | ✅完了 |
 | C.2 | バッテリー監視UI | 4h | A.1 |
 | C.3 | エラーバウンダリ | 2h | なし |
 | C.4 | 認証レイヤー | 4h | C.1 |
 | C.5 | Event Storeダッシュボード | 4h | B.2 |
 | D.2 | BLE トランスポート | 8h | なし |
 | D.3 | Wake Chain 検証 | 4h | D.1 |
-| F.2 | XP scorer テスト | 2h | F.1 |
+| F.2 | XP scorer テスト | 2h | F.1 | ✅完了 |
 | F.3 | Wallet E2E テスト | 3h | F.1, C.1 | ✅完了 |
+| H.1 | TanStack Query + pnpm 移行 | なし | 3h | ✅完了 |
+| H.2 | Sensor Data API + Repository パターン | B.2 | 4h | ✅完了 |
+| H.3 | Spatial Map Service | H.2 | 6h | ✅完了 |
+| H.4 | Federation Phase 1 | なし | 4h | ✅完了 |
 
-**P2 合計**: ~34h
+**P2 合計**: ~51h (うち25h完了済み)
 
 ### P3 (Phase 1 準備・将来)
 

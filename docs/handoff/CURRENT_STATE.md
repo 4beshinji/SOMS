@@ -1,14 +1,14 @@
 # SOMS 作業状態ドキュメント — マルチワーカー引き継ぎ用
 
-**更新日時**: 2026-02-16 (Session N 更新)
+**更新日時**: 2026-02-20
 **ブランチ**: main
-**HEAD**: `0f5b1f4` (feat: add investment UI to wallet-app PWA)
+**HEAD**: `bdfabfc` (feat: add federation Phase 1 region identity to all services)
 
-**Session N の成果**:
-- Wallet App 出資 UI 追加: Invest ページ (3タブ: Portfolio/Devices/Pools) + DeviceDetail ページ
-- Tailwind CSS v4 ビルド修正: `@tailwindcss/vite` プラグイン追加 (ユーティリティクラス未生成問題を解決)
-- BottomNav に 5番目「Invest」タブ追加, App.tsx にルート追加
-- API クライアント `stakes.ts`: 6 エンドポイント (getDevices, getDeviceFunding, buyShares, returnShares, getPortfolio, getPools)
+**最新セッションの成果 (Session O-Q)**:
+- **Federation Phase 1**: 全サービスのモデルに `region_id` カラム追加、`config/federation.yaml` + `SOMS_REGION_ID` 環境変数
+- **Spatial Map Service**: フロアプラン可視化、センサー配置GUI、`routers/spatial.py` + `routers/devices.py` 追加
+- **Sensor Data API**: Repository パターン導入 (`SensorDataRepository` ABC + `PgSensorRepository`)、5エンドポイント追加
+- **TanStack Query 移行**: フロントエンドの状態管理をTanStack Query 5に移行、pnpm移行
 
 ---
 
@@ -24,6 +24,10 @@
 | L | Phase 1.5 出資モデル, Event Store, Brain WalletBridge 統合 | `53a6157`, `2fbb556` |
 | M | Wallet↔Dashboard E2E テスト, MQTT auth 修正, nginx DNS修正, ドキュメント更新 | `c4c37cc`, `0ac3969` |
 | N | Wallet App 出資 UI (Invest/DeviceDetail ページ), Tailwind v4 ビルド修正 | `0f5b1f4` |
+| O | TanStack Query 移行, pnpm 移行, hadolint, ポート競合検出 | `30a996f`, `cfffaf1` |
+| P | Sensor Data API + Repository パターン, HEMS キャラクター設定 | `bad0cac` |
+| Q | Spatial Map Service (フロアプラン可視化 + デバイス配置GUI) | `352c88c`, `4101019` |
+| R | Federation Phase 1 (全サービスに region_id 追加) | `bdfabfc` |
 
 ---
 
@@ -256,10 +260,10 @@ After:  heartbeat → distribute_reward()
 | 8000 | backend | soms-backend | Dashboard REST API |
 | 8001 | mock-llm | soms-mock-llm | 開発用 LLM |
 | 8002 | voice-service | soms-voice | TTS |
+| 127.0.0.1:8003 | wallet | soms-wallet | Wallet API (localhost のみ) |
 | 8004 | wallet-app | soms-wallet-app | PWA (Mobile) |
 | 11434 | ollama | soms-ollama | GPU LLM |
 | 50021 | voicevox | soms-voicevox | VOICEVOX エンジン |
-| — | wallet | soms-wallet | ポート非公開 (nginx 経由のみ) |
 | — | brain | soms-brain | ポート非公開 (MQTT + REST 内部) |
 
 ### サービス間依存
@@ -306,17 +310,17 @@ wallet    ← brain (WalletBridge REST)
 
 | カテゴリ | ファイル数 | 行数 | 状態 |
 |----------|-----------|------|------|
-| Brain (LLM決定エンジン) | ~22 .py | 3,717 | 完成 (Event Store + WalletBridge 統合済み) |
-| Voice (音声合成) | 5 .py | ~864 | 完成 |
-| Perception (画像認識) | ~20 .py | ~1,687 | 完成 |
-| Dashboard Backend | 9 .py | ~605 | 95% (users.py スタブ) |
-| Dashboard Frontend | ~11 .tsx/.ts | ~823 | 完成 |
-| Wallet (クレジット経済) | ~15 .py | 2,476 | 完成 (Phase 1.5 追加) |
-| Wallet App (PWA) | ~15 .tsx/.ts | ~1,100 | 完成 (Session N: 出資UI追加) |
-| Edge Firmware (Python) | 33 .py | ~2,562 | 完成 |
+| Brain (LLM決定エンジン) | 26 .py | 4,458 | 完成 (Event Store + WalletBridge + DeviceRegistry 統合済み) |
+| Voice (音声合成) | 6 .py | 1,212 | 完成 (通貨単位ストック追加) |
+| Perception (画像認識) | 19 .py | ~1,700 | 完成 |
+| Dashboard Backend | 19 .py | 2,062 | 完成 (Sensor API + Spatial API + Device Position API 追加) |
+| Dashboard Frontend | 21 .tsx/.ts | ~1,200 | 完成 (TanStack Query 移行済み) |
+| Wallet (クレジット経済) | 18 .py | 2,523 | 完成 (Phase 1.5 出資モデル追加) |
+| Wallet App (PWA) | 17 .tsx/.ts | ~1,100 | 完成 (出資UI追加) |
+| Edge Firmware (Python) | 43 .py | ~2,800 | 完成 |
 | Edge Firmware (C++) | 4 .cpp/.h | ~817 | 完成 |
-| Infra/テスト | ~18 .py | ~3,500 | 完成 |
-| **合計** | **~150+** | **~17,500+** | |
+| Infra/テスト | 31 .py | ~4,000 | 完成 |
+| **合計** | **~204** | **~23,900** | |
 
 ---
 
@@ -355,6 +359,6 @@ ISSUES.md の 32件は全件解決済み。以下は新規タスク候補:
 | C.4: 認証レイヤー (nginx / API 基本認証) | 中 | C.1 完了済み |
 | C.5: Event Store ダッシュボード表示 | 中 | B.2 完了済み、hourly_aggregates をグラフ表示 |
 | E.1: 受諾音声ストック化 | 低 | 1-2秒レイテンシ解消 |
+| D.1: SensorSwarm 実機テスト | 中 | 仮想エミュレータ検証済み、実ハードウェア未テスト |
 | Model B 外部決済連携 (Stripe 等) | 中 | Phase 1.5 スキーマ対応済み、API 実装のみ |
-| Eda/Ha メッシュネットワーク実装 | 中 | 設計ドキュメント完了 (`docs/08_edge_mesh_network`) |
-| `hems/` ディレクトリ (untracked) | 低 | 要確認: 新プロジェクトか一時ファイルか |
+| 24h 安定稼働テスト | 中 | Phase 0 完了判定の最終条件 |

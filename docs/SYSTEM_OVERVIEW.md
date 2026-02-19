@@ -201,7 +201,7 @@ WorldModel
 | 長時間座位 | 同姿勢30分以上 | 1時間 |
 | センサー改竄 | 急激な値変動 | 5分 |
 
-### 4.3 LLM ツール (5種)
+### 4.3 LLM ツール (6種)
 
 Brain が LLM に提供するツール:
 
@@ -212,6 +212,7 @@ Brain が LLM に提供するツール:
 | `speak` | 音声のみのアナウンス (タスクなし) | 音声再生 |
 | `get_zone_status` | ゾーンの詳細状態を取得 | なし (読み取り専用) |
 | `get_active_tasks` | 既存タスク一覧 (重複防止) | なし (読み取り専用) |
+| `get_device_status` | デバイスのネットワーク/バッテリー状態を確認 | なし (読み取り専用) |
 
 **ツール選択の指針** (システムプロンプトに記述):
 
@@ -361,7 +362,7 @@ WiFi を持たないバッテリー駆動の小型デバイス (Leaf) を、WiFi
 ### 7.2 Dashboard Backend
 
 **場所**: `services/dashboard/backend/`
-**技術**: FastAPI + SQLAlchemy (async) + SQLite (aiosqlite) / PostgreSQL (asyncpg)
+**技術**: FastAPI + SQLAlchemy (async) + PostgreSQL (asyncpg)
 
 **データモデル**:
 
@@ -390,6 +391,11 @@ WiFi を持たないバッテリー駆動の小型デバイス (Leaf) を、WiFi
 - `PUT /tasks/{id}/complete` — タスク完了 + Wallet 報酬支払い
 - `GET /voice-events/recent` — 直近60秒の音声イベント
 - `GET /tasks/stats` — キュー/アクティブ/完了統計
+- `GET /sensors/latest` — 最新センサー値 (ゾーン×チャネル)
+- `GET /sensors/time-series` — チャート用時系列データ
+- `GET /sensors/spatial/config` — フロアプラン・デバイス配置
+- `GET /sensors/spatial/live` — リアルタイム人物/物体位置
+- `GET /devices/positions/` — デバイス位置管理
 
 ### 7.3 Voice サービス
 
@@ -619,7 +625,7 @@ LLM の出力
 | **Messaging** | MQTT (Mosquitto), paho-mqtt 2.x | イベント通信 |
 | **Edge (Python)** | MicroPython, ESP32 (unified-node + SensorSwarm) | IoT ファームウェア |
 | **Edge (C++)** | Arduino, ESP32 WROVER | カメラノード |
-| **Database** | PostgreSQL 16 (asyncpg) + SQLite (aiosqlite fallback) | 永続化 |
+| **Database** | PostgreSQL 16 (asyncpg) | 永続化 |
 | **Container** | Docker Compose | デプロイメント |
 | **GPU** | AMD RX 9700 (RDNA4), ROCm, `HSA_OVERRIDE_GFX_VERSION=12.0.1` | LLM/Vision 推論 |
 
@@ -635,13 +641,18 @@ Office_as_AI_ToyBox/
 │   │   ├── llm_client.py       #   OpenAI互換 LLM クライアント
 │   │   ├── world_model/        #   センサー統合・状態管理
 │   │   ├── task_scheduling/    #   文脈対応タスクディスパッチ
-│   │   ├── tool_registry.py    #   LLM ツール定義 (5種)
+│   │   ├── tool_registry.py    #   LLM ツール定義 (6種)
 │   │   ├── tool_executor.py    #   ツール実行ルーティング
 │   │   ├── system_prompt.py    #   憲法的AI プロンプト
 │   │   ├── mcp_bridge.py       #   MQTT ↔ JSON-RPC 2.0 変換
 │   │   ├── sanitizer.py        #   入力検証・安全弁
 │   │   ├── dashboard_client.py #   REST API クライアント
-│   │   └── task_reminder.py    #   定期リマインダー (1時間)
+│   │   ├── task_reminder.py    #   定期リマインダー (1時間)
+│   │   ├── device_registry.py  #   デバイス状態追跡・適応型タイムアウト
+│   │   ├── wallet_bridge.py    #   MQTT→Wallet ハートビート中継
+│   │   ├── spatial_config.py   #   空間レイアウト設定読み込み
+│   │   ├── federation_config.py#   リージョンID設定読み込み
+│   │   └── event_store/        #   EventWriter + HourlyAggregator (PostgreSQL)
 │   ├── perception/src/         # コンピュータビジョン
 │   │   ├── main.py             #   モニター管理・起動
 │   │   ├── yolo_inference.py   #   YOLOv11 推論ラッパー
@@ -650,8 +661,9 @@ Office_as_AI_ToyBox/
 │   │   ├── camera_discovery.py #   ネットワークカメラ自動検出
 │   │   └── monitors/           #   Occupancy / Activity / Whiteboard
 │   ├── dashboard/
-│   │   ├── backend/            #   FastAPI + SQLAlchemy + Wallet 統合
-│   │   └── frontend/src/       #   React 19 + AudioQueue + WalletPanel
+│   │   ├── backend/            #   FastAPI + SQLAlchemy + Wallet 統合 + Sensor/Spatial/Device API
+│   │   │   └── repositories/  #   Repositoryパターン (Sensor + Spatial)
+│   │   └── frontend/src/       #   React 19 + TanStack Query + AudioQueue + WalletPanel
 │   ├── voice/src/              # VOICEVOX 連携
 │   │   ├── main.py             #   11 API エンドポイント
 │   │   ├── speech_generator.py #   LLM テキスト生成 + 通貨単位生成
@@ -681,7 +693,7 @@ Office_as_AI_ToyBox/
 │   │   └── camera-node/        #   OV2640 カメラ (ESP32 WROVER)
 │   └── tools/                  # 診断スクリプト (17本)
 ├── infra/
-│   ├── docker-compose.yml      # メイン構成 (11サービス)
+│   ├── docker-compose.yml      # メイン構成 (12サービス)
 │   ├── docker-compose.edge-mock.yml  # 仮想デバイス構成
 │   ├── mock_llm/               # ツール有無分岐 LLM シミュレータ
 │   ├── virtual_edge/           # 仮想エミュレータ (SwarmHub + 3Leaf 含む)
@@ -734,11 +746,12 @@ docker compose -f infra/docker-compose.yml up -d --build
 | Dashboard Backend API | 8000 | soms-backend |
 | Mock LLM | 8001 | soms-mock-llm |
 | Voice Service | 8002 | soms-voice |
-| Wallet Service | 8003 | soms-wallet |
-| PostgreSQL | 5432 | soms-postgres |
+| Wallet Service | 127.0.0.1:8003 | soms-wallet |
+| Wallet App (PWA) | 8004 | soms-wallet-app |
+| PostgreSQL | 127.0.0.1:5432 | soms-postgres |
 | VOICEVOX Engine | 50021 | soms-voicevox |
 | Ollama (LLM) | 11434 | soms-ollama |
-| MQTT Broker | 1883 | soms-mqtt |
+| MQTT Broker | 1883 (TCP) / 9001 (WS) | soms-mqtt |
 
 ---
 

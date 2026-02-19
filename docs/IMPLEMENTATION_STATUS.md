@@ -1,8 +1,7 @@
 # SOMS 実装状態レポート
 
-**生成日**: 2026-02-13
-**ブランチ**: `main` (HEAD: `5a8bdfc`)
-**未コミット**: 12ファイル変更 + 5新規 + 1マージコンフリクト
+**更新日**: 2026-02-20
+**ブランチ**: `main` (HEAD: `bdfabfc`)
 
 ---
 
@@ -10,16 +9,17 @@
 
 | カテゴリ | ファイル数 | 行数 | 状態 |
 |----------|-----------|------|------|
-| Brain (LLM決定エンジン) | 17 .py | 2,474 | 完成・本番対応 |
-| Voice (音声合成) | 5 .py | 864 | 完成・本番対応 |
-| Perception (画像認識) | ~20 .py | 1,687 | 完成・本番対応 |
-| Dashboard Backend | 9 .py | 605 | 95% (users.pyスタブ) |
-| Dashboard Frontend | 11 .tsx/.ts | 823 | 完成・本番対応 |
-| Wallet (クレジット経済) | 10 .py | 811 | 完成・本番対応 |
-| Edge Firmware (Python) | 33 .py | 2,562 | 完成 |
-| Edge Firmware (C++) | 4 .cpp/.h | 817 | 完成 |
-| Infra/テスト | 14 .py | 3,197 | 完成 |
-| **合計** | **~124** | **~13,840** | |
+| Brain (LLM決定エンジン) | 26 .py | 4,458 | 完成 (Event Store + WalletBridge + DeviceRegistry 統合済み) |
+| Voice (音声合成) | 6 .py | 1,212 | 完成 (通貨単位ストック追加) |
+| Perception (画像認識) | 19 .py | ~1,700 | 完成 |
+| Dashboard Backend | 19 .py | 2,062 | 完成 (Sensor API + Spatial API + Device Position API 追加) |
+| Dashboard Frontend | 21 .tsx/.ts | ~1,200 | 完成 (TanStack Query 移行済み) |
+| Wallet (クレジット経済) | 18 .py | 2,523 | 完成 (Phase 1.5 出資モデル追加) |
+| Wallet App (PWA) | 17 .tsx/.ts | ~1,100 | 完成 (出資UI追加) |
+| Edge Firmware (Python) | 43 .py | ~2,800 | 完成 |
+| Edge Firmware (C++) | 4 .cpp/.h | ~817 | 完成 |
+| Infra/テスト | 31 .py | ~4,000 | 完成 |
+| **合計** | **~204** | **~23,900** | |
 
 ---
 
@@ -31,23 +31,36 @@
 
 | ファイル | 行数 | 役割 | 主要クラス/関数 |
 |---------|------|------|---------------|
-| `src/main.py` | 232 | メインオーケストレータ | `Brain` — MQTT受信、認知ループ(max 5反復)、30秒ポーリング+イベント駆動 |
-| `src/llm_client.py` | 154 | LLM API通信 | `LLMClient` — OpenAI互換async wrapper、120秒タイムアウト |
-| `src/tool_registry.py` | 133 | ツール定義(5種) | `get_tools()` — create_task, send_device_command, get_zone_status, speak, get_active_tasks |
-| `src/tool_executor.py` | 207 | ツール実行ルーター | `ToolExecutor` — sanitizer経由のバリデーション + 各ツールハンドラ |
-| `src/mcp_bridge.py` | 62 | MQTT⇔JSON-RPC変換 | `MCPBridge` — asyncio.Futureベースの要求応答相関、10秒タイムアウト |
-| `src/sanitizer.py` | 106 | 入力バリデーション | `Sanitizer` — 温度18-28℃、ポンプ最大60秒、タスク作成10件/時間 |
-| `src/system_prompt.py` | 59 | 憲法AI系プロンプト | `SYSTEM_PROMPT` — 安全第一/コスト意識/重複防止/段階的アプローチ/プライバシー |
-| `src/dashboard_client.py` | 178 | タスク管理REST | `DashboardClient` — タスクCRUD + 二重音声生成(announce + completion) |
-| `src/task_reminder.py` | 196 | リマインダー | `TaskReminder` — 1時間後再アナウンス、30分クールダウン、5分チェック間隔 |
+| `src/main.py` | 559 | メインオーケストレータ | `Brain` — MQTT受信、認知ループ(max 5反復)、30秒ポーリング+イベント駆動 |
+| `src/llm_client.py` | 156 | LLM API通信 | `LLMClient` — OpenAI互換async wrapper、120秒タイムアウト |
+| `src/tool_registry.py` | 149 | ツール定義(6種) | `get_tools()` — create_task, send_device_command, get_zone_status, speak, get_active_tasks, get_device_status |
+| `src/tool_executor.py` | 237 | ツール実行ルーター | `ToolExecutor` — sanitizer経由のバリデーション + 各ツールハンドラ |
+| `src/mcp_bridge.py` | 64 | MQTT⇔JSON-RPC変換 | `MCPBridge` — asyncio.Futureベースの要求応答相関、10秒タイムアウト |
+| `src/sanitizer.py` | 128 | 入力バリデーション | `Sanitizer` — 温度18-28℃、ポンプ最大60秒、タスク作成10件/時間、speak 300秒クールダウン |
+| `src/system_prompt.py` | 72 | 憲法AI系プロンプト | `SYSTEM_PROMPT` — 安全第一/コスト意識/重複防止/段階的アプローチ/プライバシー |
+| `src/dashboard_client.py` | 186 | タスク管理REST | `DashboardClient` — タスクCRUD + 二重音声生成(announce + completion) |
+| `src/task_reminder.py` | 193 | リマインダー | `TaskReminder` — 1時間後再アナウンス、30分クールダウン、5分チェック間隔 |
+| `src/device_registry.py` | 305 | デバイス状態管理 | `DeviceRegistry` — 適応型タイムアウト、ユーティリティスコア、ネットワークトポロジ追跡 |
+| `src/wallet_bridge.py` | 71 | Wallet中継 | `WalletBridge` — MQTTハートビート→Wallet REST転送、300秒スロットル |
+| `src/spatial_config.py` | 119 | 空間設定 | `SpatialConfig` — オフィスレイアウト、ゾーン・デバイス位置読み込み |
+| `src/federation_config.py` | 78 | 連邦設定 | `FederationConfig` — リージョンID設定読み込み |
 
 ### WorldModel モジュール (`src/world_model/`)
 
 | ファイル | 行数 | 役割 |
 |---------|------|------|
-| `world_model.py` | 441 | ゾーン統一状態管理、MQTTトピック解析、8種イベント検知(CO2超過/温度急変/長時間座位/ドア開閉等) |
-| `data_classes.py` | 155 | Pydanticモデル5種: EnvironmentData, OccupancyData, DeviceState, Event, ZoneState |
-| `sensor_fusion.py` | 170 | 指数減衰重み付けセンサーフュージョン (温度半減期2分、CO2 1分、在室30秒) |
+| `world_model.py` | 742 | ゾーン統一状態管理、MQTTトピック解析、8種イベント検知(CO2超過/温度急変/長時間座位/ドア開閉等) |
+| `data_classes.py` | 203 | Pydanticモデル5種: EnvironmentData, OccupancyData, DeviceState, Event, ZoneState |
+| `sensor_fusion.py` | 65 | 指数減衰重み付けセンサーフュージョン (温度半減期2分、CO2 1分、在室30秒) |
+
+### Event Store モジュール (`src/event_store/`)
+
+| ファイル | 行数 | 役割 |
+|---------|------|------|
+| `writer.py` | 196 | `EventWriter` — 非同期バッファ (10秒 or 100件でフラッシュ) |
+| `aggregator.py` | 348 | `HourlyAggregator` — 毎時集計 (count, avg, min, max) |
+| `models.py` | 70 | SQLAlchemy テーブル定義 (raw_events, hourly_aggregates) |
+| `database.py` | 123 | async engine + session factory |
 
 ### Task Scheduling モジュール (`src/task_scheduling/`)
 
@@ -71,11 +84,12 @@
 
 | ファイル | 行数 | 役割 |
 |---------|------|------|
-| `src/main.py` | 306 | FastAPI エンドポイント7種 |
-| `src/speech_generator.py` | 247 | VOICEVOX合成パイプライン (speaker_id=47, ナースロボ_タイプT) |
-| `src/voicevox_client.py` | 83 | VOICEVOX REST APIクライアント |
-| `src/models.py` | 34 | Pydanticリクエスト/レスポンスモデル |
-| `src/rejection_stock.py` | 194 | リジェクション音声事前生成 (max 100、アイドル時LLM+VOICEVOX) |
+| `src/main.py` | 385 | FastAPI エンドポイント13種 |
+| `src/speech_generator.py` | 325 | VOICEVOX合成パイプライン (speaker_id=47, ナースロボ_タイプT) + 通貨単位名生成 |
+| `src/voicevox_client.py` | 105 | VOICEVOX REST APIクライアント (4スピーカーバリアント: normal/cool/happy/whisper) |
+| `src/models.py` | 40 | Pydanticリクエスト/レスポンスモデル |
+| `src/rejection_stock.py` | 208 | リジェクション音声事前生成 (max 100、アイドル時LLM+VOICEVOX) |
+| `src/currency_unit_stock.py` | 149 | 通貨単位名ストック (テキストのみ、max 50、アイドル時LLM生成) |
 
 ### エンドポイント
 
@@ -87,7 +101,11 @@
 | POST | `/api/voice/feedback/{type}` | 確認メッセージ |
 | GET | `/api/voice/rejection/random` | ストックからランダムリジェクション音声 |
 | GET | `/api/voice/rejection/status` | ストック状況 |
+| POST | `/api/voice/rejection/clear` | ストック再生成 |
+| GET | `/api/voice/currency-units/status` | 通貨単位ストック状況 + サンプル |
+| POST | `/api/voice/currency-units/clear` | 通貨単位ストック再生成 |
 | GET | `/audio/{filename}` | 生成済みMP3配信 |
+| GET | `/audio/rejections/{filename}` | リジェクション音声配信 |
 
 ---
 
@@ -105,7 +123,7 @@
 
 ### 機能
 
-- **カメラ自動発見**: ICMP pingスイープ + YOLO検証 (192.168.128.0/24)
+- **カメラ自動発見**: 非同期TCPポートスキャン + URLプローブ + YOLO検証 (192.168.128.0/24)
 - **在室モニタ**: YOLO物体検知 → 人数カウント → MQTT publish
 - **ホワイトボード**: 変化検知 → キャプチャ
 - **活動分析**: 4段ティアードバッファ (最大4時間)、姿勢正規化、長時間座位検知
@@ -132,17 +150,23 @@ yolo:
 
 ## 4. Dashboard Service (`services/dashboard/`)
 
-### Backend (FastAPI + SQLAlchemy async)
+### Backend (FastAPI + SQLAlchemy async + PostgreSQL)
 
 | ファイル | 行数 | 役割 |
 |---------|------|------|
-| `backend/main.py` | 33 | FastAPIアプリ初期化、CORS、ルーター登録 |
-| `backend/database.py` | 14 | aiosqlite非同期エンジン |
-| `backend/models.py` | 59 | SQLAlchemyモデル: Task(19列), VoiceEvent, SystemStats, User |
-| `backend/schemas.py` | 104 | Pydantic 2.xスキーマ (TaskCreate/Update/Accept, UserBase, etc.) |
-| `backend/routers/tasks.py` | 326 | タスクCRUD: 2段階重複検知、受諾/完了/リマインダー/キュー管理、wallet連携 |
-| `backend/routers/users.py` | 11 | ユーザー一覧 (**スタブ**: ハードコードmockデータ) |
-| `backend/routers/voice_events.py` | 48 | speakツール用エフェメラルイベント記録 (60秒ポーリング) |
+| `backend/main.py` | 77 | FastAPIアプリ初期化、CORS、6ルーター登録 |
+| `backend/database.py` | 13 | PostgreSQL (asyncpg) 非同期エンジン |
+| `backend/models.py` | 88 | SQLAlchemyモデル: Task(27列), VoiceEvent, SystemStats, User |
+| `backend/schemas.py` | 118 | Pydantic 2.xスキーマ (TaskCreate/Update/Accept, UserBase, etc.) |
+| `backend/sensor_schemas.py` | 50 | センサーデータ用Pydanticスキーマ |
+| `backend/spatial_config.py` | 114 | 空間設定・フロアプラン読み込み |
+| `backend/routers/tasks.py` | 414 | タスクCRUD: 2段階重複検知、受諾/完了/リマインダー/キュー管理、wallet連携 |
+| `backend/routers/users.py` | 78 | ユーザーCRUD (list/get/create/update) — AsyncSession実装 |
+| `backend/routers/voice_events.py` | 47 | speakツール用エフェメラルイベント記録 (60秒ポーリング) |
+| `backend/routers/sensors.py` | 135 | センサーデータAPI (latest/time-series/zones/events/llm-activity) |
+| `backend/routers/spatial.py` | 106 | 空間API (config/live/heatmap) |
+| `backend/routers/devices.py` | 141 | デバイス位置管理API (CRUD) |
+| `backend/repositories/` | 681 | Repositoryパターン: SensorDataRepository + SpatialDataRepository (ABC + PgSQL実装 + DI) |
 
 **Task重複検知**:
 1. Stage 1: タイトル + ロケーション完全一致
@@ -183,16 +207,22 @@ yolo:
 
 | ファイル | 行数 | 役割 |
 |---------|------|------|
-| `src/main.py` | 64 | FastAPIアプリ、起動時DB初期化 + system wallet自動作成 |
-| `src/database.py` | 17 | aiosqlite非同期エンジン |
-| `src/models.py` | 80 | Wallet, LedgerEntry, Device, SupplyStats |
-| `src/schemas.py` | 139 | Pydanticスキーマ (TransactionCreate, WalletResponse, etc.) |
-| `src/services/ledger.py` | 168 | `transfer()`: 複式仕訳、冪等性 (reference_id)、デッドロック防止 (ID順ロック) |
-| `src/services/xp_scorer.py` | 96 | ゾーンデバイスXP付与、動的報酬乗数 (1.0x-3.0x) |
-| `src/routers/wallets.py` | 54 | 残高照会、ウォレット作成 |
-| `src/routers/transactions.py` | 80 | 取引履歴、タスク報酬API |
-| `src/routers/devices.py` | 67 | デバイス登録/一覧 |
-| `src/routers/admin.py` | 47 | 供給統計 |
+| `src/main.py` | 108 | FastAPIアプリ、起動時DB初期化 + system wallet自動作成 + 6ルーター登録 |
+| `src/database.py` | 17 | PostgreSQL (asyncpg) 非同期エンジン |
+| `src/models.py` | 153 | Wallet, LedgerEntry, Device, DeviceStake, FundingPool, PoolContribution, SupplyStats, RewardRate |
+| `src/schemas.py` | 308 | Pydanticスキーマ (15+種: Transaction, Wallet, Device, Stake, Pool, etc.) |
+| `src/services/ledger.py` | 229 | `transfer()`: 複式仕訳、冪等性 (reference_id)、デッドロック防止 (ID順ロック) |
+| `src/services/xp_scorer.py` | 162 | ゾーンデバイスXP付与、動的報酬乗数 (1.0x-3.0x)、貢献度重み付け |
+| `src/services/stake_service.py` | 338 | デバイス出資: open/close/buy/return/distribute_reward |
+| `src/services/pool_service.py` | 210 | プール出資: create/contribute/activate (shares一括割当) |
+| `src/services/demurrage.py` | 59 | デマレッジ (保有税) サイクル |
+| `src/services/monetary_policy.py` | 50 | 金融政策パラメータ |
+| `src/routers/wallets.py` | 45 | 残高照会、ウォレット作成 |
+| `src/routers/transactions.py` | 156 | 取引履歴、タスク報酬API、P2P送金、手数料プレビュー |
+| `src/routers/devices.py` | 208 | デバイス登録/一覧/ハートビート(比例配分)/XP付与/utility-score |
+| `src/routers/stakes.py` | 205 | Model A: SOMS出資 6EP + portfolio |
+| `src/routers/pools.py` | 202 | Model B: プール出資 admin 5EP + public 1EP |
+| `src/routers/admin.py` | 73 | 供給統計、デマレッジ、報酬レート |
 
 **経済モデル**:
 - system wallet (user_id=0) がクレジット発行 (負残高可)
@@ -226,7 +256,7 @@ yolo:
 | `edge/test-edge/sensor-node/` | PlatformIO C++ センサーノード |
 
 ### 診断ツール (`edge/tools/`)
-`blink_identify.py`, `diag_i2c.py`, `test_uart.py`, `clean_scan.py` 等13スクリプト
+`blink_identify.py`, `diag_i2c.py`, `test_uart.py`, `clean_scan.py` 等17スクリプト
 
 ---
 
@@ -236,7 +266,7 @@ yolo:
 
 | ファイル | サービス数 | 用途 |
 |---------|-----------|------|
-| `docker-compose.yml` | 10 | 本番構成: mosquitto, brain, backend, frontend, voicevox, voice-service, ollama, mock-llm, perception, wallet |
+| `docker-compose.yml` | 12 | 本番構成: mosquitto, brain, postgres, backend, frontend, voicevox, voice-service, wallet, wallet-app, ollama, mock-llm, perception |
 | `docker-compose.edge-mock.yml` | 3 | 仮想構成: virtual-edge + mock-llm + virtual-camera |
 
 ### サービスポート
@@ -247,10 +277,12 @@ yolo:
 | Dashboard Backend API | 8000 | soms-backend |
 | Mock LLM | 8001 | soms-mock-llm |
 | Voice Service | 8002 | soms-voice |
-| Wallet Service | 8003 | soms-wallet |
+| Wallet Service | 127.0.0.1:8003 | soms-wallet |
+| Wallet App (PWA) | 8004 | soms-wallet-app |
+| PostgreSQL | 127.0.0.1:5432 | soms-postgres |
 | VOICEVOX Engine | 50021 | soms-voicevox |
 | Ollama (LLM) | 11434 | soms-ollama |
-| MQTT Broker | 1883 | soms-mqtt |
+| MQTT Broker | 1883 (TCP) / 9001 (WS) | soms-mqtt |
 
 ### Mock/仮想サービス
 
@@ -299,44 +331,18 @@ mcp/{agent_id}/response/{request_id}
 
 ---
 
-## 9. Git/未コミット状態
-
-### 直近コミット履歴
+## 9. 直近コミット履歴
 
 ```
-5a8bdfc add: full E2E integration test — 7 scenarios
-98c905c add: wallet service — double-entry ledger
-aabc371 refactor: extract AudioQueue with priority-based playback
-c9de557 feat: WorldModel motion/door channel support
-ff1a5d2 fix: virtual-edge Docker path resolution
-b48a458 feat: add SensorSwarm 2-tier sensor network
-15da7d4 add: promotional materials
-e6291e9 fix: duplicate task prevention and temperature alert
+bdfabfc feat: add federation Phase 1 region identity to all services
+4101019 feat: add sensor visualization and device placement GUI on floor plan
+352c88c feat: add spatial map service with floor plan visualization
+bad0cac feat: add sensor API repository pattern, HEMS character configs
+3f09bb3 docs: sync CLAUDE.md with implementation
+cd1d29e feat: expose wallet service port 8003 on host
+cfffaf1 feat: introduce TanStack Query, migrate to pnpm, add hadolint
+0f5b1f4 feat: add investment UI to wallet-app PWA
 ```
-
-### 未コミット変更 (18ファイル)
-
-| ファイル | ステータス | 内容 |
-|---------|-----------|------|
-| `HANDOFF.md` | M | 作業引継ぎドキュメント更新 |
-| `infra/docker-compose.yml` | M | wallet サービス + PostgreSQL追加 |
-| `services/dashboard/backend/models.py` | M (staged) | Userモデル更新 |
-| `services/dashboard/backend/requirements.txt` | M | wallet連携用依存追加 |
-| `services/dashboard/backend/routers/tasks.py` | MM | wallet連携 (staged + unstaged) |
-| `services/dashboard/backend/schemas.py` | M (staged) | Userスキーマ更新 |
-| `services/dashboard/frontend/nginx.conf` | M | wallet proxy追加 |
-| **`services/dashboard/frontend/src/App.tsx`** | **UU** | **マージコンフリクト (要手動解決)** |
-| `services/dashboard/frontend/src/components/TaskCard.tsx` | MM | wallet連携 |
-| `services/wallet/src/models.py` | M | wallet DB修正 |
-| `services/wallet/src/routers/devices.py` | M | デバイスAPI修正 |
-| `services/wallet/src/schemas.py` | M | walletスキーマ修正 |
-| `services/dashboard/frontend/src/components/UserSelector.tsx` | 新規 | ユーザー選択UI |
-| `services/dashboard/frontend/src/components/WalletBadge.tsx` | 新規 | クレジットバッジ |
-| `services/dashboard/frontend/src/components/WalletPanel.tsx` | 新規 | 取引履歴パネル |
-| `services/dashboard/frontend/tsconfig.app.tsbuildinfo` | 新規 | ビルド成果物 |
-| `services/wallet/src/services/xp_scorer.py` | 新規 | XPスコアリング |
-
-**要対応**: `App.tsx` のマージコンフリクト解決
 
 ---
 
@@ -344,11 +350,11 @@ e6291e9 fix: duplicate task prevention and temperature alert
 
 | 優先度 | 項目 | 詳細 |
 |--------|------|------|
-| **高** | App.tsx マージコンフリクト | wallet stash pop由来。コミット前に解決必須 |
-| 中 | users.py スタブ | ハードコードmockデータ→DB連携に要置換 |
 | 中 | 受諾音声レイテンシ | ストック化されていない (1-2秒遅延) |
-| 低 | axios未使用 | package.jsonに含まれるが使用なし (fetch直接利用) |
+| 中 | バッテリー監視UI | SwarmHub 状態の可視化 |
+| 中 | Event Store ダッシュボード | hourly_aggregates をグラフ表示 |
 | 低 | 認証なし | nginx/API層に認証レイヤーなし (PoC段階) |
+| 低 | フロントエンドエラーバウンダリ | 未実装 |
 
 ---
 
@@ -398,10 +404,10 @@ e6291e9 fix: duplicate task prevention and temperature alert
 | レイヤー | 技術 |
 |---------|------|
 | **LLM** | Ollama + qwen2.5:14b (Q4_K_M), ROCm (AMD RX 9700 RDNA4) |
-| **Backend** | Python 3.11, FastAPI, SQLAlchemy (async), aiosqlite, paho-mqtt >=2.0, Pydantic 2.x, loguru |
-| **Frontend** | React 19, TypeScript 5.9, Vite 7.3, Tailwind CSS 4, Framer Motion 12, Lucide Icons |
-| **Vision** | Ultralytics YOLOv11 (yolo11s.pt + yolo11s-pose.pt), OpenCV, PyTorch (ROCm) |
+| **Backend** | Python 3.11, FastAPI, SQLAlchemy (async), asyncpg, paho-mqtt >=2.0, Pydantic 2.x, loguru |
+| **Frontend** | React 19, TypeScript 5.9, Vite 7, Tailwind CSS 4, TanStack Query 5, Framer Motion 12, Lucide Icons; pnpm |
+| **Vision** | Python 3.10 (ROCm base), Ultralytics YOLOv11 (yolo11s.pt + yolo11s-pose.pt), OpenCV, PyTorch (ROCm) |
 | **TTS** | VOICEVOX (speaker_id=47, ナースロボ_タイプT) |
 | **Edge** | MicroPython (ESP32/Pico), PlatformIO C++ (ATtiny/ESP32-CAM) |
-| **Infra** | Docker Compose, Mosquitto MQTT, nginx, SQLite |
+| **Infra** | Docker Compose, Mosquitto MQTT, PostgreSQL 16 (asyncpg), nginx |
 | **通信** | MQTT (テレメトリ), MCP/JSON-RPC 2.0 (デバイス制御), REST (サービス間) |

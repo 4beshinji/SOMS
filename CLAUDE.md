@@ -176,6 +176,11 @@ Brain subscribes to `office/#` and `mcp/+/response/#`.
 - `sanitizer.py` — Input validation and security
 - `dashboard_client.py` — REST client for dashboard backend
 - `task_reminder.py` — Periodic reminder service (re-announces tasks after 1 hour)
+- `device_registry.py` — Device state tracking with adaptive timeout calculation
+- `wallet_bridge.py` — Forwards heartbeats and device metrics to Wallet service
+- `spatial_config.py` — Office layout geometry and zone/device positions loader
+- `federation_config.py` — Region identity configuration loader
+- `event_store/` — `EventWriter` for recording LLM decisions + `HourlyAggregator` (PostgreSQL)
 
 ### LLM Tools (defined in `tool_registry.py`)
 
@@ -193,7 +198,7 @@ Brain subscribes to `office/#` and `mcp/+/response/#`.
 - Monitors are pluggable: `OccupancyMonitor`, `WhiteboardMonitor`, `ActivityMonitor` (all extend `MonitorBase`)
 - Image sources abstracted: `RTSPSource`, `MQTTSource`, `HTTPStream` via `ImageSourceFactory`
 - `activity_analyzer.py` — Tiered pose buffer (4 tiers, up to 4 hours) with posture normalization
-- `camera_discovery.py` — ICMP ping sweep + YOLO verification for auto-discovery
+- `camera_discovery.py` — Async TCP port scan + URL probe + YOLO verification for auto-discovery
 - Monitor config in `config/monitors.yaml` includes YOLO model paths, camera-zone mappings, and discovery settings
 
 ### nginx Routing (`services/dashboard/frontend/nginx.conf`)
@@ -210,11 +215,11 @@ All upstreams use Docker DNS lazy resolution (`resolver 127.0.0.11` + `set $var`
 
 ### Dashboard Backend API (`services/dashboard/backend/`)
 
-SQLAlchemy async ORM with PostgreSQL (asyncpg). Fallback to SQLite (aiosqlite) when `DATABASE_URL` is not set. Key models: `Task` (19 columns: bounty/urgency/voice/queue/assignment fields), `VoiceEvent` (tone: neutral/caring/humorous/alert), `User` (credits), `SystemStats` (total_xp, tasks_completed).
+SQLAlchemy async ORM with PostgreSQL (asyncpg). Key models: `Task` (27 columns: bounty/urgency/voice/queue/assignment/federation fields), `VoiceEvent` (tone: neutral/caring/humorous/alert), `User` (username, display_name, is_active), `SystemStats` (total_xp, tasks_completed, tasks_created).
 
 Task duplicate detection: Stage 1 (title + location exact match), Stage 2 (zone + task_type).
 
-Routers: `routers/tasks.py` (CRUD + wallet integration), `routers/users.py` (full CRUD), `routers/voice_events.py`, `routers/sensors.py` (read-only sensor data). Swagger UI at `:8000/docs`.
+Routers: `routers/tasks.py` (CRUD + wallet integration), `routers/users.py` (list/get/create/update), `routers/voice_events.py`, `routers/sensors.py` (read-only sensor data), `routers/spatial.py` (building layout + live positions), `routers/devices.py` (device position management). Swagger UI at `:8000/docs`.
 
 #### Task Router (`routers/tasks.py`)
 
@@ -229,7 +234,7 @@ Routers: `routers/tasks.py` (CRUD + wallet integration), `routers/users.py` (ful
 | PUT | `/tasks/{task_id}/dispatch` | Mark queued task as dispatched |
 | GET | `/tasks/stats` | Task statistics (counts, XP, completions) |
 
-Sensor data access uses Repository pattern (`repositories/`): `SensorDataRepository` ABC with `PgSensorRepository` (PostgreSQL) implementation. DI via `repositories/deps.py`. See `docs/architecture/adr-sensor-api-repository-pattern.md`.
+Sensor data access uses Repository pattern (`repositories/`): `SensorDataRepository` ABC with `PgSensorRepository` (PostgreSQL) implementation. `SpatialDataRepository` ABC with `PgSpatialRepository`. DI via `repositories/deps.py`. See `docs/architecture/adr-sensor-api-repository-pattern.md`.
 
 #### Sensor Data API (`routers/sensors.py`)
 
@@ -240,6 +245,23 @@ Sensor data access uses Repository pattern (`repositories/`): `SensorDataReposit
 | GET | `/sensors/zones` | All-zone overview snapshot | — |
 | GET | `/sensors/events` | WorldModel event feed | `?zone=&limit=50` |
 | GET | `/sensors/llm-activity` | LLM decision-making summary | `?hours=24` |
+
+#### Spatial API (`routers/spatial.py`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/sensors/spatial/config` | Building layout, zones, devices, cameras |
+| GET | `/sensors/spatial/live` | Real-time person/object positions |
+| GET | `/sensors/spatial/heatmap` | Heatmap data for zones |
+
+#### Device Position API (`routers/devices.py`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/devices/positions/` | List all device positions |
+| POST | `/devices/positions/` | Create device position |
+| PUT | `/devices/positions/{device_id}` | Update device position |
+| DELETE | `/devices/positions/{device_id}` | Delete device position |
 
 ### Voice Service API (`services/voice/src/`)
 
@@ -307,11 +329,11 @@ Double-entry credit ledger with PostgreSQL (asyncpg). Key models: `Wallet` (bala
 
 - **Backend**: Python 3.11, FastAPI, SQLAlchemy (async), paho-mqtt >=2.0, Pydantic 2.x, loguru
 - **Frontend**: React 19, TypeScript, Vite 7, Tailwind CSS 4, TanStack Query 5, Framer Motion, Lucide icons; pnpm as package manager
-- **ML/Vision**: Ultralytics YOLOv11 (yolo11s.pt + yolo11s-pose.pt), OpenCV, PyTorch (ROCm)
+- **ML/Vision**: Python 3.10 (ROCm base image), Ultralytics YOLOv11 (yolo11s.pt + yolo11s-pose.pt), OpenCV, PyTorch (ROCm)
 - **LLM**: Ollama with ROCm for AMD GPUs (Qwen2.5 target model)
 - **TTS**: VOICEVOX (Japanese speech synthesis)
 - **Edge**: MicroPython on ESP32 (BME680, MH-Z19 CO2, DHT22), PlatformIO C++ for camera nodes
-- **Infra**: Docker Compose, Mosquitto MQTT, PostgreSQL 16 (asyncpg) / SQLite (aiosqlite fallback), nginx
+- **Infra**: Docker Compose, Mosquitto MQTT, PostgreSQL 16 (asyncpg), nginx
 
 ## Code Conventions
 
@@ -321,7 +343,7 @@ Double-entry credit ledger with PostgreSQL (asyncpg). Key models: `Wallet` (bala
 - Source code is bind-mounted into containers (`volumes: - ../services/X/src:/app`), so changes take effect on container restart without rebuild
 - Documentation is bilingual (English code/comments, Japanese deployment docs and tool descriptions)
 - Perception monitors are YAML-configured (`services/perception/config/monitors.yaml`), not hardcoded
-- Logging uses `loguru` (brain, voice, perception) and standard `logging` (world_model)
+- Logging uses `loguru` (brain, voice) and standard `logging` (world_model, perception)
 
 ## Parallel Development
 
@@ -349,7 +371,7 @@ Key variables in `.env` (see `env.example`):
 - `LLM_MODEL` — Model name for Ollama (e.g. `qwen2.5:14b`)
 - `MQTT_BROKER` / `MQTT_PORT` — Broker address (default: `mosquitto:1883`)
 - `MQTT_USER` / `MQTT_PASS` — MQTT credentials (default: `soms` / `soms_dev_mqtt`)
-- `DATABASE_URL` — `postgresql+asyncpg://user:pass@postgres:5432/soms` (Docker) or `sqlite+aiosqlite:///./soms.db` (fallback)
+- `DATABASE_URL` — `postgresql+asyncpg://user:pass@postgres:5432/soms` (Docker)
 - `POSTGRES_USER` / `POSTGRES_PASSWORD` — PostgreSQL credentials (default: `soms` / `soms_dev_password`)
 - `RTSP_URL` — Camera feed URL (dev: `rtsp://virtual-camera:8554/live`)
 - `TZ` — Timezone (default: `Asia/Tokyo`)
