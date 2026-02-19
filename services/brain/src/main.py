@@ -272,7 +272,14 @@ class Brain:
                 # or was recently attempted (prevents retry loop after rate limit)
                 if name == "create_task":
                     proposed_title = args.get("title", "")
-                    # Check against active tasks
+
+                    # Guard 4a: Hard guard — skip if zone has suppressed alerts
+                    # (environment task already created, waiting for condition to resolve)
+                    if self._is_task_for_suppressed_alert(args):
+                        logger.warning(f"Skipping create_task: alert suppressed for '{proposed_title}'")
+                        continue
+
+                    # Guard 4b: Check against active tasks
                     if active_tasks and any(
                         proposed_title.lower() in t.get("title", "").lower()
                         or t.get("title", "").lower() in proposed_title.lower()
@@ -280,7 +287,7 @@ class Brain:
                     ):
                         logger.warning(f"Skipping create_task: similar active task exists for '{proposed_title}'")
                         continue
-                    # Check against recent action history (last 30 min)
+                    # Guard 4c: Check against recent action history (last 30 min)
                     recent_creates = [
                         a for a in self._action_history
                         if a["tool"] == "create_task" and a["time"] > now - 1800
@@ -426,6 +433,8 @@ class Brain:
             "寒": ["low_temp"],
             "冷": ["high_temp"],     # 冷房 → suppress high_temp
             "暖": ["low_temp"],      # 暖房 → suppress low_temp
+            "エアコン": ["high_temp", "low_temp"],
+            "空調": ["high_temp", "low_temp"],
             "co2": ["high_co2"],
             "換気": ["high_co2"],
             "湿度": ["high_humidity", "low_humidity"],
@@ -449,6 +458,7 @@ class Brain:
         target_zones = [zone] if zone else list(self.world_model.zones.keys())
 
         suppressed = set()
+        # Strategy 1: Match specific keywords to specific alert types
         for keyword, alert_types in self._TASK_TYPE_TO_ALERT.get("environment", {}).items():
             if keyword in text:
                 for z in target_zones:
@@ -456,6 +466,59 @@ class Brain:
                         if (z, at) not in suppressed:
                             self.world_model.suppress_alert(z, at)
                             suppressed.add((z, at))
+
+        # Strategy 2: If no keyword matched, suppress all currently-active
+        # alerts for target zones. This catches cases where the LLM uses
+        # vague descriptions like "デバイスを再登録する" for a temp issue.
+        if not suppressed:
+            for z in target_zones:
+                zone_state = self.world_model.get_zone(z)
+                if not zone_state:
+                    continue
+                env = zone_state.environment
+                if env.temperature is not None:
+                    if env.temperature > 26:
+                        self.world_model.suppress_alert(z, "high_temp")
+                        suppressed.add((z, "high_temp"))
+                    elif env.temperature < 18:
+                        self.world_model.suppress_alert(z, "low_temp")
+                        suppressed.add((z, "low_temp"))
+                if env.co2 is not None and env.co2 > 1000:
+                    self.world_model.suppress_alert(z, "high_co2")
+                    suppressed.add((z, "high_co2"))
+                if env.humidity is not None:
+                    if env.humidity > 60:
+                        self.world_model.suppress_alert(z, "high_humidity")
+                        suppressed.add((z, "high_humidity"))
+                    elif env.humidity < 30:
+                        self.world_model.suppress_alert(z, "low_humidity")
+                        suppressed.add((z, "low_humidity"))
+
+        if suppressed:
+            logger.info(f"Suppressed alerts after task creation: {suppressed}")
+
+    def _is_task_for_suppressed_alert(self, task_args: dict) -> bool:
+        """Check if a create_task targets a zone with suppressed environment alerts.
+
+        Used as a hard guard to prevent duplicate task creation regardless
+        of LLM behavior.
+        """
+        zone = task_args.get("zone") or task_args.get("zone_id")
+        task_types = task_args.get("task_types", "")
+        title = task_args.get("title", "")
+        description = task_args.get("description", "")
+        text = f"{title} {description} {task_types}".lower()
+
+        if "environment" not in text and "urgent" not in text:
+            return False
+
+        target_zones = [zone] if zone else list(self.world_model.zones.keys())
+
+        for z in target_zones:
+            for alert_type in self.world_model.SUPPRESSION_DEFAULTS:
+                if self.world_model._is_suppressed(z, alert_type):
+                    return True
+        return False
 
     async def _utility_decay_loop(self):
         """Periodically decay utility_scores for idle devices (every hour)."""
