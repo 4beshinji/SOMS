@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, Float, String, Boolean, DateTime
 from sqlalchemy.sql import func
 from database import Base
 
@@ -58,6 +58,19 @@ class SystemStats(Base):
     tasks_completed = Column(Integer, default=0)
     tasks_created = Column(Integer, default=0)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class DevicePosition(Base):
+    __tablename__ = "device_positions"
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(String, unique=True, index=True)
+    zone = Column(String)
+    x = Column(Float)
+    y = Column(Float)
+    device_type = Column(String, default="sensor")
+    channels = Column(String, default="[]")  # JSON array of channel names
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
 
 class User(Base):
     __tablename__ = "users"

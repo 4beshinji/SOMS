@@ -2,16 +2,18 @@
 
 Queries events.spatial_snapshots and events.spatial_heatmap_hourly,
 and reads spatial config from config/spatial.yaml.
+Merges DB-stored device_positions into the config (DB wins on conflict).
 """
 import json
 import logging
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from spatial_config import load_spatial_config
+from models import DevicePosition
 from .spatial_repository import (
     HeatmapData,
     LiveSpatialData,
@@ -29,16 +31,37 @@ class PgSpatialRepository(SpatialDataRepository):
 
     async def get_spatial_config(self) -> SpatialConfigResponse:
         config = load_spatial_config()
+
+        # Start with YAML devices
+        devices = {
+            dev_id: asdict(dev)
+            for dev_id, dev in config.devices.items()
+        }
+
+        # Merge DB device_positions (DB wins on same device_id)
+        try:
+            result = await self._session.execute(select(DevicePosition))
+            for row in result.scalars().all():
+                try:
+                    channels = json.loads(row.channels) if row.channels else []
+                except (json.JSONDecodeError, TypeError):
+                    channels = []
+                devices[row.device_id] = {
+                    "zone": row.zone,
+                    "position": [row.x, row.y],
+                    "type": row.device_type or "sensor",
+                    "channels": channels,
+                }
+        except Exception:
+            logger.warning("Could not read device_positions table (may not exist yet)")
+
         return SpatialConfigResponse(
             building=asdict(config.building),
             zones={
                 zone_id: asdict(geom)
                 for zone_id, geom in config.zones.items()
             },
-            devices={
-                dev_id: asdict(dev)
-                for dev_id, dev in config.devices.items()
-            },
+            devices=devices,
             cameras={
                 cam_id: asdict(cam)
                 for cam_id, cam in config.cameras.items()

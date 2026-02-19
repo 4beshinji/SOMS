@@ -68,6 +68,82 @@ export const completeTask = async ({
   return res.json();
 };
 
+// ── Sensor API ──────────────────────────────────────────────────────
+
+export interface SensorReading {
+  timestamp: string;
+  zone: string;
+  channel: string;
+  value: number;
+  device_id: string | null;
+}
+
+export const fetchSensorLatest = async (): Promise<SensorReading[]> => {
+  const res = await fetch('/api/sensors/latest');
+  if (!res.ok) throw new Error('Failed to fetch sensor latest');
+  return res.json();
+};
+
+// ── Device Position API ─────────────────────────────────────────────
+
+export interface DevicePositionResponse {
+  id: number;
+  device_id: string;
+  zone: string;
+  x: number;
+  y: number;
+  device_type: string;
+  channels: string[];
+}
+
+export interface CreateDevicePositionRequest {
+  device_id: string;
+  zone: string;
+  x: number;
+  y: number;
+  device_type: string;
+  channels: string[];
+}
+
+export interface UpdateDevicePositionRequest {
+  x: number;
+  y: number;
+  zone?: string;
+}
+
+export const fetchDevicePositions = async (): Promise<DevicePositionResponse[]> => {
+  const res = await fetch('/api/devices/positions/');
+  if (!res.ok) throw new Error('Failed to fetch device positions');
+  return res.json();
+};
+
+export const createDevicePosition = async (data: CreateDevicePositionRequest): Promise<DevicePositionResponse> => {
+  const res = await fetch('/api/devices/positions/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to create device position');
+  return res.json();
+};
+
+export const updateDevicePosition = async (deviceId: string, data: UpdateDevicePositionRequest): Promise<DevicePositionResponse> => {
+  const res = await fetch(`/api/devices/positions/${encodeURIComponent(deviceId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to update device position');
+  return res.json();
+};
+
+export const deleteDevicePosition = async (deviceId: string): Promise<void> => {
+  const res = await fetch(`/api/devices/positions/${encodeURIComponent(deviceId)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to delete device position');
+};
+
 // ── Spatial API ──────────────────────────────────────────────────────
 
 export const fetchSpatialConfig = async (): Promise<SpatialConfig> => {
