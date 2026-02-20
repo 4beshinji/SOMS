@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import jsQR from 'jsqr';
 import { claimTaskReward } from '../api/wallet';
 
 interface ScanProps {
@@ -35,6 +36,14 @@ export default function Scan({ userId }: ScanProps) {
   const navigate = useNavigate();
 
   const startCamera = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError(
+        window.isSecureContext
+          ? 'Camera API is not available in this browser.'
+          : 'Camera requires HTTPS. Please access via https://...:8443',
+      );
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
@@ -47,7 +56,11 @@ export default function Scan({ userId }: ScanProps) {
       setStatus('scanning');
       setCameraError(null);
     } catch {
-      setCameraError('Camera access denied. Please allow camera permissions.');
+      setCameraError(
+        window.isSecureContext
+          ? 'Camera access denied. Please allow camera permissions.'
+          : 'Camera requires HTTPS. Please access via https://...:8443',
+      );
     }
   }, []);
 
@@ -61,40 +74,67 @@ export default function Scan({ userId }: ScanProps) {
     return stopCamera;
   }, [startCamera, stopCamera]);
 
-  // BarcodeDetector-based scanning
+  // Claim handler (shared by both scanning methods)
+  const handleDetected = useCallback(async (payload: QRPayload) => {
+    stopCamera();
+    setStatus('claiming');
+    setClaimedAmount(payload.amount);
+    setMessage(`Claiming ${payload.amount} SOMS...`);
+    try {
+      await claimTaskReward(userId, payload.task_id, payload.amount);
+      setStatus('success');
+      setMessage(`+${payload.amount} SOMS`);
+    } catch (e) {
+      setStatus('error');
+      setMessage(e instanceof Error ? e.message : 'Claim failed');
+    }
+  }, [userId, stopCamera]);
+
+  // QR scanning loop
   useEffect(() => {
     if (status !== 'scanning') return;
 
-    const detector = 'BarcodeDetector' in window
+    let running = true;
+
+    // Try native BarcodeDetector first, fall back to jsQR
+    const hasBarcodeDetector = 'BarcodeDetector' in window;
+    const detector = hasBarcodeDetector
       ? new (window as unknown as { BarcodeDetector: new (opts: { formats: string[] }) => { detect: (src: HTMLVideoElement) => Promise<{ rawValue: string }[]> } }).BarcodeDetector({ formats: ['qr_code'] })
       : null;
 
-    if (!detector) {
-      setMessage('QR scanning requires BarcodeDetector API (Chrome/Edge).');
-      return;
+    async function scanFrame(): Promise<string | null> {
+      if (!videoRef.current) return null;
+
+      // Native BarcodeDetector (Chrome/Edge)
+      if (detector) {
+        const barcodes = await detector.detect(videoRef.current);
+        if (barcodes.length > 0) return barcodes[0].rawValue;
+        return null;
+      }
+
+      // jsQR fallback (Firefox/Safari/all browsers)
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (!canvas || video.readyState < video.HAVE_ENOUGH_DATA) return null;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+      return code?.data ?? null;
     }
 
-    let running = true;
     async function scan() {
       while (running && videoRef.current) {
         try {
-          const barcodes = await detector!.detect(videoRef.current);
-          for (const barcode of barcodes) {
-            const payload = parseQR(barcode.rawValue);
+          const data = await scanFrame();
+          if (data) {
+            const payload = parseQR(data);
             if (payload) {
               running = false;
-              stopCamera();
-              setStatus('claiming');
-              setClaimedAmount(payload.amount);
-              setMessage(`Claiming ${payload.amount} SOMS...`);
-              try {
-                await claimTaskReward(userId, payload.task_id, payload.amount);
-                setStatus('success');
-                setMessage(`+${payload.amount} SOMS`);
-              } catch (e) {
-                setStatus('error');
-                setMessage(e instanceof Error ? e.message : 'Claim failed');
-              }
+              handleDetected(payload);
               return;
             }
           }
@@ -105,7 +145,7 @@ export default function Scan({ userId }: ScanProps) {
 
     scan();
     return () => { running = false; };
-  }, [status, userId, stopCamera]);
+  }, [status, handleDetected]);
 
   // Auto-navigate to home after success
   useEffect(() => {

@@ -203,13 +203,14 @@ services:
     restart: always
     ports:
       - "${SOMS_PORT_WALLET_APP:-8004}:80"
+      - "${SOMS_PORT_WALLET_APP_HTTPS:-8443}:443"
     depends_on:
       wallet:
         condition: service_healthy
     networks:
       - soms-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --no-check-certificate https://127.0.0.1:443/ || wget -qO /dev/null http://127.0.0.1:80/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
