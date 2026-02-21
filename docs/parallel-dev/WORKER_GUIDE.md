@@ -3,7 +3,7 @@
 All concurrent workers MUST read this document before starting.
 See also:
 - [API_CONTRACTS.md](./API_CONTRACTS.md) — Inter-service API details
-- [`docs/handoff/CURRENT_STATE.md`](../handoff/CURRENT_STATE.md) — Current state and session history
+- [`docs/IMPLEMENTATION_STATUS.md`](../IMPLEMENTATION_STATUS.md) — Implementation status and session history
 
 ---
 
@@ -253,7 +253,7 @@ Adding new route prefixes: coordinate with L4 (nginx.conf owner).
 
 | Document | Purpose |
 |----------|---------|
-| `docs/handoff/CURRENT_STATE.md` | Latest session state, issue tracker |
+| `docs/IMPLEMENTATION_STATUS.md` | Implementation status, session history |
 | `docs/IMPLEMENTATION_STATUS.md` | File-level implementation details |
 | `docs/architecture/wallet-separation.md` | Wallet/dashboard separation design |
 | `docs/SYSTEM_OVERVIEW.md` | High-level architecture |

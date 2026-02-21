@@ -64,26 +64,33 @@ pnpm run lint     # ESLint
 
 ### Testing
 
-Tests are standalone Python scripts (no pytest framework) in `infra/tests/`:
-
+Unit tests (pytest, no running services required — **587 tests total**):
 ```bash
-# Integration test (end-to-end with mock LLM)
-python3 infra/tests/integration/integration_test_mock.py
+# All unit tests (run per-service to avoid conftest collisions)
+for d in services/brain/tests services/auth/tests services/voice/tests services/dashboard/backend/tests services/wallet/tests services/switchbot/tests services/perception/tests; do echo "=== $d ===" && .venv/bin/python -m pytest "$d" -v --tb=short; done
 
-# Individual test scripts
+# Per service
+.venv/bin/python -m pytest services/brain/tests/              # Brain: 167 tests (queue, sanitizer, sensor fusion, tools, executor, dashboard client)
+.venv/bin/python -m pytest services/auth/tests/               # Auth: 97 tests (OAuth, JWT, middleware)
+.venv/bin/python -m pytest services/voice/tests/              # Voice: 79 tests (API endpoints, rejection/acceptance/currency stock)
+.venv/bin/python -m pytest services/dashboard/backend/tests/  # Dashboard: 71 tests (JWT auth, protected endpoints)
+.venv/bin/python -m pytest services/wallet/tests/             # Wallet: 64 tests (JWT auth, financial endpoints)
+.venv/bin/python -m pytest services/switchbot/tests/          # SwitchBot: 59 tests (config, device manager, API)
+.venv/bin/python -m pytest services/perception/tests/         # Perception: 50 tests (ArUco, ReID, tracklet)
+```
+
+Integration tests (standalone scripts, requires running services):
+```bash
+python3 infra/tests/integration/integration_test_mock.py           # Main integration (7 scenarios)
 python3 infra/tests/integration/test_task_scheduling.py
 python3 infra/tests/integration/test_world_model.py
 python3 infra/tests/integration/test_human_task.py
+python3 infra/tests/integration/test_wallet_integration.py         # F.1: Wallet service direct
+python3 infra/tests/e2e/test_wallet_dashboard_e2e.py               # F.3: Wallet <-> Dashboard cross-service
+python3 infra/tests/integration/test_sensor_api.py                 # C.2: Sensor Data API endpoints
 ```
 
-Wallet integration tests (requires running services):
-```bash
-python3 infra/tests/integration/test_wallet_integration.py        # F.1: Wallet service direct
-python3 infra/tests/e2e/test_wallet_dashboard_e2e.py              # F.3: Wallet <-> Dashboard cross-service
-python3 infra/tests/integration/test_sensor_api.py                # C.2: Sensor Data API endpoints
-```
-
-Perception service tests in `services/perception/`:
+Perception diagnostic tests (requires GPU/camera):
 ```bash
 python3 services/perception/test_activity.py
 python3 services/perception/test_discovery.py
@@ -197,11 +204,12 @@ Brain subscribes to `office/#` and `mcp/+/response/#`.
 
 ### Perception Service (`services/perception/src/`)
 
-- Monitors are pluggable: `OccupancyMonitor`, `WhiteboardMonitor`, `ActivityMonitor` (all extend `MonitorBase`)
+- Monitors are pluggable: `OccupancyMonitor`, `WhiteboardMonitor`, `ActivityMonitor`, `TrackingMonitor` (all extend `MonitorBase`)
 - Image sources abstracted: `RTSPSource`, `MQTTSource`, `HTTPStream` via `ImageSourceFactory`
 - `activity_analyzer.py` — Tiered pose buffer (4 tiers, up to 4 hours) with posture normalization
 - `camera_discovery.py` — Async TCP port scan + URL probe + YOLO verification for auto-discovery
-- Monitor config in `config/monitors.yaml` includes YOLO model paths, camera-zone mappings, and discovery settings
+- `tracking/` — MTMC (Multi-Target Multi-Camera) person tracking: `CrossCameraTracker`, `ArUcoCalibrator` (coordinate calibration), `ReIDEmbedder` (person re-identification), `Tracklet`, `MTMCPublisher`, `Homography` (camera-to-floor transform)
+- Monitor config in `services/perception/config/monitors.yaml` includes YOLO model paths, camera-zone mappings, tracker/ReID settings, and discovery settings
 
 ### SwitchBot Cloud Bridge (`services/switchbot/src/`)
 
@@ -309,12 +317,16 @@ Sensor data access uses Repository pattern (`repositories/`): `SensorDataReposit
 | `GET /api/voice/rejection/random` | Random pre-generated rejection voice from stock |
 | `GET /api/voice/rejection/status` | Rejection stock count / generation status |
 | `POST /api/voice/rejection/clear` | Clear and regenerate rejection stock |
+| `GET /api/voice/acceptance/random` | Random pre-generated acceptance voice from stock |
+| `GET /api/voice/acceptance/status` | Acceptance stock count / generation status |
+| `POST /api/voice/acceptance/clear` | Clear and regenerate acceptance stock |
 | `GET /api/voice/currency-units/status` | Currency unit name stock status + sample |
 | `POST /api/voice/currency-units/clear` | Clear currency unit stock and force regeneration |
 | `GET /audio/{filename}` | Serve generated MP3 files |
 | `GET /audio/rejections/{filename}` | Serve rejection stock audio files |
+| `GET /audio/acceptances/{filename}` | Serve acceptance stock audio files |
 
-VOICEVOX speaker ID 47 (ナースロボ_タイプT). `rejection_stock.py` pre-generates up to 100 rejection voices during idle time (LLM text gen + VOICEVOX synthesis). `currency_unit_stock.py` pre-generates humorous currency unit names (text only, max 50) for randomized task announcements.
+VOICEVOX speaker ID 47 (ナースロボ_タイプT). `rejection_stock.py` pre-generates up to 100 rejection voices during idle time (LLM text gen + VOICEVOX synthesis). `acceptance_stock.py` pre-generates up to 50 acceptance voices. `currency_unit_stock.py` pre-generates humorous currency unit names (text only, max 50) for randomized task announcements.
 
 ### Wallet Service API (`services/wallet/src/`)
 

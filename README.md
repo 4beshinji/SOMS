@@ -69,7 +69,7 @@
 | Layer | Directory | Description |
 |-------|-----------|-------------|
 | Central Intelligence | `services/brain/` | LLM-driven ReAct 認知ループ (Think→Act→Observe, 6ツール, 3層安全機構) |
-| Perception | `services/perception/` | YOLOv11 — 在室検知, ホワイトボード, 活動分析 (4層姿勢バッファ) |
+| Perception | `services/perception/` | YOLOv11 — 在室検知, ホワイトボード, 活動分析, MTMC人物追跡 |
 | Communication | MQTT (Mosquitto) | MCP over MQTT — JSON-RPC 2.0 でエッジデバイスを直接制御 |
 | Edge | `edge/` | SensorSwarm Hub-Leaf 2層ネットワーク (ESP-NOW/UART/I2C/BLE) |
 | Human Interface | `services/dashboard/`, `services/voice/` | キオスクダッシュボード + VOICEVOX 音声合成 + モバイルウォレットPWA |
@@ -84,8 +84,10 @@
 | Mock LLM | 8001 | soms-mock-llm |
 | Voice Service | 8002 | soms-voice |
 | Wallet Service | 127.0.0.1:8003 | soms-wallet |
-| Wallet App (PWA) | 8004 | soms-wallet-app |
-| PostgreSQL | 5432 | soms-postgres |
+| Wallet App (PWA) | 8004 (HTTPS: 8443) | soms-wallet-app |
+| SwitchBot Bridge | 8005 | soms-switchbot |
+| Auth Service | 127.0.0.1:8006 | soms-auth |
+| PostgreSQL | 127.0.0.1:5432 | soms-postgres |
 | VOICEVOX Engine | 50021 | soms-voicevox |
 | Ollama (LLM) | 11434 | soms-ollama |
 | MQTT Broker | 1883 | soms-mqtt |
@@ -121,7 +123,9 @@ See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed setup. See [CITY_SCALE_VISI
 │   ├── perception/    YOLOv11 vision system (pluggable monitors, camera discovery)
 │   ├── voice/         VOICEVOX voice synthesis + LLM text generation
 │   ├── wallet/        Double-entry credit ledger + device XP + demurrage
-│   └── wallet-app/    Mobile PWA (balance, QR scan, P2P transfer, history)
+│   ├── wallet-app/    Mobile PWA (balance, QR scan, P2P transfer, history)
+│   ├── auth/          OAuth authentication (Slack + GitHub) + JWT token issuance
+│   └── switchbot/     SwitchBot Cloud Bridge (9 device types, MQTT integration)
 ├── edge/
 │   ├── office/        Production MicroPython firmware (BME680, MH-Z19C)
 │   ├── swarm/         SensorSwarm Hub + Leaf firmware (ESP-NOW, UART, I2C, BLE)
@@ -141,22 +145,41 @@ See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed setup. See [CITY_SCALE_VISI
 - **TTS**: VOICEVOX (Japanese, Speaker ID 47)
 - **Edge**: ESP32 MicroPython + SensorSwarm (Hub-Leaf, binary protocol) + PlatformIO C++
 - **Economy**: Double-entry ledger, demurrage 2%/day, 5% burn, device XP multiplier
-- **Infra**: Docker Compose (12 services), Mosquitto MQTT, nginx
+- **Auth**: OAuth (Slack + GitHub), JWT (HS256), shared secret across services
+- **IoT Bridge**: SwitchBot Cloud API v1.1 (HMAC-SHA256, 9 device types)
+- **Infra**: Docker Compose (14 services), Mosquitto MQTT, nginx
 
 Python + MQTT による純粋なイベント駆動アーキテクチャ。重量級ミドルウェア不使用。
 
 ## Testing
 
-```bash
-# E2E integration test (7 scenarios)
-python3 infra/tests/e2e/e2e_full_test.py
+**587 unit tests** across 7 services (no running services required):
 
-# Individual tests
-python3 infra/tests/integration/integration_test_mock.py
-python3 infra/tests/integration/test_task_scheduling.py
-python3 infra/tests/integration/test_world_model.py
+```bash
+# All unit tests (run per-service to avoid conftest collisions)
+for d in services/brain/tests services/auth/tests services/voice/tests \
+  services/dashboard/backend/tests services/wallet/tests \
+  services/switchbot/tests services/perception/tests; do
+  .venv/bin/python -m pytest "$d" --tb=short
+done
+
+# Per service
+.venv/bin/python -m pytest services/brain/tests/          # 167 tests
+.venv/bin/python -m pytest services/auth/tests/           # 97 tests
+.venv/bin/python -m pytest services/voice/tests/          # 79 tests
+.venv/bin/python -m pytest services/dashboard/backend/tests/  # 71 tests
+.venv/bin/python -m pytest services/wallet/tests/         # 64 tests
+.venv/bin/python -m pytest services/switchbot/tests/      # 59 tests
+.venv/bin/python -m pytest services/perception/tests/     # 50 tests
+```
+
+Integration tests (requires running services):
+
+```bash
+python3 infra/tests/e2e/e2e_full_test.py                 # E2E (7 scenarios)
+python3 infra/tests/integration/integration_test_mock.py  # Mock LLM integration
 python3 infra/tests/integration/test_wallet_integration.py
-python3 infra/tests/integration/test_demurrage.py
+python3 infra/tests/integration/test_sensor_api.py
 ```
 
 ## License

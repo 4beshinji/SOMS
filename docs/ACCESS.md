@@ -15,7 +15,9 @@
 | Mock LLM | 8001 | soms-mock-llm | 開発用LLMシミュレータ |
 | Voice Service | 8002 | soms-voice | Text-to-Speech |
 | Wallet Service | 127.0.0.1:8003 | soms-wallet | クレジット経済API (localhostのみ) |
-| Wallet App (PWA) | 8004 | soms-wallet-app | モバイルウォレット |
+| Wallet App (PWA) | 8004 (HTTPS: 8443) | soms-wallet-app | モバイルウォレット (HTTPS対応) |
+| SwitchBot Bridge | 8005 | soms-switchbot | SwitchBot Cloud Webhook |
+| Auth Service | 127.0.0.1:8006 | soms-auth | OAuth認証 + JWT発行 (localhostのみ) |
 | PostgreSQL | 127.0.0.1:5432 | soms-postgres | データベース (localhostのみ) |
 | VOICEVOX Engine | 50021 | soms-voicevox | 音声合成エンジン |
 | Ollama (LLM) | 11434 | soms-ollama | ローカルLLM (OpenAI互換API) |
@@ -41,7 +43,7 @@ sudo ufw allow 1883/tcp    # MQTT (TCP)
 sudo ufw allow 9001/tcp    # MQTT (WebSocket)
 ```
 
-> **セキュリティ注意**: PostgreSQL (5432) と Wallet Service (8003) は意図的に `127.0.0.1` にバインドされています。外部公開しないでください。
+> **セキュリティ注意**: PostgreSQL (5432)、Wallet Service (8003)、Auth Service (8006) は意図的に `127.0.0.1` にバインドされています。外部公開しないでください。
 
 ## セキュリティに関する注意
 
@@ -79,4 +81,4 @@ docker compose -f infra/docker-compose.yml restart
 
 ---
 
-**更新日**: 2026-02-20
+**更新日**: 2026-02-21

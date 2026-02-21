@@ -120,12 +120,15 @@ docker logs -f soms-backend      # Dashboard API
 | Dashboard Backend | 8000 | soms-backend | タスクCRUD API |
 | Mock LLM | 8001 | soms-mock-llm | テスト用LLMシミュレータ |
 | Voice Service | 8002 | soms-voice | 音声合成 + LLMテキスト生成 |
-| Wallet Service | 8003 | soms-wallet | クレジット経済 (複式簿記) |
-| PostgreSQL | 5432 | soms-postgres | Dashboard/Wallet 共有DB |
+| Wallet Service | 127.0.0.1:8003 | soms-wallet | クレジット経済 (複式簿記) |
+| Wallet App (PWA) | 8004 (HTTPS: 8443) | soms-wallet-app | モバイルウォレット |
+| SwitchBot Bridge | 8005 | soms-switchbot | SwitchBot Cloud Webhook |
+| Auth Service | 127.0.0.1:8006 | soms-auth | OAuth認証 (Slack + GitHub) |
+| PostgreSQL | 127.0.0.1:5432 | soms-postgres | Dashboard/Wallet/Auth 共有DB |
 | VOICEVOX | 50021 | soms-voicevox | 日本語音声合成エンジン |
 | Ollama | 11434 | soms-ollama | LLM推論 (ROCm) |
 | MQTT | 1883 | soms-mqtt | メッセージブローカー |
-| Perception | host network | soms-perception | YOLOv11 画像認識 |
+| Perception | host network | soms-perception | YOLOv11 画像認識 + MTMC追跡 |
 
 ## 6. トラブルシューティング
 

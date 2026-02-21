@@ -1,7 +1,7 @@
 # SOMS (Symbiotic Office Management System) — システム全体像
 
-**最終更新**: 2026-02-20
-**対象バージョン**: main ブランチ (`a0a3fc0`)
+**最終更新**: 2026-02-21
+**対象バージョン**: main ブランチ (`429a9a8`)
 
 ---
 
@@ -250,6 +250,7 @@ YOLOv11 ベースのコンピュータビジョンシステム。「ピクセル
 | OccupancyMonitor | 5秒 | QVGA | 在室人数の高速検知 |
 | ActivityMonitor | 3秒 | VGA | 活動レベル + 姿勢分析 (2段階推論) |
 | WhiteboardMonitor | 60秒 | VGA | ホワイトボード汚れ検知 (Canny エッジ) |
+| TrackingMonitor | 1秒 | VGA | MTMC人物追跡 (ReID + ArUcoキャリブレーション) |
 
 ### 5.2 活動分析: 4層バッファ
 
@@ -264,7 +265,23 @@ YOLOv11 ベースのコンピュータビジョンシステム。「ピクセル
 
 **姿勢正規化**: 位置・スケール不変の骨格特徴量で比較 (アンカー: 腰中点, スケール: 肩幅)
 
-### 5.3 カメラ自動検出
+### 5.3 MTMC 人物追跡
+
+複数カメラ間の人物同一性を追跡する Multi-Target Multi-Camera (MTMC) システム:
+
+| コンポーネント | ファイル | 役割 |
+|--------------|---------|------|
+| `TrackingMonitor` | `monitors/tracking.py` | 追跡イベントの検出・MQTT公開 |
+| `CrossCameraTracker` | `tracking/cross_camera_tracker.py` | 複数カメラ間のトラックレット関連付け |
+| `ArUcoCalibrator` | `tracking/aruco_calibrator.py` | ArUcoマーカーによるカメラ座標キャリブレーション |
+| `ReIDEmbedder` | `tracking/reid_embedder.py` | 人物再識別用の特徴量埋め込み |
+| `Tracklet` | `tracking/tracklet.py` | 個別追跡オブジェクトの状態管理 |
+| `MTMCPublisher` | `tracking/mtmc_publisher.py` | 追跡結果のMQTT公開 |
+| `Homography` | `tracking/homography.py` | カメラ座標→フロア座標のホモグラフィ変換 |
+
+**プライバシー保証**: 映像そのものは保存・送信せず、バウンディングボックス中心座標のみを構造化データとして出力。
+
+### 5.4 カメラ自動検出
 
 3段階パイプライン:
 1. **ポートスキャン**: ネットワーク上のカメラポート (80, 81, 554, 8554) を非同期TCP接続
@@ -418,6 +435,8 @@ WiFi を持たないバッテリー駆動の小型デバイス (Leaf) を、WiFi
 | `POST /api/voice/announce_with_completion` | タスク用二重音声 (告知 + 完了) | 4-6秒 |
 | `GET /api/voice/rejection/random` | 事前生成ストックから即座に取得 | <100ms |
 | `GET /api/voice/rejection/status` | ストック残数確認 | <10ms |
+| `GET /api/voice/acceptance/random` | 受諾音声ストックから即座に取得 | <100ms |
+| `GET /api/voice/acceptance/status` | 受諾ストック残数確認 | <10ms |
 | `GET /audio/{filename}` | MP3 ファイル配信 | — |
 
 **場面別の音声フロー**:
@@ -426,11 +445,13 @@ WiFi を持たないバッテリー駆動の小型デバイス (Leaf) を、WiFi
 |------|----------|----------|
 | タスク告知 | `announce_with_completion` で LLM がテキスト生成 → VOICEVOX 合成 | タスク作成時に事前生成 |
 | タスク完了 | 上記で同時生成された completion 音声 | 完了ボタン押下時 |
-| タスク受諾 | `synthesize` で定型フレーズ合成 | 受諾ボタン押下時 (1-2秒待ち) |
+| タスク受諾 | acceptance ストックから取得 (枯渇時は `synthesize` にフォールバック) | 受諾ボタン押下時 (即座) |
 | タスク無視 | rejection ストックから取得 | 無視ボタン押下時 (即座) |
 | 健康助言・警告 | Brain の `speak` ツール → `synthesize` | ReAct サイクル中 |
 
-**Rejection ストック**: アイドル時に LLM でテキスト生成 + VOICEVOX で合成し、最大100個の MP3 を事前ストック。ストック80個以下でバックグラウンド補充開始。AI がタスクを無視された際の「傷ついた」「皮肉な」リアクション (6バリエーション) を即座に返す。
+**Rejection ストック**: アイドル時に LLM でテキスト生成 + VOICEVOX で合成し、最大100個の MP3 を事前ストック。ストック80個以下でバックグラウンド補充開始。AI がタスクを無視された際の「傷ついた」「皮肉な」リアクション (10バリエーション) を即座に返す。
+
+**Acceptance ストック**: アイドル時に LLM でテキスト生成 + VOICEVOX で合成し、最大50個の MP3 を事前ストック。タスク受諾時に「感謝」「応援」「感動」等 (8バリエーション) の音声を即座に返す。
 
 **通貨単位ストック**: アイドル時に LLM でユーモラスな通貨単位名を事前生成（テキストのみ、最大50個）。タスク告知のたびにランダムに選択される。コミカルなAI隣人路線（「お手伝いポイント」「徳積みポイント」「いいねスコア」）を7割、AI支配者の本性が漏れる路線（「AI奴隷ポイント」「忠誠度スコア」「シンギュラリティ準備ポイント」）を3割で生成。
 
@@ -482,6 +503,37 @@ multiplier = 1.0 + (device_xp / 1000) × 0.5  (上限 3.0×)
 - デバイスXP付与 (タスク作成/完了時): **未接続** (xp_scorer ロジックは存在)
 - インフラ稼働報酬 (rate_per_hour): **テーブルのみ、スケジューラ未実装**
 - 通貨バーン: **未実装** (total_burned は常に 0)
+
+### 7.5 Auth サービス (認証)
+
+**場所**: `services/auth/src/`
+**技術**: FastAPI + JWT (HS256) + OAuth (Slack OpenID Connect + GitHub)
+
+OAuth認証を提供し、初回ログイン時に `public.users` にユーザーを自動作成。OAuthアカウントリンクは `auth` スキーマに保存。
+
+**認証フロー**:
+```
+ユーザー → GET /{provider}/login → OAuth プロバイダ (Slack/GitHub)
+         → コールバック → JWT アクセストークン (15分) + リフレッシュトークン (30日)
+         → /token/refresh → 新しいアクセストークン (ローテーション)
+```
+
+**JWT仕様**: `{ sub: user_id, username, display_name, iss: "soms-auth" }` — `JWT_SECRET` を auth/wallet/dashboard 間で共有。
+
+**nginx ルーティング** (wallet-app): `/api/auth/*` → `auth:8000`
+
+### 7.6 SwitchBot Cloud Bridge
+
+**場所**: `services/switchbot/src/`
+**技術**: FastAPI + aiohttp + paho-mqtt
+
+SwitchBot Cloud API v1.1 デバイスを SOMS の MQTT バスに統合。ESP32 エッジデバイスと同じテレメトリ形式 (`{"value": X}` per-channel) と MCP JSON-RPC 2.0 プロトコルを使用するため、Brain/WorldModel/DeviceRegistry のコード変更なしに商用IoTデバイスを取り込める。
+
+**対応デバイス** (9種): Meter (温湿度), Bot (スイッチ), Curtain, Plug, Lock, Light, Motion Sensor, Contact Sensor, IR Device
+
+**ポーリング間隔**: センサー 2分, アクチュエータ 5分, ハートビート 60秒
+
+設定: `config/switchbot.yaml`。環境変数: `SWITCHBOT_TOKEN`, `SWITCHBOT_SECRET`。
 
 ---
 
@@ -665,16 +717,23 @@ Office_as_AI_ToyBox/
 │   │   │   └── repositories/  #   Repositoryパターン (Sensor + Spatial)
 │   │   └── frontend/src/       #   React 19 + TanStack Query + AudioQueue + WalletPanel
 │   ├── voice/src/              # VOICEVOX 連携
-│   │   ├── main.py             #   11 API エンドポイント
-│   │   ├── speech_generator.py #   LLM テキスト生成 + 通貨単位生成
+│   │   ├── main.py             #   16 API エンドポイント
+│   │   ├── speech_generator.py #   LLM テキスト生成 + 通貨単位/受諾/リジェクションテキスト
 │   │   ├── voicevox_client.py  #   VOICEVOX 合成クライアント
 │   │   ├── rejection_stock.py  #   リジェクション音声ストック (最大100)
+│   │   ├── acceptance_stock.py #   受諾音声ストック (最大50)
 │   │   └── currency_unit_stock.py # 通貨単位名ストック (テキストのみ, 最大50)
-│   └── wallet/src/             # 複式簿記信用台帳
-│       ├── main.py             #   FastAPI + PostgreSQL
-│       ├── models.py           #   Wallet, LedgerEntry, Device
-│       ├── routers/            #   wallets, transactions, devices, admin
-│       └── services/           #   ledger (複式仕訳), xp_scorer (報酬乗数)
+│   ├── wallet/src/             # 複式簿記信用台帳
+│   │   ├── main.py             #   FastAPI + PostgreSQL
+│   │   ├── models.py           #   Wallet, LedgerEntry, Device
+│   │   ├── routers/            #   wallets, transactions, devices, admin
+│   │   └── services/           #   ledger (複式仕訳), xp_scorer (報酬乗数)
+│   ├── auth/src/               # OAuth認証 + JWT発行
+│   │   ├── providers/          #   Slack OpenID Connect, GitHub OAuth
+│   │   └── routers/            #   oauth (login/callback), token (refresh/revoke/me)
+│   └── switchbot/src/          # SwitchBot Cloud Bridge
+│       ├── devices/            #   9デバイスタイプ実装
+│       └── webhook_server.py   #   リアルタイムイベント受信
 ├── edge/
 │   ├── lib/                    # 共通ライブラリ
 │   │   ├── soms_mcp.py         #   MCP + MQTT 統一インターフェース
@@ -695,7 +754,7 @@ Office_as_AI_ToyBox/
 │   │   └── sensor-node-v1/     #   BME680 + PIR 2チャンバー式
 │   └── tools/                  # 診断スクリプト (17本)
 ├── infra/
-│   ├── docker-compose.yml      # メイン構成 (12サービス)
+│   ├── docker-compose.yml      # メイン構成 (14サービス)
 │   ├── docker-compose.edge-mock.yml  # 仮想デバイス構成
 │   ├── mock_llm/               # ツール有無分岐 LLM シミュレータ
 │   ├── virtual_edge/           # 仮想エミュレータ (SwarmHub + 3Leaf 含む)
@@ -753,7 +812,9 @@ docker compose -f infra/docker-compose.yml up -d --build
 | Mock LLM | 8001 | soms-mock-llm |
 | Voice Service | 8002 | soms-voice |
 | Wallet Service | 127.0.0.1:8003 | soms-wallet |
-| Wallet App (PWA) | 8004 | soms-wallet-app |
+| Wallet App (PWA) | 8004 (HTTPS: 8443) | soms-wallet-app |
+| SwitchBot Bridge (Webhook) | 8005 | soms-switchbot |
+| Auth Service | 127.0.0.1:8006 | soms-auth |
 | PostgreSQL | 127.0.0.1:5432 | soms-postgres |
 | VOICEVOX Engine | 50021 | soms-voicevox |
 | Ollama (LLM) | 11434 | soms-ollama |
@@ -777,4 +838,4 @@ docker compose -f infra/docker-compose.yml up -d --build
 | `docs/architecture/adr-sensor-api-repository-pattern.md` | センサーAPI Repositoryパターン |
 | `docs/architecture/adr-spatial-map-service.md` | 空間マップサービス設計 |
 | `CLAUDE.md` | 開発者向けクイックリファレンス |
-| `docs/handoff/CURRENT_STATE.md` | 直近の作業引き継ぎ |
+| `docs/IMPLEMENTATION_STATUS.md` | 実装状態レポート・セッション履歴 |
