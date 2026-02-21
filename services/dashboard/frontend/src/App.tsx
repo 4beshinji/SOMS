@@ -14,6 +14,7 @@ import {
   completeTask,
   type ZoneMultiplierInfo,
 } from './api';
+import { authFetch } from './auth/authFetch';
 import { AuthProvider } from './auth/AuthProvider';
 import { useAuth } from './auth/useAuth';
 import LoginPage from './pages/LoginPage';
@@ -199,7 +200,7 @@ function Dashboard() {
     acceptMutation.mutate(taskId);
 
     enqueueFromApi(async () => {
-      const res = await fetch('/api/voice/acceptance/random');
+      const res = await authFetch('/api/voice/acceptance/random');
       if (!res.ok) return null;
       const data = await res.json();
       return data.audio_url ?? null;
@@ -225,7 +226,7 @@ function Dashboard() {
     setIgnoredTaskIds(prev => new Set(prev).add(taskId));
 
     enqueueFromApi(async () => {
-      const res = await fetch('/api/voice/rejection/random');
+      const res = await authFetch('/api/voice/rejection/random');
       if (!res.ok) return null;
       const data = await res.json();
       return data.audio_url ?? null;

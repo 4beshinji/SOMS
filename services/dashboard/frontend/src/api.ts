@@ -1,5 +1,6 @@
 import { Task, TaskReport } from './components/TaskCard';
 import type { SpatialConfig, LiveSpatialData, HeatmapData } from './types/spatial';
+import { authFetch } from './auth/authFetch';
 
 export interface SystemStats {
   total_xp: number;
@@ -17,7 +18,7 @@ export interface SupplyStats {
 }
 
 export const fetchTasks = async (): Promise<Task[]> => {
-  const res = await fetch('/api/tasks/');
+  const res = await authFetch('/api/tasks/');
   if (!res.ok) throw new Error('Failed to fetch tasks');
   const data = await res.json();
   if (!Array.isArray(data)) throw new Error('Invalid tasks response: expected array');
@@ -25,25 +26,25 @@ export const fetchTasks = async (): Promise<Task[]> => {
 };
 
 export const fetchStats = async (): Promise<SystemStats> => {
-  const res = await fetch('/api/tasks/stats');
+  const res = await authFetch('/api/tasks/stats');
   if (!res.ok) throw new Error('Failed to fetch stats');
   return res.json();
 };
 
 export const fetchSupply = async (): Promise<SupplyStats> => {
-  const res = await fetch('/api/wallet/supply');
+  const res = await authFetch('/api/wallet/supply');
   if (!res.ok) throw new Error('Failed to fetch supply');
   return res.json();
 };
 
 export const fetchVoiceEvents = async (): Promise<{ id: number; audio_url: string }[]> => {
-  const res = await fetch('/api/voice-events/recent');
+  const res = await authFetch('/api/voice-events/recent');
   if (!res.ok) throw new Error('Failed to fetch voice events');
   return res.json();
 };
 
 export const acceptTask = async (taskId: number): Promise<void> => {
-  const res = await fetch(`/api/tasks/${taskId}/accept`, {
+  const res = await authFetch(`/api/tasks/${taskId}/accept`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
@@ -58,7 +59,7 @@ export const completeTask = async ({
   taskId: number;
   report?: TaskReport;
 }): Promise<Task> => {
-  const res = await fetch(`/api/tasks/${taskId}/complete`, {
+  const res = await authFetch(`/api/tasks/${taskId}/complete`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -81,7 +82,7 @@ export interface ZoneMultiplierInfo {
 }
 
 export const fetchZoneMultiplier = async (zone: string): Promise<ZoneMultiplierInfo> => {
-  const res = await fetch(`/api/wallet/devices/zone-multiplier/${encodeURIComponent(zone)}`);
+  const res = await authFetch(`/api/wallet/devices/zone-multiplier/${encodeURIComponent(zone)}`);
   if (!res.ok) throw new Error('Failed to fetch zone multiplier');
   return res.json();
 };
@@ -97,7 +98,7 @@ export interface SensorReading {
 }
 
 export const fetchSensorLatest = async (): Promise<SensorReading[]> => {
-  const res = await fetch('/api/sensors/latest');
+  const res = await authFetch('/api/sensors/latest');
   if (!res.ok) throw new Error('Failed to fetch sensor latest');
   return res.json();
 };
@@ -130,13 +131,13 @@ export interface UpdateDevicePositionRequest {
 }
 
 export const fetchDevicePositions = async (): Promise<DevicePositionResponse[]> => {
-  const res = await fetch('/api/devices/positions/');
+  const res = await authFetch('/api/devices/positions/');
   if (!res.ok) throw new Error('Failed to fetch device positions');
   return res.json();
 };
 
 export const createDevicePosition = async (data: CreateDevicePositionRequest): Promise<DevicePositionResponse> => {
-  const res = await fetch('/api/devices/positions/', {
+  const res = await authFetch('/api/devices/positions/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -146,7 +147,7 @@ export const createDevicePosition = async (data: CreateDevicePositionRequest): P
 };
 
 export const updateDevicePosition = async (deviceId: string, data: UpdateDevicePositionRequest): Promise<DevicePositionResponse> => {
-  const res = await fetch(`/api/devices/positions/${encodeURIComponent(deviceId)}`, {
+  const res = await authFetch(`/api/devices/positions/${encodeURIComponent(deviceId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -156,7 +157,7 @@ export const updateDevicePosition = async (deviceId: string, data: UpdateDeviceP
 };
 
 export const deleteDevicePosition = async (deviceId: string): Promise<void> => {
-  const res = await fetch(`/api/devices/positions/${encodeURIComponent(deviceId)}`, {
+  const res = await authFetch(`/api/devices/positions/${encodeURIComponent(deviceId)}`, {
     method: 'DELETE',
   });
   if (!res.ok) throw new Error('Failed to delete device position');
@@ -165,14 +166,14 @@ export const deleteDevicePosition = async (deviceId: string): Promise<void> => {
 // ── Spatial API ──────────────────────────────────────────────────────
 
 export const fetchSpatialConfig = async (): Promise<SpatialConfig> => {
-  const res = await fetch('/api/sensors/spatial/config');
+  const res = await authFetch('/api/sensors/spatial/config');
   if (!res.ok) throw new Error('Failed to fetch spatial config');
   return res.json();
 };
 
 export const fetchLiveSpatial = async (zone?: string): Promise<LiveSpatialData[]> => {
   const params = zone ? `?zone=${encodeURIComponent(zone)}` : '';
-  const res = await fetch(`/api/sensors/spatial/live${params}`);
+  const res = await authFetch(`/api/sensors/spatial/live${params}`);
   if (!res.ok) throw new Error('Failed to fetch live spatial');
   return res.json();
 };
@@ -180,7 +181,7 @@ export const fetchLiveSpatial = async (zone?: string): Promise<LiveSpatialData[]
 export const fetchHeatmap = async (zone?: string, period: string = 'hour'): Promise<HeatmapData[]> => {
   const params = new URLSearchParams({ period });
   if (zone) params.set('zone', zone);
-  const res = await fetch(`/api/sensors/spatial/heatmap?${params}`);
+  const res = await authFetch(`/api/sensors/spatial/heatmap?${params}`);
   if (!res.ok) throw new Error('Failed to fetch heatmap');
   return res.json();
 };
