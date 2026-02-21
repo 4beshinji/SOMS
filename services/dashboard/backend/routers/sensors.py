@@ -10,10 +10,16 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from repositories.deps import get_sensor_repo
-from repositories.sensor_repository import SensorDataRepository, TimeSeriesQuery
+from repositories.sensor_repository import (
+    SensorDataRepository,
+    TimeSeriesQuery,
+    LLMTimelinePoint as RepoLLMTimelinePoint,
+)
 from sensor_schemas import (
     EventItemResponse,
     LLMActivityResponse,
+    LLMTimelinePoint,
+    LLMTimelineResponse,
     SensorReadingResponse,
     TimeSeriesPoint,
     TimeSeriesResponse,
@@ -132,4 +138,25 @@ async def get_llm_activity(
         total_tool_calls=summary.total_tool_calls,
         avg_duration_sec=summary.avg_duration_sec,
         hours=summary.hours,
+    )
+
+
+@router.get("/llm-timeline", response_model=LLMTimelineResponse)
+async def get_llm_timeline(
+    hours: int = Query(24, ge=1, le=720, description="Lookback window in hours"),
+    repo: SensorDataRepository = Depends(get_sensor_repo),
+):
+    """Hourly-bucketed LLM decision data for timeline charts."""
+    points = await repo.get_llm_timeline(hours=hours)
+    return LLMTimelineResponse(
+        hours=hours,
+        points=[
+            LLMTimelinePoint(
+                timestamp=p.timestamp,
+                cycles=p.cycles,
+                tool_calls=p.tool_calls,
+                avg_duration_sec=p.avg_duration_sec,
+            )
+            for p in points
+        ],
     )

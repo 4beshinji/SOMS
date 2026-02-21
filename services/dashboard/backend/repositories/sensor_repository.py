@@ -63,6 +63,13 @@ class LLMActivitySummary(BaseModel):
     hours: int = 24
 
 
+class LLMTimelinePoint(BaseModel):
+    timestamp: datetime
+    cycles: int = 0
+    tool_calls: int = 0
+    avg_duration_sec: float = 0.0
+
+
 # ── Abstract Repository ─────────────────────────────────────────────
 
 
@@ -91,3 +98,7 @@ class SensorDataRepository(ABC):
     @abstractmethod
     async def get_llm_activity(self, hours: int = 24) -> LLMActivitySummary:
         """LLM decision-making summary for the given period."""
+
+    @abstractmethod
+    async def get_llm_timeline(self, hours: int = 24) -> list[LLMTimelinePoint]:
+        """Hourly-bucketed LLM decision data for timeline charts."""

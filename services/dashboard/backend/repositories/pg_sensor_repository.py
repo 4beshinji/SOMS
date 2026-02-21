@@ -14,6 +14,7 @@ from .sensor_repository import (
     AggregatedReading,
     EventItem,
     LLMActivitySummary,
+    LLMTimelinePoint,
     SensorDataRepository,
     SensorReading,
     TimeSeriesQuery,
@@ -320,3 +321,27 @@ class PgSensorRepository(SensorDataRepository):
                 hours=hours,
             )
         return LLMActivitySummary(hours=hours)
+
+    async def get_llm_timeline(self, hours: int = 24) -> list[LLMTimelinePoint]:
+        result = await self._session.execute(
+            text("""
+                SELECT date_trunc('hour', timestamp) AS hour,
+                       COUNT(*) AS cycles,
+                       COALESCE(SUM(total_tool_calls), 0) AS tool_calls,
+                       COALESCE(AVG(cycle_duration_sec), 0) AS avg_duration
+                FROM events.llm_decisions
+                WHERE timestamp > now() - make_interval(hours => :hours)
+                GROUP BY date_trunc('hour', timestamp)
+                ORDER BY hour ASC
+            """),
+            {"hours": hours},
+        )
+        return [
+            LLMTimelinePoint(
+                timestamp=row[0],
+                cycles=row[1],
+                tool_calls=row[2],
+                avg_duration_sec=round(row[3], 2),
+            )
+            for row in result.fetchall()
+        ]

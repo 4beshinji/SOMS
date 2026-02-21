@@ -15,6 +15,7 @@ import {
   type ZoneMultiplierInfo,
 } from './api';
 import { authFetch } from './auth/authFetch';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './auth/AuthProvider';
 import { useAuth } from './auth/useAuth';
 import LoginPage from './pages/LoginPage';
@@ -442,9 +443,11 @@ function AuthGate() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AuthGate />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

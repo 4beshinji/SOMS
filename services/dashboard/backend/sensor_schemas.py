@@ -48,3 +48,15 @@ class LLMActivityResponse(BaseModel):
     total_tool_calls: int = 0
     avg_duration_sec: float = 0.0
     hours: int = 24
+
+
+class LLMTimelinePoint(BaseModel):
+    timestamp: datetime
+    cycles: int = 0
+    tool_calls: int = 0
+    avg_duration_sec: float = 0.0
+
+
+class LLMTimelineResponse(BaseModel):
+    hours: int = 24
+    points: list[LLMTimelinePoint] = []

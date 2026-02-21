@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { authFetch } from '../auth/authFetch';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -57,26 +58,26 @@ async function fetchSensorTimeSeries(
   const params = new URLSearchParams({ window });
   if (zone) params.set('zone', zone);
   if (channel) params.set('channel', channel);
-  const res = await fetch(`/api/sensors/time-series?${params}`);
+  const res = await authFetch(`/api/sensors/time-series?${params}`);
   if (!res.ok) throw new Error('Failed to fetch time series');
   return res.json();
 }
 
 async function fetchLLMActivity(hours: number = 24): Promise<LLMActivity> {
-  const res = await fetch(`/api/sensors/llm-activity?hours=${hours}`);
+  const res = await authFetch(`/api/sensors/llm-activity?hours=${hours}`);
   if (!res.ok) throw new Error('Failed to fetch LLM activity');
   return res.json();
 }
 
 async function fetchZoneOverview(): Promise<ZoneSnapshot[]> {
-  const res = await fetch('/api/sensors/zones');
+  const res = await authFetch('/api/sensors/zones');
   if (!res.ok) throw new Error('Failed to fetch zone overview');
   return res.json();
 }
 
 async function fetchSensorLatest(zone?: string): Promise<SensorReading[]> {
   const params = zone ? `?zone=${encodeURIComponent(zone)}` : '';
-  const res = await fetch(`/api/sensors/latest${params}`);
+  const res = await authFetch(`/api/sensors/latest${params}`);
   if (!res.ok) throw new Error('Failed to fetch sensor latest');
   return res.json();
 }
@@ -87,7 +88,7 @@ async function fetchEvents(
 ): Promise<EventItem[]> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (zone) params.set('zone', zone);
-  const res = await fetch(`/api/sensors/events?${params}`);
+  const res = await authFetch(`/api/sensors/events?${params}`);
   if (!res.ok) throw new Error('Failed to fetch events');
   return res.json();
 }
@@ -135,5 +136,33 @@ export function useEvents(zone?: string, limit: number = 50) {
     queryKey: ['events', zone, limit],
     queryFn: () => fetchEvents(zone, limit),
     refetchInterval: 15_000,
+  });
+}
+
+// ── LLM Timeline ────────────────────────────────────────────────────
+
+export interface LLMTimelinePoint {
+  timestamp: string;
+  cycles: number;
+  tool_calls: number;
+  avg_duration_sec: number;
+}
+
+export interface LLMTimelineResponse {
+  hours: number;
+  points: LLMTimelinePoint[];
+}
+
+async function fetchLLMTimeline(hours: number = 24): Promise<LLMTimelineResponse> {
+  const res = await authFetch(`/api/sensors/llm-timeline?hours=${hours}`);
+  if (!res.ok) throw new Error('Failed to fetch LLM timeline');
+  return res.json();
+}
+
+export function useLLMTimeline(hours: number = 24) {
+  return useQuery({
+    queryKey: ['llmTimeline', hours],
+    queryFn: () => fetchLLMTimeline(hours),
+    refetchInterval: 60_000,
   });
 }
