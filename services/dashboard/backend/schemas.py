@@ -65,6 +65,11 @@ class Task(TaskBase):
         from_attributes = True
 
 
+class TaskCompleteResponse(Task):
+    """Extended task response returned after completion, includes reward multiplier info."""
+    reward_multiplier: Optional[float] = None       # Zone device XP multiplier (1.0-3.0)
+    reward_adjusted_bounty: Optional[int] = None     # bounty_gold * multiplier
+
 class TaskComplete(BaseModel):
     report_status: Optional[str] = None  # no_issue / resolved / needs_followup / cannot_resolve
     completion_note: Optional[str] = None  # Free-text (max 500 chars)

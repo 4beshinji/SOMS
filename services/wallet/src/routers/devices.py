@@ -193,16 +193,35 @@ async def update_utility_score(
 
 @router.get("/zone-multiplier/{zone}")
 async def get_zone_multiplier(zone: str, db: AsyncSession = Depends(get_db)):
-    """Get the average reward multiplier for devices in a zone."""
+    """Get the average reward multiplier for devices in a zone, with per-device breakdown."""
     devices = await find_zone_devices(db, zone)
     if not devices:
-        return {"zone": zone, "multiplier": 1.0, "device_count": 0, "avg_xp": 0}
+        return {
+            "zone": zone,
+            "multiplier": 1.0,
+            "device_count": 0,
+            "avg_xp": 0,
+            "devices": [],
+        }
 
-    avg_xp = sum(d.xp for d in devices) / len(devices)
+    total_xp = sum(d.xp for d in devices)
+    avg_xp = total_xp / len(devices)
     multiplier = compute_reward_multiplier(int(avg_xp))
+
+    # Per-device breakdown with contribution ratio
+    device_details = []
+    for d in devices:
+        contribution = d.xp / total_xp if total_xp > 0 else 1.0 / len(devices)
+        device_details.append({
+            "device_id": d.device_id,
+            "xp": d.xp,
+            "contribution": round(contribution, 4),
+        })
+
     return {
         "zone": zone,
         "multiplier": multiplier,
         "device_count": len(devices),
         "avg_xp": int(avg_xp),
+        "devices": device_details,
     }

@@ -70,6 +70,22 @@ export const completeTask = async ({
   return res.json();
 };
 
+// ── Zone Multiplier API ─────────────────────────────────────────────
+
+export interface ZoneMultiplierInfo {
+  zone: string;
+  multiplier: number;
+  device_count: number;
+  avg_xp: number;
+  devices: { device_id: string; xp: number; contribution: number }[];
+}
+
+export const fetchZoneMultiplier = async (zone: string): Promise<ZoneMultiplierInfo> => {
+  const res = await fetch(`/api/wallet/devices/zone-multiplier/${encodeURIComponent(zone)}`);
+  if (!res.ok) throw new Error('Failed to fetch zone multiplier');
+  return res.json();
+};
+
 // ── Sensor API ──────────────────────────────────────────────────────
 
 export interface SensorReading {

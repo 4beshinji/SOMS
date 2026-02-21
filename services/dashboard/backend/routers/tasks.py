@@ -265,7 +265,7 @@ async def accept_task(
     return _task_to_response(task)
 
 
-@router.put("/{task_id}/complete", response_model=schemas.Task)
+@router.put("/{task_id}/complete", response_model=schemas.TaskCompleteResponse)
 async def complete_task(
     task_id: int,
     body: schemas.TaskComplete = None,
@@ -300,9 +300,10 @@ async def complete_task(
         await _grant_device_xp(task.zone, task.id, 20, "task_completed")
 
     # Pay bounty via wallet service (fire-and-forget)
+    multiplier = 1.0
+    adjusted_bounty = task.bounty_gold or 0
     if task.assigned_to and task.bounty_gold:
         # Apply zone device XP multiplier (1.0x-3.0x)
-        multiplier = 1.0
         if task.zone:
             multiplier = await _get_zone_multiplier(task.zone)
         adjusted_bounty = int(task.bounty_gold * multiplier)
@@ -324,7 +325,13 @@ async def complete_task(
     # Publish task report to MQTT (fire-and-forget, for Brain consumption)
     _publish_task_report(task)
 
-    return _task_to_response(task)
+    # Build response with multiplier info
+    base = _task_to_response(task)
+    return schemas.TaskCompleteResponse(
+        **base.model_dump(),
+        reward_multiplier=round(multiplier, 2),
+        reward_adjusted_bounty=adjusted_bounty,
+    )
 
 @router.put("/{task_id}/reminded", response_model=schemas.Task)
 async def mark_task_reminded(task_id: int, db: AsyncSession = Depends(get_db)):

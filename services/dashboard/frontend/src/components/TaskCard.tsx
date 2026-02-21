@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, Coins, Zap, Circle, AlertCircle, AlertTriangle, QrCode, X } from 'lucide-react';
+import { MapPin, Coins, Zap, Circle, AlertCircle, AlertTriangle, QrCode, X, TrendingUp } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Card from './ui/Card';
 import Badge from './ui/Badge';
 import Button from './ui/Button';
+import type { ZoneMultiplierInfo } from '../api';
 
 export interface Task {
     id: number;
@@ -25,6 +26,9 @@ export interface Task {
     assigned_to?: number;
     report_status?: string;
     completion_note?: string;
+    zone?: string;
+    reward_multiplier?: number;
+    reward_adjusted_bounty?: number;
 }
 
 export interface TaskReport {
@@ -35,6 +39,7 @@ export interface TaskReport {
 interface TaskCardProps {
     task: Task;
     isAccepted?: boolean;
+    zoneMultiplier?: ZoneMultiplierInfo;
     onAccept?: (taskId: number) => void;
     onComplete?: (taskId: number, report?: TaskReport) => void;
     onIgnore?: (taskId: number) => void;
@@ -69,7 +74,7 @@ const REPORT_STATUSES = [
     { value: 'cannot_resolve', label: '対応不可' },
 ] as const;
 
-export default function TaskCard({ task, isAccepted, onAccept, onComplete, onIgnore }: TaskCardProps) {
+export default function TaskCard({ task, isAccepted, zoneMultiplier, onAccept, onComplete, onIgnore }: TaskCardProps) {
     const urgencyBadge = getUrgencyBadge(task.urgency ?? 2);
     const [showReport, setShowReport] = useState(false);
     const [reportStatus, setReportStatus] = useState('');
@@ -112,6 +117,24 @@ export default function TaskCard({ task, isAccepted, onAccept, onComplete, onIgn
                         {task.bounty_xp} システム活動値
                     </Badge>
                 </div>
+
+                {/* Reward multiplier display */}
+                {task.is_completed && task.reward_multiplier != null && task.reward_multiplier > 1.0 && (
+                    <div className="flex items-center gap-1.5 text-sm text-[var(--gold-dark)] bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-lg px-3 py-1.5">
+                        <TrendingUp size={14} />
+                        <span>
+                            {task.bounty_gold} x {task.reward_multiplier.toFixed(1)}x = <span className="font-bold">{task.reward_adjusted_bounty} SOMS</span>
+                        </span>
+                    </div>
+                )}
+                {!task.is_completed && zoneMultiplier && zoneMultiplier.multiplier > 1.0 && (
+                    <div className="flex items-center gap-1.5 text-xs text-[var(--gold-dark)] bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-lg px-2.5 py-1">
+                        <TrendingUp size={12} />
+                        <span>
+                            ゾーンボーナス {zoneMultiplier.multiplier.toFixed(1)}x ({zoneMultiplier.device_count} devices, avg {zoneMultiplier.avg_xp} XP)
+                        </span>
+                    </div>
+                )}
 
                 {/* Actions */}
                 {!task.is_completed && !isAccepted && (
@@ -260,7 +283,7 @@ export default function TaskCard({ task, isAccepted, onAccept, onComplete, onIgn
                                 <X size={20} />
                             </button>
                             <QRCodeSVG
-                                value={`soms://reward?task_id=${task.id}&amount=${task.bounty_gold}`}
+                                value={`soms://reward?task_id=${task.id}&amount=${task.reward_adjusted_bounty ?? task.bounty_gold}`}
                                 size={280}
                                 level="M"
                             />
@@ -269,8 +292,13 @@ export default function TaskCard({ task, isAccepted, onAccept, onComplete, onIgn
                             </p>
                             <div className="mt-2 flex items-center justify-center gap-1 text-[var(--gold-dark)]">
                                 <Coins size={18} />
-                                <span className="text-xl font-bold">{task.bounty_gold} SOMS</span>
+                                <span className="text-xl font-bold">{task.reward_adjusted_bounty ?? task.bounty_gold} SOMS</span>
                             </div>
+                            {task.reward_multiplier != null && task.reward_multiplier > 1.0 && (
+                                <p className="text-xs text-[var(--gray-500)] mt-1">
+                                    {task.bounty_gold} x {task.reward_multiplier.toFixed(1)}x multiplier
+                                </p>
+                            )}
                             <p className="text-sm text-[var(--gray-500)] mt-2">
                                 {task.title}
                             </p>

@@ -5,6 +5,11 @@ import uuid
 app = FastAPI()
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "mock-llm"}
+
+
 def _make_tool_call(name: str, arguments: dict) -> dict:
     """Helper to build an OpenAI-format tool_call."""
     return {

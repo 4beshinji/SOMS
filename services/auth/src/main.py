@@ -28,3 +28,8 @@ app.include_router(token.router)
 @app.get("/")
 async def root():
     return {"message": "SOMS Auth Service Running"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "auth"}

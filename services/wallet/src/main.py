@@ -106,3 +106,8 @@ app.include_router(pools.public_router)
 @app.get("/")
 async def root():
     return {"message": "SOMS Wallet Service Running"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "wallet"}

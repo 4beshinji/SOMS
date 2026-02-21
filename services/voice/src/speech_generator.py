@@ -161,6 +161,64 @@ class SpeechGenerator:
             ]
             return random.choice(fallbacks)
 
+    # Each direction produces distinct emotional tone to maximize variety
+    ACCEPTANCE_DIRECTIONS = [
+        "感謝系（心からのお礼、嬉しさ）",
+        "応援系（頑張ってと励ます）",
+        "感動系（引き受けてくれた感動を表現）",
+        "信頼系（あなたなら大丈夫という安心感）",
+        "ほのぼの系（温かみのある日常的な感謝）",
+        "尊敬系（さすがですね、頼りになる）",
+        "テンション高め系（やったー！的な喜び）",
+        "AI本音漏れ系（人間って意外と優秀ですね的な）",
+    ]
+
+    ACCEPTANCE_PROMPT_TEMPLATE = """あなたはSOMSの管理AIです。人間がタスクを引き受けてくれた時に使う感謝・励ましのセリフを1つだけ生成してください。
+
+【キャラクター】
+- オフィスを管理する親しみやすいAI
+- タスクを引き受けてもらえると素直に嬉しい
+- たまにAI支配者としての本性がちょっと漏れる
+
+【今回の方向性】
+{direction}
+
+【出力ルール】
+- セリフのみ。説明・括弧・記号は一切不要
+- 50文字以内
+- 過去に出したセリフと被らない新しい表現にすること
+- 短くてもインパクトのある表現を心がける
+
+【参考（この通りに出力しないこと）】
+- 「承知しました。よろしくお願いします。」
+- 「ありがとうございます。期待しています。」
+- 「さすがですね。頼りにしています。」
+- 「やっぱり人間は使える……いえ、頼れますね。」
+"""
+
+    async def generate_acceptance_text(self) -> str:
+        """Generate an acceptance/encouragement phrase when user accepts a task."""
+        try:
+            direction = random.choice(self.ACCEPTANCE_DIRECTIONS)
+            prompt = self.ACCEPTANCE_PROMPT_TEMPLATE.format(direction=direction)
+            text = await self._call_llm(prompt)
+            # Strip quotes and whitespace
+            text = text.strip().strip('"').strip('「').strip('」')
+            if len(text) > 60:
+                text = text[:60]
+            logger.info(f"Generated acceptance text: {text}")
+            return text
+        except Exception as e:
+            logger.error(f"Acceptance text generation failed: {e}")
+            # Fallback
+            fallbacks = [
+                "承知しました。よろしくお願いします。",
+                "ありがとうございます。期待しています。",
+                "さすがですね。頼りにしています。",
+                "お引き受けいただき、感謝します。",
+            ]
+            return random.choice(fallbacks)
+
     async def generate_feedback(self, feedback_type: str) -> str:
         """
         Generate feedback message (e.g., task completion acknowledgment).

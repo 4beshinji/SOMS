@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import TaskCard, { TaskReport } from './components/TaskCard';
 import { FloorPlanView } from './components/FloorPlan';
@@ -9,23 +9,19 @@ import {
   fetchStats,
   fetchSupply,
   fetchVoiceEvents,
+  fetchZoneMultiplier,
   acceptTask,
   completeTask,
+  type ZoneMultiplierInfo,
 } from './api';
+import { AuthProvider } from './auth/AuthProvider';
+import { useAuth } from './auth/useAuth';
+import LoginPage from './pages/LoginPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 
-type ActiveView = 'tasks' | 'floorplan';
+type ActiveView = 'tasks' | 'floorplan' | 'analytics';
 
-const ACCEPT_PHRASES = [
-  "承知しました。よろしくお願いします。",
-  "ありがとうございます。期待しています。",
-  "さすがですね。頼りにしています。",
-];
-
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function App() {
+function Dashboard() {
   const queryClient = useQueryClient();
 
   const [activeView, setActiveView] = useState<ActiveView>('tasks');
@@ -81,6 +77,33 @@ function App() {
   const loading = tasksQuery.isLoading;
   const systemStats = statsQuery.data ?? null;
   const supply = supplyQuery.data ?? null;
+
+  // Collect unique zones from active tasks for multiplier fetching
+  const activeZones = useMemo(() => {
+    const zones = new Set<string>();
+    for (const t of tasks) {
+      if (t.zone && !t.is_completed) zones.add(t.zone);
+    }
+    return Array.from(zones);
+  }, [tasks]);
+
+  const zoneMultiplierQueries = useQueries({
+    queries: activeZones.map(zone => ({
+      queryKey: ['zoneMultiplier', zone],
+      queryFn: () => fetchZoneMultiplier(zone),
+      refetchInterval: 30000,
+      staleTime: 15000,
+    })),
+  });
+
+  const zoneMultipliers = useMemo(() => {
+    const map: Record<string, ZoneMultiplierInfo> = {};
+    activeZones.forEach((zone, i) => {
+      const data = zoneMultiplierQueries[i]?.data;
+      if (data) map[zone] = data;
+    });
+    return map;
+  }, [activeZones, zoneMultiplierQueries]);
 
   // Restore accepted state from server on data load
   useEffect(() => {
@@ -176,12 +199,7 @@ function App() {
     acceptMutation.mutate(taskId);
 
     enqueueFromApi(async () => {
-      const text = pickRandom(ACCEPT_PHRASES);
-      const res = await fetch('/api/voice/synthesize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      });
+      const res = await fetch('/api/voice/acceptance/random');
       if (!res.ok) return null;
       const data = await res.json();
       return data.audio_url ?? null;
@@ -256,6 +274,16 @@ function App() {
               >
                 Floor Plan
               </button>
+              <button
+                onClick={() => setActiveView('analytics')}
+                className={`px-4 py-2 text-sm rounded-md transition-all ${
+                  activeView === 'analytics'
+                    ? 'bg-white text-[var(--primary-600)] shadow-sm font-medium'
+                    : 'text-[var(--gray-500)] hover:text-[var(--gray-700)]'
+                }`}
+              >
+                Analytics
+              </button>
             </div>
 
             {/* System Stats + Supply */}
@@ -299,71 +327,123 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        {activeView === 'tasks' ? (
-          <>
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-[var(--gray-900)] mb-2">
-                お願い事一覧
-              </h2>
-              <p className="text-[var(--gray-600)]">
-                タスクを完了して報酬を受け取りましょう。スマホのウォレットアプリで QR コードを読み取ってください。
-              </p>
-            </div>
+      {activeView === 'analytics' ? (
+        <AnalyticsPage />
+      ) : (
+        <main className="max-w-6xl mx-auto px-6 py-8">
+          {activeView === 'tasks' ? (
+            <>
+              <div className="mb-6">
+                <h2 className="text-2xl font-semibold text-[var(--gray-900)] mb-2">
+                  お願い事一覧
+                </h2>
+                <p className="text-[var(--gray-600)]">
+                  タスクを完了して報酬を受け取りましょう。スマホのウォレットアプリで QR コードを読み取ってください。
+                </p>
+              </div>
 
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[var(--primary-500)] border-t-transparent"></div>
-                  <p className="text-[var(--gray-600)] mt-4">タスクを読み込み中...</p>
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[var(--primary-500)] border-t-transparent"></div>
+                    <p className="text-[var(--gray-600)] mt-4">タスクを読み込み中...</p>
+                  </div>
                 </div>
+              ) : tasks.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-[var(--gray-500)] text-lg">現在利用可能なタスクはありません。</p>
+                  <p className="text-[var(--gray-400)] text-sm mt-2">新しいタスクが追加されるまでお待ちください！</p>
+                </div>
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.5 }}
+                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                >
+                  {visibleTasks.map((task, index) => (
+                    <motion.div
+                      key={task.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <TaskCard
+                        task={task}
+                        isAccepted={acceptedTaskIds.has(task.id)}
+                        zoneMultiplier={task.zone ? zoneMultipliers[task.zone] : undefined}
+                        onAccept={handleAccept}
+                        onComplete={handleComplete}
+                        onIgnore={handleIgnore}
+                      />
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="mb-6">
+                <h2 className="text-2xl font-semibold text-[var(--gray-900)] mb-2">
+                  Floor Plan
+                </h2>
+                <p className="text-[var(--gray-600)]">
+                  Office spatial overview with real-time occupancy data.
+                </p>
               </div>
-            ) : tasks.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-[var(--gray-500)] text-lg">現在利用可能なタスクはありません。</p>
-                <p className="text-[var(--gray-400)] text-sm mt-2">新しいタスクが追加されるまでお待ちください！</p>
-              </div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5 }}
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-              >
-                {visibleTasks.map((task, index) => (
-                  <motion.div
-                    key={task.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <TaskCard
-                      task={task}
-                      isAccepted={acceptedTaskIds.has(task.id)}
-                      onAccept={handleAccept}
-                      onComplete={handleComplete}
-                      onIgnore={handleIgnore}
-                    />
-                  </motion.div>
-                ))}
-              </motion.div>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-[var(--gray-900)] mb-2">
-                Floor Plan
-              </h2>
-              <p className="text-[var(--gray-600)]">
-                Office spatial overview with real-time occupancy data.
-              </p>
-            </div>
-            <FloorPlanView />
-          </>
-        )}
-      </main>
+              <FloorPlanView />
+            </>
+          )}
+        </main>
+      )}
     </div>
+  );
+}
+
+function AuthGate() {
+  const { isAuthenticated, isLoading, user, logout } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[var(--gray-50)]">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[var(--primary-500)] border-t-transparent"></div>
+          <p className="text-[var(--gray-600)] mt-4">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
+  return (
+    <>
+      {/* User info bar */}
+      <div className="bg-[var(--primary-500)] text-white text-sm">
+        <div className="max-w-6xl mx-auto px-6 py-1.5 flex justify-between items-center">
+          <span>
+            {user?.display_name || user?.username}
+          </span>
+          <button
+            onClick={logout}
+            className="text-white/80 hover:text-white transition-colors cursor-pointer"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+      <Dashboard />
+    </>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
   );
 }
 

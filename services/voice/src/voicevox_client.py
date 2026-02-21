@@ -21,6 +21,7 @@ class VoicevoxClient:
     ANNOUNCEMENT_SPEAKERS = [SPEAKER_NORMAL]
     REJECTION_SPEAKERS = [SPEAKER_NORMAL, SPEAKER_COOL]
     COMPLETION_SPEAKERS = [SPEAKER_NORMAL, SPEAKER_HAPPY]
+    ACCEPTANCE_SPEAKERS = [SPEAKER_NORMAL, SPEAKER_HAPPY]
 
     @classmethod
     def pick_speaker(cls, context: str = "announcement") -> int:
@@ -29,6 +30,7 @@ class VoicevoxClient:
             "announcement": cls.ANNOUNCEMENT_SPEAKERS,
             "rejection": cls.REJECTION_SPEAKERS,
             "completion": cls.COMPLETION_SPEAKERS,
+            "acceptance": cls.ACCEPTANCE_SPEAKERS,
         }.get(context, cls.ANNOUNCEMENT_SPEAKERS)
         return random.choice(pool)
     

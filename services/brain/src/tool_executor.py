@@ -173,6 +173,28 @@ class ToolExecutor:
             "result": f"デバイスコマンド実行完了: {agent_id}/{tool_name} -> {json.dumps(result, ensure_ascii=False)}",
         }
 
+    async def fetch_acceptance_audio(self) -> str | None:
+        """
+        Fetch a pre-generated acceptance audio URL from the voice service stock.
+        Returns the audio URL on success, None on failure.
+        Used when Brain detects a task has been accepted and wants to play audio.
+        """
+        try:
+            async with self._session.get(
+                f"{self.voice_url}/api/voice/acceptance/random",
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    audio_url = data.get("audio_url")
+                    logger.info(f"Fetched acceptance audio: {audio_url}")
+                    return audio_url
+                else:
+                    logger.warning(f"Acceptance audio fetch failed: {resp.status}")
+        except Exception as e:
+            logger.warning(f"Acceptance audio fetch error: {e}")
+        return None
+
     async def _handle_get_zone_status(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get detailed zone status from WorldModel."""
         zone_id = args.get("zone_id", "")

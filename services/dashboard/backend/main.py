@@ -75,3 +75,8 @@ app.include_router(devices.router)
 @app.get("/")
 async def root():
     return {"message": "SOMS Dashboard API Running"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "dashboard-backend"}

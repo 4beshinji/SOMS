@@ -10,6 +10,7 @@ from models import TaskAnnounceRequest, SynthesizeRequest, VoiceResponse, DualVo
 from voicevox_client import VoicevoxClient
 from speech_generator import SpeechGenerator
 from rejection_stock import RejectionStock, idle_generation_loop
+from acceptance_stock import AcceptanceStock, idle_acceptance_generation_loop
 from currency_unit_stock import CurrencyUnitStock, idle_currency_generation_loop
 
 # Initialize clients
@@ -22,6 +23,9 @@ speech_gen.currency_stock = currency_unit_stock
 
 # Rejection voice stock
 rejection_stock = RejectionStock(speech_gen, voice_client)
+
+# Acceptance voice stock
+acceptance_stock = AcceptanceStock(speech_gen, voice_client)
 
 # Audio storage directory
 AUDIO_DIR = Path("/app/audio")
@@ -41,12 +45,14 @@ def estimate_audio_duration(audio_data: bytes) -> float:
 async def lifespan(app: FastAPI):
     # Start idle generation background tasks
     rejection_task = asyncio.create_task(idle_generation_loop(rejection_stock))
+    acceptance_task = asyncio.create_task(idle_acceptance_generation_loop(acceptance_stock))
     currency_task = asyncio.create_task(idle_currency_generation_loop(currency_unit_stock))
-    logger.info("Background idle generation tasks started (rejection + currency)")
+    logger.info("Background idle generation tasks started (rejection + acceptance + currency)")
     yield
     rejection_task.cancel()
+    acceptance_task.cancel()
     currency_task.cancel()
-    for t in [rejection_task, currency_task]:
+    for t in [rejection_task, acceptance_task, currency_task]:
         try:
             await t
         except asyncio.CancelledError:
@@ -105,6 +111,7 @@ async def synthesize_text(request: SynthesizeRequest):
     Used by the speak tool where the Brain LLM has already generated the message.
     """
     rejection_stock.request_started()
+    acceptance_stock.request_started()
     currency_unit_stock.request_started()
     try:
         logger.info(f"Synthesizing text: {request.text[:50]}...")
@@ -132,6 +139,7 @@ async def synthesize_text(request: SynthesizeRequest):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         rejection_stock.request_finished()
+        acceptance_stock.request_finished()
         currency_unit_stock.request_finished()
 
 @app.post("/api/voice/announce", response_model=VoiceResponse)
@@ -146,6 +154,7 @@ async def announce_task(request: TaskAnnounceRequest):
     4. Return audio URL and metadata
     """
     rejection_stock.request_started()
+    acceptance_stock.request_started()
     currency_unit_stock.request_started()
     try:
         logger.info(f"Announcing task: {request.task.title}")
@@ -176,6 +185,7 @@ async def announce_task(request: TaskAnnounceRequest):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         rejection_stock.request_finished()
+        acceptance_stock.request_finished()
         currency_unit_stock.request_finished()
 
 @app.post("/api/voice/feedback/{feedback_type}")
@@ -187,6 +197,7 @@ async def generate_feedback(feedback_type: str):
         feedback_type: Type of feedback ('task_completed', 'task_accepted')
     """
     rejection_stock.request_started()
+    acceptance_stock.request_started()
     currency_unit_stock.request_started()
     try:
         logger.info(f"Generating feedback: {feedback_type}")
@@ -217,6 +228,7 @@ async def generate_feedback(feedback_type: str):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         rejection_stock.request_finished()
+        acceptance_stock.request_finished()
         currency_unit_stock.request_finished()
 
 @app.post("/api/voice/announce_with_completion", response_model=DualVoiceResponse)
@@ -233,6 +245,7 @@ async def announce_task_with_completion(request: TaskAnnounceRequest):
     5. Return both audio URLs and metadata
     """
     rejection_stock.request_started()
+    acceptance_stock.request_started()
     currency_unit_stock.request_started()
     try:
         logger.info(f"Generating dual voice for task: {request.task.title}")
@@ -283,6 +296,7 @@ async def announce_task_with_completion(request: TaskAnnounceRequest):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         rejection_stock.request_finished()
+        acceptance_stock.request_finished()
         currency_unit_stock.request_finished()
 
 @app.get("/api/voice/rejection/random")
@@ -299,6 +313,7 @@ async def get_random_rejection():
     # Fallback: generate on-demand (slower, but avoids silence)
     logger.warning("Rejection stock empty, generating on-demand")
     rejection_stock.request_started()
+    acceptance_stock.request_started()
     currency_unit_stock.request_started()
     try:
         text = await speech_gen.generate_rejection_text()
@@ -314,6 +329,7 @@ async def get_random_rejection():
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         rejection_stock.request_finished()
+        acceptance_stock.request_finished()
         currency_unit_stock.request_finished()
 
 
@@ -333,6 +349,58 @@ async def clear_rejection_stock():
     """Clear all pre-generated rejection stock and force regeneration."""
     await rejection_stock.clear_all()
     return {"status": "cleared", "stock_count": rejection_stock.count}
+
+
+@app.get("/api/voice/acceptance/random")
+async def get_random_acceptance():
+    """
+    Get a random pre-generated acceptance voice from stock.
+    Returns instantly (no synthesis latency) if stock is available.
+    Falls back to on-demand synthesis if stock is empty.
+    """
+    entry = await acceptance_stock.get_random()
+    if entry:
+        return entry
+
+    # Fallback: generate on-demand (slower, but avoids silence)
+    logger.warning("Acceptance stock empty, generating on-demand")
+    rejection_stock.request_started()
+    acceptance_stock.request_started()
+    currency_unit_stock.request_started()
+    try:
+        text = await speech_gen.generate_acceptance_text()
+        acceptance_speaker = VoicevoxClient.pick_speaker("acceptance")
+        audio_data = await voice_client.synthesize(text, speaker_id=acceptance_speaker)
+        audio_id = str(uuid.uuid4())[:8]
+        audio_filename = f"acceptance_ondemand_{audio_id}.mp3"
+        audio_path = AUDIO_DIR / audio_filename
+        await voice_client.save_audio(audio_data, audio_path)
+        return {"audio_url": f"/audio/{audio_filename}", "text": text}
+    except Exception as e:
+        logger.error(f"On-demand acceptance generation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        rejection_stock.request_finished()
+        acceptance_stock.request_finished()
+        currency_unit_stock.request_finished()
+
+
+@app.get("/api/voice/acceptance/status")
+async def get_acceptance_status():
+    """Get current acceptance voice stock status."""
+    return {
+        "stock_count": acceptance_stock.count,
+        "max_stock": 50,
+        "is_generating": not acceptance_stock.is_idle,
+        "needs_refill": acceptance_stock.needs_refill,
+    }
+
+
+@app.post("/api/voice/acceptance/clear")
+async def clear_acceptance_stock():
+    """Clear all pre-generated acceptance stock and force regeneration."""
+    await acceptance_stock.clear_all()
+    return {"status": "cleared", "stock_count": acceptance_stock.count}
 
 
 @app.get("/api/voice/currency-units/status")
@@ -357,6 +425,18 @@ async def clear_currency_unit_stock():
 async def serve_rejection_audio(filename: str):
     """Serve pre-generated rejection audio files."""
     from rejection_stock import STOCK_DIR
+    audio_path = STOCK_DIR / filename
+
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="Audio not found")
+
+    return FileResponse(audio_path, media_type="audio/mpeg")
+
+
+@app.get("/audio/acceptances/{filename}")
+async def serve_acceptance_audio(filename: str):
+    """Serve pre-generated acceptance audio files."""
+    from acceptance_stock import STOCK_DIR
     audio_path = STOCK_DIR / filename
 
     if not audio_path.exists():
