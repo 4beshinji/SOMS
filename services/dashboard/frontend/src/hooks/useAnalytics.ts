@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { authFetch } from '../auth/authFetch';
+import type { HeatmapData } from '../types/spatial';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -163,6 +164,54 @@ export function useLLMTimeline(hours: number = 24) {
   return useQuery({
     queryKey: ['llmTimeline', hours],
     queryFn: () => fetchLLMTimeline(hours),
+    refetchInterval: 60_000,
+  });
+}
+
+// ── Device Status ────────────────────────────────────────────────────
+
+export interface DeviceStatus {
+  device_id: string;
+  device_type: string;
+  display_name: string | null;
+  is_active: boolean;
+  battery_pct: number | null;
+  power_mode: string;
+  last_heartbeat_at: string | null;
+  xp: number;
+  utility_score: number;
+}
+
+async function fetchDeviceStatus(): Promise<DeviceStatus[]> {
+  const res = await authFetch('/api/wallet/devices/');
+  if (!res.ok) throw new Error('Failed to fetch device status');
+  return res.json();
+}
+
+export function useDeviceStatus() {
+  return useQuery({
+    queryKey: ['deviceStatus'],
+    queryFn: fetchDeviceStatus,
+    refetchInterval: 30_000,
+  });
+}
+
+// ── Heatmap ─────────────────────────────────────────────────────────
+
+export type { HeatmapData };
+
+async function fetchHeatmapData(zone?: string, period: string = 'hour'): Promise<HeatmapData[]> {
+  const params = new URLSearchParams({ period });
+  if (zone) params.set('zone', zone);
+  const res = await authFetch(`/api/sensors/spatial/heatmap?${params}`);
+  if (!res.ok) throw new Error('Failed to fetch heatmap');
+  return res.json();
+}
+
+export function useHeatmap(zone?: string, period: string = 'hour') {
+  return useQuery({
+    queryKey: ['heatmap', zone, period],
+    queryFn: () => fetchHeatmapData(zone, period),
     refetchInterval: 60_000,
   });
 }
