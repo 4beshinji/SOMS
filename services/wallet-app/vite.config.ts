@@ -7,6 +7,10 @@ export default defineConfig({
   server: {
     port: 5174,
     proxy: {
+      '/api/auth': {
+        target: 'http://localhost:8006',
+        rewrite: (path) => path.replace(/^\/api\/auth/, ''),
+      },
       '/api/wallet': {
         target: 'http://localhost:8003',
         rewrite: (path) => path.replace(/^\/api\/wallet/, ''),

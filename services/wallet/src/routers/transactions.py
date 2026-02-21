@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -20,6 +22,7 @@ from services.monetary_policy import (
     calc_min_transfer,
     get_circulating,
 )
+from jwt_auth import AuthUser, require_auth, get_current_user
 
 import os
 REGION_ID = os.getenv("SOMS_REGION_ID", "local")
@@ -52,8 +55,15 @@ async def task_reward(body: TaskRewardRequest, db: AsyncSession = Depends(get_db
 
 
 @router.post("/p2p-transfer", response_model=P2PTransferResponse)
-async def p2p_transfer(body: P2PTransferRequest, db: AsyncSession = Depends(get_db)):
+async def p2p_transfer(
+    body: P2PTransferRequest,
+    db: AsyncSession = Depends(get_db),
+    auth_user: Optional[AuthUser] = Depends(get_current_user),
+):
     """Transfer funds between two user wallets (fee is burned)."""
+    # If authenticated, verify the sender matches the JWT user
+    if auth_user and auth_user.id != body.from_user_id:
+        raise HTTPException(status_code=403, detail="Cannot transfer from another user's wallet")
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 

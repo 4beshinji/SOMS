@@ -1,11 +1,13 @@
 /**
  * Wallet Service API client.
  *
- * In dev mode, Vite proxies /api/wallet/* → wallet service at :8003.
+ * In dev mode, Vite proxies /api/wallet/* -> wallet service at :8003.
  * In production, nginx handles the routing.
  *
  * See docs/parallel-dev/API_CONTRACTS.md §2 for full contract details.
  */
+
+import { authFetch } from '../auth/authFetch';
 
 const BASE = import.meta.env.VITE_WALLET_API_URL || '/api/wallet';
 
@@ -46,31 +48,31 @@ export interface TransferFeeInfo {
 }
 
 export async function getWallet(userId: number): Promise<Wallet> {
-  const res = await fetch(`${BASE}/wallets/${userId}`);
+  const res = await authFetch(`${BASE}/wallets/${userId}`);
   if (!res.ok) throw new Error(`Failed to get wallet: ${res.status}`);
   return res.json();
 }
 
 export async function getHistory(userId: number, limit = 50, offset = 0): Promise<LedgerEntry[]> {
-  const res = await fetch(`${BASE}/wallets/${userId}/history?limit=${limit}&offset=${offset}`);
+  const res = await authFetch(`${BASE}/wallets/${userId}/history?limit=${limit}&offset=${offset}`);
   if (!res.ok) throw new Error(`Failed to get history: ${res.status}`);
   return res.json();
 }
 
 export async function getSupply(): Promise<SupplyStats> {
-  const res = await fetch(`${BASE}/supply`);
+  const res = await authFetch(`${BASE}/supply`);
   if (!res.ok) throw new Error(`Failed to get supply: ${res.status}`);
   return res.json();
 }
 
 export async function previewFee(amount: number): Promise<TransferFeeInfo> {
-  const res = await fetch(`${BASE}/transactions/transfer-fee?amount=${amount}`);
+  const res = await authFetch(`${BASE}/transactions/transfer-fee?amount=${amount}`);
   if (!res.ok) throw new Error(`Failed to preview fee: ${res.status}`);
   return res.json();
 }
 
 export async function sendTransfer(fromUserId: number, toUserId: number, amount: number, description?: string) {
-  const res = await fetch(`${BASE}/transactions/p2p-transfer`, {
+  const res = await authFetch(`${BASE}/transactions/p2p-transfer`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ from_user_id: fromUserId, to_user_id: toUserId, amount, description }),
@@ -83,7 +85,7 @@ export async function sendTransfer(fromUserId: number, toUserId: number, amount:
 }
 
 export async function claimTaskReward(userId: number, taskId: number, amount: number) {
-  const res = await fetch(`${BASE}/transactions/task-reward`, {
+  const res = await authFetch(`${BASE}/transactions/task-reward`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId, amount, task_id: taskId }),

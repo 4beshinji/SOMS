@@ -50,7 +50,7 @@ docker logs -f soms-brain
 docker logs -f soms-perception
 ```
 
-Service names in docker-compose: `mosquitto`, `brain`, `postgres`, `backend`, `frontend`, `voicevox`, `voice-service`, `wallet`, `wallet-app`, `ollama`, `mock-llm`, `perception`, `switchbot`
+Service names in docker-compose: `mosquitto`, `brain`, `postgres`, `backend`, `frontend`, `voicevox`, `voice-service`, `wallet`, `wallet-app`, `auth`, `ollama`, `mock-llm`, `perception`, `switchbot`
 
 ### Frontend Development
 
@@ -121,6 +121,7 @@ python3 services/perception/test_yolo_detect.py
 | PostgreSQL | 127.0.0.1:5432 (localhost only) | soms-postgres |
 | VOICEVOX Engine | 50021 | soms-voicevox |
 | Ollama (LLM) | 11434 | soms-ollama |
+| Auth Service | 127.0.0.1:8006 (localhost only) | soms-auth |
 | SwitchBot Bridge (Webhook) | 8005 | soms-switchbot |
 | MQTT | 1883 (TCP) / 9001 (WebSocket) | soms-mqtt |
 
@@ -215,6 +216,25 @@ Bridges SwitchBot Cloud API v1.1 devices into SOMS via MQTT. Uses the same telem
 - `devices/` — Device type implementations (meter, bot, curtain, plug, lock, light, motion_sensor, contact_sensor, ir_device)
 
 Config: `config/switchbot.yaml`. Env vars: `SWITCHBOT_TOKEN`, `SWITCHBOT_SECRET`.
+
+### Auth Service (`services/auth/src/`)
+
+OAuth-based authentication service (Slack + GitHub) with JWT token issuance. Shares the same PostgreSQL database as other services. Creates users in `public.users` on first OAuth login and stores OAuth account links in `auth` schema.
+
+- `main.py` — FastAPI app, lifespan creates `auth` schema and tables
+- `config.py` — Settings from environment variables
+- `database.py` — SQLAlchemy async engine (same pattern as wallet)
+- `models.py` — `OAuthAccount`, `RefreshToken` (auth schema)
+- `schemas.py` — Pydantic request/response models
+- `security.py` — JWT (HS256) generation/verification, OAuth state tokens
+- `user_service.py` — User lookup/auto-creation in `public.users`
+- `providers/` — OAuth provider implementations (base ABC, Slack OpenID Connect, GitHub OAuth)
+- `routers/oauth.py` — `GET /{provider}/login`, `GET /{provider}/callback`
+- `routers/token.py` — `POST /token/refresh`, `POST /token/revoke`, `GET /token/me`
+
+**JWT Spec**: HS256, 15min access token (`{ sub: user_id, username, display_name, iss: "soms-auth" }`), 30-day refresh token (SHA-256 hashed, single-use rotation). Shared `JWT_SECRET` env var across auth/wallet/dashboard.
+
+**nginx routing** (wallet-app): `/api/auth/*` → auth:8000
 
 ### nginx Routing (`services/dashboard/frontend/nginx.conf`)
 
@@ -389,5 +409,10 @@ Key variables in `.env` (see `env.example`):
 - `DATABASE_URL` — `postgresql+asyncpg://user:pass@postgres:5432/soms` (Docker)
 - `POSTGRES_USER` / `POSTGRES_PASSWORD` — PostgreSQL credentials (default: `soms` / `soms_dev_password`)
 - `RTSP_URL` — Camera feed URL (dev: `rtsp://virtual-camera:8554/live`)
+- `JWT_SECRET` — Shared JWT signing secret (auth/wallet/dashboard, default: `soms_dev_jwt_secret_change_me`)
+- `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` — Slack OAuth app credentials
+- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` — GitHub OAuth app credentials
+- `AUTH_BASE_URL` — Auth service public URL for OAuth callbacks (default: `https://localhost:8443/api/auth`)
+- `FRONTEND_URL` — Wallet-app URL for post-auth redirect (default: `https://localhost:8443`)
 - `TZ` — Timezone (default: `Asia/Tokyo`)
 - `HSA_OVERRIDE_GFX_VERSION` — AMD GPU compatibility override (e.g. `12.0.1` for RDNA4)

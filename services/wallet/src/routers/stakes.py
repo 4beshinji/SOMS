@@ -4,7 +4,7 @@ Allows device owners to open funding, and investors to buy/return shares.
 """
 
 import logging
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,7 @@ from schemas import (
 from services.stake_service import (
     open_funding, close_funding, buy_shares, return_shares,
 )
+from jwt_auth import AuthUser, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +79,11 @@ async def api_buy_shares(
     device_id: str,
     body: StakeBuyRequest,
     db: AsyncSession = Depends(get_db),
+    auth_user: Optional[AuthUser] = Depends(get_current_user),
 ):
     """Investor buys shares with SOMS."""
+    if auth_user and auth_user.id != body.user_id:
+        raise HTTPException(status_code=403, detail="Cannot buy shares for another user")
     try:
         stake = await buy_shares(db, device_id, body.user_id, body.shares)
         await db.commit()
@@ -99,8 +103,11 @@ async def api_return_shares(
     device_id: str,
     body: StakeReturnRequest,
     db: AsyncSession = Depends(get_db),
+    auth_user: Optional[AuthUser] = Depends(get_current_user),
 ):
     """Investor returns shares. System buys back at share_price."""
+    if auth_user and auth_user.id != body.user_id:
+        raise HTTPException(status_code=403, detail="Cannot return shares for another user")
     try:
         stake = await return_shares(db, device_id, body.user_id, body.shares)
         await db.commit()

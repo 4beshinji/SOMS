@@ -1,12 +1,14 @@
 /**
  * Stakes / Investment API client.
  *
- * Follows the same pattern as wallet.ts (bare fetch, BASE URL, error handling).
+ * Follows the same pattern as wallet.ts (authFetch, BASE URL, error handling).
  */
+
+import { authFetch } from '../auth/authFetch';
 
 const BASE = import.meta.env.VITE_WALLET_API_URL || '/api/wallet';
 
-// ── Types ──────────────────────────────────────────────
+// -- Types ----------------------------------------------------------
 
 export interface Device {
   id: number;
@@ -70,22 +72,22 @@ export interface PoolListItem {
   created_at: string;
 }
 
-// ── API Functions ──────────────────────────────────────
+// -- API Functions --------------------------------------------------
 
 export async function getDevices(): Promise<Device[]> {
-  const res = await fetch(`${BASE}/devices/`);
+  const res = await authFetch(`${BASE}/devices/`);
   if (!res.ok) throw new Error(`Failed to get devices: ${res.status}`);
   return res.json();
 }
 
 export async function getDeviceFunding(deviceId: string): Promise<DeviceFundingResponse> {
-  const res = await fetch(`${BASE}/devices/${deviceId}/stakes`);
+  const res = await authFetch(`${BASE}/devices/${deviceId}/stakes`);
   if (!res.ok) throw new Error(`Failed to get device funding: ${res.status}`);
   return res.json();
 }
 
 export async function buyShares(deviceId: string, userId: number, shares: number): Promise<StakeResponse> {
-  const res = await fetch(`${BASE}/devices/${deviceId}/stakes/buy`, {
+  const res = await authFetch(`${BASE}/devices/${deviceId}/stakes/buy`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId, shares }),
@@ -98,7 +100,7 @@ export async function buyShares(deviceId: string, userId: number, shares: number
 }
 
 export async function returnShares(deviceId: string, userId: number, shares: number): Promise<StakeResponse> {
-  const res = await fetch(`${BASE}/devices/${deviceId}/stakes/return`, {
+  const res = await authFetch(`${BASE}/devices/${deviceId}/stakes/return`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId, shares }),
@@ -111,13 +113,13 @@ export async function returnShares(deviceId: string, userId: number, shares: num
 }
 
 export async function getPortfolio(userId: number): Promise<PortfolioResponse> {
-  const res = await fetch(`${BASE}/users/${userId}/portfolio`);
+  const res = await authFetch(`${BASE}/users/${userId}/portfolio`);
   if (!res.ok) throw new Error(`Failed to get portfolio: ${res.status}`);
   return res.json();
 }
 
 export async function getPools(): Promise<PoolListItem[]> {
-  const res = await fetch(`${BASE}/pools`);
+  const res = await authFetch(`${BASE}/pools`);
   if (!res.ok) throw new Error(`Failed to get pools: ${res.status}`);
   return res.json();
 }

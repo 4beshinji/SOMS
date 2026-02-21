@@ -96,6 +96,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-soms}:${POSTGRES_PASSWORD:-soms_dev_password}@postgres:5432/soms
       - MQTT_BROKER=mosquitto
+      - JWT_SECRET=${JWT_SECRET:-soms_dev_jwt_secret_change_me}
     networks:
       - soms-net
     healthcheck:
@@ -185,12 +186,43 @@ services:
       - MQTT_PORT=1883
       - MQTT_USER=${MQTT_USER:-soms}
       - MQTT_PASS=${MQTT_PASS:-soms_dev_mqtt}
+      - JWT_SECRET=${JWT_SECRET:-soms_dev_jwt_secret_change_me}
     volumes:
       - ../services/wallet/src:/app
     networks:
       - soms-net
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # --- Auth Service ---
+  auth:
+    build: ../services/auth
+    container_name: soms-auth
+    restart: always
+    ports:
+      - "127.0.0.1:${SOMS_PORT_AUTH:-8006}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-soms}:${POSTGRES_PASSWORD:-soms_dev_password}@postgres:5432/soms
+      - JWT_SECRET=${JWT_SECRET:-soms_dev_jwt_secret_change_me}
+      - SLACK_CLIENT_ID=${SLACK_CLIENT_ID:-}
+      - SLACK_CLIENT_SECRET=${SLACK_CLIENT_SECRET:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - AUTH_BASE_URL=${AUTH_BASE_URL:-https://localhost:8443/api/auth}
+      - FRONTEND_URL=${FRONTEND_URL:-https://localhost:8443}
+    volumes:
+      - ../services/auth/src:/app
+    networks:
+      - soms-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -206,6 +238,8 @@ services:
       - "${SOMS_PORT_WALLET_APP_HTTPS:-8443}:443"
     depends_on:
       wallet:
+        condition: service_healthy
+      auth:
         condition: service_healthy
     networks:
       - soms-net
