@@ -12,7 +12,7 @@ def create_access_token(user_id: int, username: str, display_name: str | None) -
     expires_in = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     exp = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
-        "sub": user_id,
+        "sub": str(user_id),
         "username": username,
         "display_name": display_name or username,
         "iss": "soms-auth",
