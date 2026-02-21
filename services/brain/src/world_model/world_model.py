@@ -8,6 +8,7 @@ from typing import Dict, Optional, List
 from .data_classes import (
     ZoneState, EnvironmentData, OccupancyData, DeviceState, Event,
     SpatialDetection, ZoneSpatialData, ZoneMetadata,
+    TrackedPersonData, TrackingData,
 )
 from .sensor_fusion import SensorFusion
 
@@ -180,6 +181,8 @@ class WorldModel:
             self._update_activity(zone, payload)
         elif device_type == "spatial":
             self._update_spatial(zone, payload, device_id)
+        elif device_type == "tracking":
+            self._update_tracking(zone, payload)
         elif device_type == "task_report":
             self._handle_task_report(zone, payload, device_id)
         elif device_type in ["hvac", "light", "coffee_machine"]:
@@ -327,13 +330,16 @@ class WorldModel:
         zone.spatial.image_size = payload.get("image_size", [640, 480])
         zone.spatial.last_spatial_update = current_time
 
-        # Parse person detections
+        # Parse person detections (with optional tracking fields)
         zone.spatial.persons = [
             SpatialDetection(
                 class_name="person",
                 center_px=p.get("center_px", []),
                 bbox_px=p.get("bbox_px", []),
                 confidence=p.get("confidence", 0.0),
+                track_id=p.get("track_id"),
+                global_id=p.get("global_id"),
+                floor_position_m=p.get("floor_position_m"),
             )
             for p in payload.get("persons", [])
         ]
@@ -368,6 +374,20 @@ class WorldModel:
                 )
             except Exception:
                 pass  # Non-blocking
+
+    def _update_tracking(self, zone: ZoneState, payload: dict):
+        """Update cross-camera tracking data from MTMCPublisher."""
+        zone.tracking.person_count = payload.get("person_count", 0)
+        zone.tracking.last_update = time.time()
+        zone.tracking.persons = [
+            TrackedPersonData(**p) for p in payload.get("persons", [])
+        ]
+        # Tracking provides more accurate occupancy than single-camera vision
+        zone.occupancy.vision_count = zone.tracking.person_count
+        zone.occupancy.person_count = self.sensor_fusion.integrate_occupancy(
+            vision_count=zone.tracking.person_count,
+            pir_active=zone.occupancy.pir_detected,
+        )
 
     def _accumulate_heatmap(self, zone: ZoneState, current_time: float):
         """Map pixel-space person positions to grid cells for heatmap."""
@@ -710,6 +730,18 @@ class WorldModel:
                     obj_counts = Counter(o.class_name for o in zone.spatial.objects)
                     obj_str = ", ".join(f"{name}x{cnt}" for name, cnt in obj_counts.most_common(5))
                     summary += f"- 検出物: {obj_str}\n"
+
+            # Tracking summary (cross-camera person tracking)
+            if zone.tracking.persons and current_time - zone.tracking.last_update < 30:
+                summary += f"- 追跡中: {zone.tracking.person_count}人\n"
+                for tp in zone.tracking.persons[:5]:  # Show up to 5 tracked persons
+                    dur_min = int(tp.duration_sec / 60)
+                    cams = ", ".join(tp.cameras) if tp.cameras else "?"
+                    summary += (
+                        f"  - ID#{tp.global_id}: "
+                        f"({tp.floor_x_m:.1f}m, {tp.floor_y_m:.1f}m) "
+                        f"{dur_min}分滞在 cameras=[{cams}]\n"
+                    )
 
             # Adjacent zone occupancy
             if zone.metadata.adjacent_zones:

@@ -90,6 +90,30 @@ ALTER TABLE events.raw_events ADD COLUMN IF NOT EXISTS region_id TEXT NOT NULL D
 ALTER TABLE events.llm_decisions ADD COLUMN IF NOT EXISTS region_id TEXT NOT NULL DEFAULT 'local';
 ALTER TABLE events.hourly_aggregates ADD COLUMN IF NOT EXISTS region_id TEXT NOT NULL DEFAULT 'local';
 ALTER TABLE events.spatial_snapshots ADD COLUMN IF NOT EXISTS region_id TEXT NOT NULL DEFAULT 'local';
+
+CREATE TABLE IF NOT EXISTS events.tracking_snapshots (
+    id          BIGSERIAL PRIMARY KEY,
+    timestamp   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    person_count INTEGER NOT NULL DEFAULT 0,
+    data        JSONB NOT NULL DEFAULT '{}',
+    region_id   TEXT NOT NULL DEFAULT 'local'
+);
+
+CREATE INDEX IF NOT EXISTS idx_tracking_snapshots_ts
+    ON events.tracking_snapshots USING BRIN (timestamp);
+
+CREATE TABLE IF NOT EXISTS events.person_tracks (
+    id          BIGSERIAL PRIMARY KEY,
+    global_id   INTEGER NOT NULL,
+    first_seen  TIMESTAMPTZ NOT NULL,
+    last_seen   TIMESTAMPTZ NOT NULL,
+    zone_transitions JSONB NOT NULL DEFAULT '[]',
+    total_duration_sec REAL NOT NULL DEFAULT 0,
+    region_id   TEXT NOT NULL DEFAULT 'local'
+);
+
+CREATE INDEX IF NOT EXISTS idx_person_tracks_global_id
+    ON events.person_tracks (global_id);
 """
 
 

@@ -267,4 +267,51 @@ zones:
     grid_cols: 3
     grid_rows: 3
 devices: {}
-cameras: {}
+
+# ArUco marker world coordinates (floor-plane meters)
+# Each marker has 4 corners in order: top-left, top-right, bottom-right, bottom-left
+# Use DICT_4X4_50 (marker IDs 0-49)
+# Place at least 4 markers within each camera's FOV for calibration
+aruco_markers:
+  "0":
+    corners: [[15.0, 5.0], [15.1, 5.0], [15.1, 5.1], [15.0, 5.1]]
+  "1":
+    corners: [[20.0, 5.0], [20.1, 5.0], [20.1, 5.1], [20.0, 5.1]]
+  "2":
+    corners: [[15.0, 10.0], [15.1, 10.0], [15.1, 10.1], [15.0, 10.1]]
+  "3":
+    corners: [[20.0, 10.0], [20.1, 10.0], [20.1, 10.1], [20.0, 10.1]]
+  "4":
+    corners: [[17.0, 7.0], [17.1, 7.0], [17.1, 7.1], [17.0, 7.1]]
+  "5":
+    corners: [[13.0, 10.0], [13.1, 10.0], [13.1, 10.1], [13.0, 10.1]]
+  "6":
+    corners: [[18.0, 12.0], [18.1, 12.0], [18.1, 12.1], [18.0, 12.1]]
+  "7":
+    corners: [[5.0, 10.0], [5.1, 10.0], [5.1, 10.1], [5.0, 10.1]]
+
+cameras:
+  cam_192_168_128_172:
+    zone: kitchen
+    position: [16.0, 7.0]
+    resolution: [640, 480]
+    fov_deg: 90.0
+    orientation_deg: 180.0
+  cam_192_168_128_173:
+    zone: meeting_room_b
+    position: [14.0, 11.0]
+    resolution: [640, 480]
+    fov_deg: 90.0
+    orientation_deg: 0.0
+  cam_192_168_128_177:
+    zone: desk_area_a
+    position: [18.0, 4.0]
+    resolution: [640, 480]
+    fov_deg: 90.0
+    orientation_deg: 270.0
+  cam_192_168_128_178:
+    zone: entrance
+    position: [20.0, 12.0]
+    resolution: [640, 480]
+    fov_deg: 90.0
+    orientation_deg: 90.0

@@ -150,6 +150,27 @@ class SpatialDetection(BaseModel):
     center_px: List[float] = Field(default_factory=list)   # [cx, cy]
     bbox_px: List[float] = Field(default_factory=list)      # [x1, y1, x2, y2]
     confidence: float = 0.0
+    track_id: Optional[int] = None          # Per-camera BoT-SORT local ID
+    global_id: Optional[int] = None         # Cross-camera global ID
+    floor_position_m: Optional[List[float]] = None  # [x_m, y_m] floor coords
+
+
+class TrackedPersonData(BaseModel):
+    """A single person tracked across cameras."""
+    global_id: int
+    floor_x_m: float = 0.0
+    floor_y_m: float = 0.0
+    zone: str = ""
+    cameras: List[str] = Field(default_factory=list)
+    confidence: float = 0.0
+    duration_sec: float = 0.0
+
+
+class TrackingData(BaseModel):
+    """Cross-camera tracking state for a zone."""
+    persons: List[TrackedPersonData] = Field(default_factory=list)
+    person_count: int = 0
+    last_update: float = 0.0
 
 
 class ZoneSpatialData(BaseModel):
@@ -183,6 +204,7 @@ class ZoneState(BaseModel):
     occupancy: OccupancyData = Field(default_factory=OccupancyData)
     devices: Dict[str, DeviceState] = Field(default_factory=dict)
     spatial: ZoneSpatialData = Field(default_factory=ZoneSpatialData)
+    tracking: TrackingData = Field(default_factory=TrackingData)
     metadata: ZoneMetadata = Field(default_factory=ZoneMetadata)
     
     # Event history (recent events only)

@@ -34,3 +34,28 @@ yolo:
 mqtt:
   broker: localhost
   port: 1883
+
+tracking:
+  enabled: true
+  tracker: botsort.yaml
+  reid_model: osnet_x0_5
+  publish_interval_sec: 0.5
+  calibration:
+    auto_calibrate: true
+    cache_path: /app/config/calibration_cache.json
+    aruco_dict: DICT_4X4_50
+    min_markers: 4
+  association:
+    reid_weight: 0.5
+    spatial_weight: 0.3
+    temporal_weight: 0.2
+    match_threshold: 0.5
+    spatial_gate_m: 5.0
+    temporal_gate_s: 30.0
+    tracklet_timeout_s: 60.0
+    global_track_timeout_s: 300.0
+  cameras:
+    - camera_id: cam_192_168_128_172
+      zone_name: kitchen
+    - camera_id: cam_192_168_128_178
+      zone_name: entrance

@@ -131,6 +131,126 @@ async def main():
         })
         logger.info(f"=== Discovery Complete: {len(discovery_results)} cameras added ===")
 
+    # --- Tracking Pipeline ---
+    tracking_config = config.get("tracking", {})
+    if tracking_config.get("enabled", False):
+        logger.info("=== Tracking Pipeline Starting ===")
+
+        # Load spatial config (ArUco markers + zone polygons)
+        spatial_path = Path(__file__).parent.parent.parent.parent / "config" / "spatial.yaml"
+        spatial_config = {}
+        zone_polygons = {}
+        aruco_markers = {}
+        cameras_config = {}
+
+        if spatial_path.exists():
+            with open(spatial_path) as f:
+                spatial_config = yaml.safe_load(f) or {}
+            aruco_markers = spatial_config.get("aruco_markers", {})
+            cameras_config = spatial_config.get("cameras", {})
+            for zone_id, zone_data in spatial_config.get("zones", {}).items():
+                polygon = zone_data.get("polygon", [])
+                if polygon:
+                    zone_polygons[zone_id] = polygon
+            logger.info(
+                "Spatial config: %d ArUco markers, %d zones, %d cameras",
+                len(aruco_markers), len(zone_polygons), len(cameras_config),
+            )
+        else:
+            logger.warning("No spatial.yaml found at %s", spatial_path)
+
+        # Initialize ArUco calibrator
+        from tracking.aruco_calibrator import ArucoCalibrator
+
+        calib_config = tracking_config.get("calibration", {})
+        calibrator = ArucoCalibrator.get_instance(
+            aruco_markers=aruco_markers,
+            aruco_dict_name=calib_config.get("aruco_dict", "DICT_4X4_50"),
+            cache_path=calib_config.get("cache_path"),
+        )
+
+        # Initialize ReID embedder
+        from tracking.reid_embedder import ReIDEmbedder
+
+        reid_model = tracking_config.get("reid_model", "osnet_x0_5")
+        ReIDEmbedder.get_instance(reid_model)
+
+        # Create cross-camera tracker
+        from tracking.cross_camera_tracker import CrossCameraTracker
+
+        assoc = tracking_config.get("association", {})
+        cross_tracker = CrossCameraTracker(
+            zone_polygons=zone_polygons,
+            reid_weight=assoc.get("reid_weight", 0.5),
+            spatial_weight=assoc.get("spatial_weight", 0.3),
+            temporal_weight=assoc.get("temporal_weight", 0.2),
+            match_threshold=assoc.get("match_threshold", 0.5),
+            spatial_gate_m=assoc.get("spatial_gate_m", 5.0),
+            temporal_gate_s=assoc.get("temporal_gate_s", 30.0),
+            tracklet_timeout_s=assoc.get("tracklet_timeout_s", 60.0),
+            global_track_timeout_s=assoc.get("global_track_timeout_s", 300.0),
+        )
+
+        # Create per-camera TrackingMonitors
+        from monitors.tracking import TrackingMonitor
+
+        tracker_cfg_name = tracking_config.get("tracker", "botsort.yaml")
+        tracker_cfg_path = str(
+            Path(__file__).parent.parent / "config" / "tracker" / tracker_cfg_name
+        )
+
+        tracking_cameras = tracking_config.get("cameras", [])
+        for cam_cfg in tracking_cameras:
+            cam_id = cam_cfg["camera_id"]
+            zone = cam_cfg["zone_name"]
+
+            # Create image source for this camera if it was discovered
+            source = None
+            for name, monitor in scheduler.monitors.items():
+                if hasattr(monitor, 'camera_id') and monitor.camera_id == cam_id:
+                    source = monitor._image_source
+                    break
+
+            track_monitor = TrackingMonitor(
+                camera_id=cam_id,
+                zone_name=zone,
+                cross_camera_tracker=cross_tracker,
+                model_path=yolo_config.get("model", "yolo11s.pt"),
+                tracker_config=tracker_cfg_path,
+                image_source=source,
+            )
+            scheduler.register_monitor(f"tracking_{cam_id}", track_monitor)
+
+        # Auto-calibrate cameras
+        if calib_config.get("auto_calibrate", True):
+            # Collect image sources from tracking monitors
+            track_sources = {}
+            for name, monitor in scheduler.monitors.items():
+                if name.startswith("tracking_") and monitor._image_source is not None:
+                    track_sources[monitor.camera_id] = monitor._image_source
+
+            if track_sources:
+                min_markers = calib_config.get("min_markers", 4)
+                results = await calibrator.calibrate_all(
+                    cameras_config, track_sources, min_markers
+                )
+                for r in results:
+                    status = r.get("status", "unknown")
+                    cam = r.get("camera_id", "?")
+                    await publisher.publish("office/perception/calibration", r)
+                    logger.info("Calibration %s: %s", cam, status)
+
+        # Create and register MTMC publisher
+        from tracking.mtmc_publisher import MTMCPublisher
+
+        mtmc_publisher = MTMCPublisher(
+            tracker=cross_tracker,
+            publish_interval_sec=tracking_config.get("publish_interval_sec", 0.5),
+        )
+        scheduler.register_service("mtmc_publisher", mtmc_publisher)
+
+        logger.info("=== Tracking Pipeline Ready ===")
+
     logger.info("=== Vision Service Ready ===")
 
     # Start monitoring
