@@ -1,0 +1,43 @@
+# SwitchBot Cloud Bridge Configuration
+# Token/Secret: set via SWITCHBOT_TOKEN / SWITCHBOT_SECRET env vars
+
+api:
+  token: "${SWITCHBOT_TOKEN}"
+  secret: "${SWITCHBOT_SECRET}"
+
+polling:
+  sensor_interval_sec: 120     # Sensor devices: every 2 minutes
+  actuator_interval_sec: 300   # Actuator devices: every 5 minutes
+  stagger_delay_ms: 200        # Delay between consecutive API calls
+
+webhook:
+  enabled: false
+  # external_url: "https://example.com/switchbot/webhook"
+  port: 8005
+
+# Device mapping: register each SwitchBot device with a SOMS identity.
+# switchbot_id: device ID from SwitchBot app (Settings > Device Info)
+# type: meter | meter_plus | motion_sensor | contact_sensor | bot | curtain | curtain3
+#       plug | plug_mini | lock | lock_pro | light | ceiling_light | strip_light
+#       ir_ac | ir_tv | ir_fan
+# soms_device_id: unique ID used in MQTT topics (e.g. office/main/sensor/{soms_device_id}/...)
+# zone: SOMS zone name (e.g. "main", "meeting_room")
+devices: []
+  # Example:
+  # - switchbot_id: "AABBCCDD0001"
+  #   type: meter
+  #   soms_device_id: "sb_meter_01"
+  #   zone: "main"
+  #   label: "温湿度計"
+  #
+  # - switchbot_id: "AABBCCDD0002"
+  #   type: plug_mini
+  #   soms_device_id: "sb_plug_01"
+  #   zone: "main"
+  #   label: "デスクライト電源"
+  #
+  # - switchbot_id: "AABBCCDD0003"
+  #   type: ir_ac
+  #   soms_device_id: "sb_ac_01"
+  #   zone: "main"
+  #   label: "エアコン"

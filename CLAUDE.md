@@ -50,7 +50,7 @@ docker logs -f soms-brain
 docker logs -f soms-perception
 ```
 
-Service names in docker-compose: `mosquitto`, `brain`, `postgres`, `backend`, `frontend`, `voicevox`, `voice-service`, `wallet`, `wallet-app`, `ollama`, `mock-llm`, `perception`
+Service names in docker-compose: `mosquitto`, `brain`, `postgres`, `backend`, `frontend`, `voicevox`, `voice-service`, `wallet`, `wallet-app`, `ollama`, `mock-llm`, `perception`, `switchbot`
 
 ### Frontend Development
 
@@ -121,6 +121,7 @@ python3 services/perception/test_yolo_detect.py
 | PostgreSQL | 127.0.0.1:5432 (localhost only) | soms-postgres |
 | VOICEVOX Engine | 50021 | soms-voicevox |
 | Ollama (LLM) | 11434 | soms-ollama |
+| SwitchBot Bridge (Webhook) | 8005 | soms-switchbot |
 | MQTT | 1883 (TCP) / 9001 (WebSocket) | soms-mqtt |
 
 ### MQTT Topic Structure
@@ -200,6 +201,20 @@ Brain subscribes to `office/#` and `mcp/+/response/#`.
 - `activity_analyzer.py` — Tiered pose buffer (4 tiers, up to 4 hours) with posture normalization
 - `camera_discovery.py` — Async TCP port scan + URL probe + YOLO verification for auto-discovery
 - Monitor config in `config/monitors.yaml` includes YOLO model paths, camera-zone mappings, and discovery settings
+
+### SwitchBot Cloud Bridge (`services/switchbot/src/`)
+
+Bridges SwitchBot Cloud API v1.1 devices into SOMS via MQTT. Uses the same telemetry format (`{"value": X}` per-channel) and MCP JSON-RPC 2.0 protocol as ESP32 edge devices — Brain, WorldModel, and DeviceRegistry require no changes.
+
+- `main.py` — Async entry point, orchestrates all components
+- `config_loader.py` — YAML config with `${ENV_VAR}` expansion
+- `switchbot_api.py` — HMAC-SHA256 authenticated Cloud API client with rate limiting (10,000/day)
+- `mqtt_bridge.py` — MQTT connection, MCP request routing to devices
+- `device_manager.py` — Polling scheduler (sensors: 2min, actuators: 5min), heartbeat publisher (60s)
+- `webhook_server.py` — Optional aiohttp webhook receiver for real-time event push
+- `devices/` — Device type implementations (meter, bot, curtain, plug, lock, light, motion_sensor, contact_sensor, ir_device)
+
+Config: `config/switchbot.yaml`. Env vars: `SWITCHBOT_TOKEN`, `SWITCHBOT_SECRET`.
 
 ### nginx Routing (`services/dashboard/frontend/nginx.conf`)
 
