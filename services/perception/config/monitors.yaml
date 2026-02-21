@@ -36,7 +36,7 @@ mqtt:
   port: 1883
 
 tracking:
-  enabled: true
+  enabled: false  # torchreid not available in ROCm base image yet
   tracker: botsort.yaml
   reid_model: osnet_x0_5
   publish_interval_sec: 0.5

@@ -2,18 +2,18 @@ from pydantic import BaseModel
 from typing import Optional
 
 
+class UserInfo(BaseModel):
+    id: int
+    username: str
+    display_name: Optional[str] = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
-    user: "UserInfo"
-
-
-class UserInfo(BaseModel):
-    id: int
-    username: str
-    display_name: Optional[str] = None
+    user: UserInfo
 
 
 class RefreshRequest(BaseModel):

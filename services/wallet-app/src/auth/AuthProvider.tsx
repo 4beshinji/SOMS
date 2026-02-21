@@ -14,7 +14,7 @@ export function getAccessToken(): string | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const refreshTimer = useRef<ReturnType<typeof setTimeout>>();
+  const refreshTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const clearAuth = useCallback(() => {
     accessToken = null;

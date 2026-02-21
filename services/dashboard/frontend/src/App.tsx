@@ -16,9 +16,6 @@ import {
 } from './api';
 import { authFetch } from './auth/authFetch';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { AuthProvider } from './auth/AuthProvider';
-import { useAuth } from './auth/useAuth';
-import LoginPage from './pages/LoginPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 
 type ActiveView = 'tasks' | 'floorplan' | 'analytics';
@@ -402,51 +399,10 @@ function Dashboard() {
   );
 }
 
-function AuthGate() {
-  const { isAuthenticated, isLoading, user, logout } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-[var(--gray-50)]">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[var(--primary-500)] border-t-transparent"></div>
-          <p className="text-[var(--gray-600)] mt-4">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <LoginPage />;
-  }
-
-  return (
-    <>
-      {/* User info bar */}
-      <div className="bg-[var(--primary-500)] text-white text-sm">
-        <div className="max-w-6xl mx-auto px-6 py-1.5 flex justify-between items-center">
-          <span>
-            {user?.display_name || user?.username}
-          </span>
-          <button
-            onClick={logout}
-            className="text-white/80 hover:text-white transition-colors cursor-pointer"
-          >
-            Sign out
-          </button>
-        </div>
-      </div>
-      <Dashboard />
-    </>
-  );
-}
-
 function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <AuthGate />
-      </AuthProvider>
+      <Dashboard />
     </ErrorBoundary>
   );
 }
