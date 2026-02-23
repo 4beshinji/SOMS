@@ -289,22 +289,50 @@ Sensor data access uses Repository pattern (`repositories/`): `SensorDataReposit
 | GET | `/sensors/events` | WorldModel event feed | `?zone=&limit=50` |
 | GET | `/sensors/llm-activity` | LLM decision-making summary | `?hours=24` |
 
-#### Spatial API (`routers/spatial.py`)
+#### Spatial 3-Layer Model
+
+空間情報はライフサイクルごとに3層に分離される:
+
+| Layer | 内容 | ストレージ | 更新方法 |
+|-------|------|----------|---------|
+| 1 Topology | ゾーンポリゴン・建物寸法・ArUco 座標 | `config/spatial.yaml` (git) | テキストエディタ + 再起動 |
+| 2 Placement | デバイス・カメラ位置 (x, y, z, FOV) | `device_positions` / `camera_positions` テーブル | Dashboard UI ドラッグ編集 |
+| 3 Observations | ライブ検出・ヒートマップ集計 | `events.spatial_*` テーブル | Perception が自動書き込み |
+
+ADR: `docs/architecture/adr-spatial-world-model.md`
+
+#### Unified Spaces API (`routers/spaces.py`)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/sensors/spatial/config` | Building layout, zones, devices, cameras |
-| GET | `/sensors/spatial/live` | Real-time person/object positions |
-| GET | `/sensors/spatial/heatmap` | Heatmap data for zones |
+| GET | `/spaces` | Zone 一覧 (Layer 1) |
+| GET | `/spaces/{zone}` | Zone 詳細 (Layer 1+2 マージ) |
+| PUT | `/spaces/{zone}/devices/{device_id}` | デバイス位置更新 (Layer 2) |
+| PUT | `/spaces/{zone}/cameras/{camera_id}` | カメラ位置・FOV 更新 (Layer 2) |
+| GET | `/spaces/{zone}/live` | ライブ検出 (Layer 3) |
+| GET | `/spaces/{zone}/heatmap` | ヒートマップ (Layer 3) `?period=hour\|day\|week` |
+| DELETE | `/spaces/{zone}/devices/{id}/override` | DB オーバーライド削除 (YAML に戻す) |
+| DELETE | `/spaces/{zone}/cameras/{id}/override` | 同上 (カメラ) |
 
-#### Device Position API (`routers/devices.py`)
+#### Legacy Spatial API (`routers/spatial.py` — backward-compatible)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/devices/positions/` | List all device positions |
+| GET | `/sensors/spatial/config` | Building layout, zones, devices, cameras (Layer 1+2) |
+| GET | `/sensors/spatial/live` | Real-time person/object positions (Layer 3) |
+| GET | `/sensors/spatial/heatmap` | Heatmap data for zones (Layer 3) |
+
+#### Device & Camera Position API (`routers/devices.py` — backward-compatible)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/devices/positions/` | List all device positions (DB only) |
 | POST | `/devices/positions/` | Create device position |
 | PUT | `/devices/positions/{device_id}` | Update device position |
 | DELETE | `/devices/positions/{device_id}` | Delete device position |
+| GET | `/devices/cameras/` | List camera position overrides (DB only) |
+| PUT | `/devices/cameras/{camera_id}` | Upsert camera position override |
+| DELETE | `/devices/cameras/{camera_id}` | Remove camera override (revert to YAML) |
 
 ### Voice Service API (`services/voice/src/`)
 
