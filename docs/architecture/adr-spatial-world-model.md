@@ -1,225 +1,193 @@
 # ADR: Spatial World Model — ゾーン空間情報 + フロントエンド可視化
 
-**Status**: Proposed
-**Date**: 2026-02-22
+**Status**: Accepted
+**Date**: 2026-02-22 (revised 2026-02-23)
 **Context**: WorldModel の空間認識強化 + ダッシュボード可視化
 
 ---
 
 ## 1. Problem Statement
 
-現在の WorldModel はゾーンを **文字列ID** (例: `"main"`) のみで表現しており、空間的な位置情報を持たない。
-
-| 情報 | 現状 | 不足しているもの |
-|------|------|----------------|
-| ゾーン | `"main"` 文字列 | 寸法・境界 (x, y, w, h) |
-| センサー | `device_id` のみ | 座標 (x, y, z) + カバレッジ半径 |
-| カメラ | IP → ゾーン名マップのみ | 座標 + 向き + FOV 角 |
-| 占有 | ゾーン単位の人数カウント | ゾーン内ヒートマップ (x, y) |
-| タスク | `location` テキスト文字列 | ゾーン内座標ピン |
-
-この制約により以下が困難:
-- ダッシュボードでの床面図ベース可視化
-- LLM への空間文脈提供 (「北東コーナーのセンサー」など)
-- カメラ映像と座標の対応付け
-- 複数センサーの物理的近接関係を利用した融合判断
+WorldModel はゾーンを**文字列ID**のみで表現しており、空間的な位置情報を持たなかった。
+これによりダッシュボードでの床面図可視化・LLM への空間文脈提供・カメラ映像と座標の対応付けが困難だった。
 
 ---
 
-## 2. Decision
+## 2. Decision: 3層空間モデル
 
-**YAML ベース設定 + DB オーバーライドのハイブリッド構成** を採用する。
+空間データには**ライフサイクルが根本的に異なる3層**が存在する。
+各層を明確に分離し、それぞれに適したストレージと更新経路を持つ。
 
 ```
-config/spaces.yaml          ← ベース定義 (git 管理・変更追跡可能)
-        ↓ 起動時ロード
-SpatialRepository            ← YAML + DB のマージロジック
-        ↑ UI 編集時
-DB: spatial_overrides        ← 手動変更分のみ保存 (差分管理)
-        ↓
-backend/routers/spaces.py   ← GET/PUT /spaces/{zone}
-        ↓
-frontend: <FloorPlanEditor>  ← SVG ベース床面図 + ドラッグ編集
-        ↓
-WorldModel.spatial_config    ← 起動時ロード → LLM ツールに空間文脈を提供
+Layer 1 — Topology    変化頻度: 月〜年単位
+  ゾーンポリゴン、建物寸法、ArUco キャリブレーション座標
+  ストレージ: config/spatial.yaml (git 管理)
+  更新方法:  テキストエディタ + git commit
+
+Layer 2 — Placement   変化頻度: 日〜週単位
+  デバイス位置 (x, y, z)、カメラ位置・FOV
+  ストレージ: device_positions / camera_positions テーブル
+  更新方法:  ダッシュボード UI (ドラッグ&ドロップ)
+
+Layer 3 — Observations 変化頻度: 秒〜分単位
+  ライブ検出 (人物・物体座標)、ヒートマップ集計
+  ストレージ: events.spatial_snapshots / events.spatial_heatmap_hourly
+  更新方法:  Perception サービスが MQTT 経由で自動書き込み
 ```
 
 ---
 
-## 3. Rationale
+## 3. Architecture
 
-### なぜ YAML ベースか
+### 3.1 API 構造 (`/spaces`)
 
-- **既存パターンとの一貫性**: `services/perception/config/monitors.yaml` と同じ構成
-- **バージョン管理**: 空間レイアウトの変更が git 履歴で追跡可能
-- **コンテナ外で編集可能**: テキストエディタで素直に編集できる
-- **初期状態の再現性**: `docker compose up` で常に同じ初期レイアウトが得られる
-
-### なぜ DB オーバーライドか
-
-- **UI 編集対応**: ダッシュボードからドラッグ操作で位置を微調整できる
-- **再起動後も保持**: YAML を書き換えずとも UI 変更が永続化される
-- **差分が明確**: YAML = デフォルト、DB = 運用者による調整、と役割が分離
-
-### なぜ SVG ベースか (vs react-konva / deck.gl)
-
-- **依存関係ゼロ**: 追加ライブラリ不要、React のみで実装可能
-- **スケーラビリティ**: SVG は解像度非依存、印刷・エクスポートにも対応
-- **オフィス室内スケール**: WebGL/3D は今フェーズにはオーバースペック
-
----
-
-## 4. Architecture
-
-### 4.1 設定スキーマ (`config/spaces.yaml`)
-
-```yaml
-version: "1.0"
-zones:
-  main:
-    display_name: "メインオフィス"
-    floor: 1
-    bounds:
-      x: 0
-      y: 0
-      width: 20    # meters
-      height: 15   # meters
-    devices:
-      env_01:
-        device_type: sensor
-        position: {x: 5.0, y: 3.0, z: 1.5}
-        coverage_radius: 5.0          # meters, optional
-      light_01:
-        device_type: light
-        position: {x: 10.0, y: 7.5, z: 2.5}
-        service_area:                 # polygon in zone-local coords, optional
-          - [8.0, 6.0]
-          - [12.0, 6.0]
-          - [12.0, 9.0]
-          - [8.0, 9.0]
-    cameras:
-      camera_node_01:
-        position: {x: 0.5, y: 0.5, z: 2.5}
-        direction: 45                 # degrees (0 = +X axis, CCW)
-        fov: 90                       # degrees
-        # coverage_polygon は direction + fov から自動計算
+```
+GET  /spaces                              → Zone 一覧 (Layer 1)
+GET  /spaces/{zone}                       → Zone 詳細 (Layer 1 + 2 マージ済み)
+PUT  /spaces/{zone}/devices/{device_id}   → デバイス位置更新 (Layer 2)
+PUT  /spaces/{zone}/cameras/{camera_id}   → カメラ位置更新 (Layer 2)
+GET  /spaces/{zone}/live                  → ライブ検出 (Layer 3)
+GET  /spaces/{zone}/heatmap?period=hour   → ヒートマップ (Layer 3)
+DELETE /spaces/{zone}/devices/{id}/override  → DB オーバーライド削除 (YAML に戻す)
+DELETE /spaces/{zone}/cameras/{id}/override  → 同上 (カメラ)
 ```
 
-### 4.2 データベース
+**後方互換性**: 既存の `/sensors/spatial/*` と `/devices/positions/*` は維持。
 
-新規テーブル `spatial_overrides` (既存 DB に追加):
+### 3.2 データベーススキーマ
 
 ```sql
-CREATE TABLE spatial_overrides (
+-- Layer 2: デバイス位置 (既存)
+CREATE TABLE device_positions (
     id          SERIAL PRIMARY KEY,
-    zone_id     VARCHAR(64) NOT NULL,
-    entity_type VARCHAR(32) NOT NULL,  -- 'device' | 'camera' | 'zone'
-    entity_id   VARCHAR(64) NOT NULL,
-    override    JSONB       NOT NULL,  -- 変更されたフィールドのみ
-    updated_at  TIMESTAMP   NOT NULL DEFAULT NOW(),
-    UNIQUE (zone_id, entity_type, entity_id)
+    device_id   VARCHAR UNIQUE NOT NULL,
+    zone        VARCHAR NOT NULL,
+    x FLOAT, y FLOAT,
+    device_type VARCHAR DEFAULT 'sensor',
+    channels    VARCHAR DEFAULT '[]',
+    created_at  TIMESTAMP DEFAULT NOW(),
+    updated_at  TIMESTAMP
 );
+
+-- Layer 2: カメラ位置 (追加)
+CREATE TABLE camera_positions (
+    id              SERIAL PRIMARY KEY,
+    camera_id       VARCHAR UNIQUE NOT NULL,
+    zone            VARCHAR NOT NULL,
+    x FLOAT, y FLOAT, z FLOAT,
+    fov_deg         FLOAT,
+    orientation_deg FLOAT,
+    created_at      TIMESTAMP DEFAULT NOW(),
+    updated_at      TIMESTAMP
+);
+-- DB レコードがなければ YAML のカメラ設定がそのまま使われる (オーバーライドのみ保存)
 ```
 
-マージロジック: YAML ロード後、対応する `spatial_overrides` レコードで上書き (shallow merge)。
-
-### 4.3 API エンドポイント
-
-新ルーター `routers/spaces.py`:
-
-| Method | Path | 説明 |
-|--------|------|------|
-| GET | `/spaces` | 全ゾーン一覧 (ID + display_name + floor) |
-| GET | `/spaces/{zone}` | ゾーン完全情報 (bounds + devices + cameras) |
-| PUT | `/spaces/{zone}/device/{device_id}` | デバイス位置の手動更新 |
-| PUT | `/spaces/{zone}/camera/{camera_id}` | カメラ位置/FOV の手動更新 |
-| PUT | `/spaces/{zone}/bounds` | ゾーン境界の手動更新 |
-| DELETE | `/spaces/{zone}/device/{device_id}/override` | DB オーバーライドを削除 (YAML デフォルトに戻す) |
-
-### 4.4 フロントエンドコンポーネント構成
+### 3.3 Brain の空間設定取得フロー
 
 ```
-src/components/spatial/
-  FloorPlanViewer.tsx     ← 読み取り専用: センサー値をオーバーレイ表示
-  FloorPlanEditor.tsx     ← 編集モード: ドラッグ&ドロップで位置変更
-  ZoneCanvas.tsx          ← SVG ベース描画エンジン (共通)
-  DevicePin.tsx           ← センサー/デバイスのピンコンポーネント
-  CameraFov.tsx           ← カメラ FOV セクター描画
-  SensorOverlay.tsx       ← 現在値のバブルオーバーレイ
-  OccupancyHeatmap.tsx    ← 占有ヒートマップ (将来)
+Brain.run() 起動
+    ↓
+DashboardClient.get_spatial_config()
+    → GET /sensors/spatial/config (Backend が Layer 1+2 をマージして返す)
+    ↓ 失敗時 (Backend 未起動など)
+load_spatial_config("config/spatial.yaml")  (YAML フォールバック)
+    ↓
+WorldModel.apply_spatial_config(config)
+    → ZoneState.metadata に polygon / area_m2 / adjacent_zones を設定
+    → ZoneState.spatial.heatmap_counts グリッドを初期化
 ```
 
-表示モード切り替え:
-- **Viewer モード**: センサー現在値、カメラ状態をリアルタイム表示
-- **Editor モード**: デバイスをドラッグして位置調整、変更を `PUT /spaces/...` で送信
+**重複コードの解消**: Brain が YAML を直接読まず Backend 経由で取得することで、
+`services/brain/src/spatial_config.py` と `services/dashboard/backend/spatial_config.py`
+の重複ローダーを段階的に統合する経路が開かれた。
 
-### 4.5 WorldModel への組み込み
+### 3.4 リポジトリパターン (Backend)
 
-```python
-# data_classes.py への追加
-class DeviceSpatialConfig(BaseModel):
-    position: tuple[float, float, float] | None = None  # (x, y, z) meters
-    coverage_radius: float | None = None
-    service_area: list[tuple[float, float]] | None = None
-
-class ZoneSpatialConfig(BaseModel):
-    bounds: tuple[float, float, float, float]  # (x, y, width, height)
-    devices: dict[str, DeviceSpatialConfig] = {}
-    cameras: dict[str, CameraSpatialConfig] = {}
-
-class ZoneState(BaseModel):
-    # 既存フィールドはそのまま
-    ...
-    spatial: ZoneSpatialConfig | None = None  # 追加
+```
+routers/spaces.py  (統合 API エンドポイント)
+routers/spatial.py (後方互換: /sensors/spatial/*)
+routers/devices.py (後方互換: /devices/positions/*)
+        │
+        ▼
+SpatialDataRepository (ABC)
+        │
+        └── PgSpatialRepository
+              ├── get_spatial_config()  → YAML + device_positions + camera_positions マージ
+              ├── get_live_spatial()    → events.spatial_snapshots 参照
+              └── get_heatmap()         → events.spatial_heatmap_hourly 参照
 ```
 
-`get_zone_status` ツールのレスポンスに spatial 情報を含めることで、LLM が「南側のセンサーが高温」などの空間的判断を行えるようになる。
+### 3.5 フロントエンドコンポーネント構成
+
+```
+src/components/FloorPlan/
+  FloorPlanView.tsx       ← Viewer + Editor (editMode トグル)
+  ZoneLayer.tsx           ← SVG ポリゴン描画 + 重心ラベル
+  DeviceLayer.tsx         ← デバイスピン + ドラッグ + センサー値バブル
+  CameraFov.tsx           ← カメラ FOV 扇形 (新規)
+  HeatmapLayer.tsx        ← 占有ヒートマップグリッド
+  PersonLayer.tsx         ← ライブ人物検出ドット
+  FloorPlanControls.tsx   ← レイヤートグル
+  DeviceDetailPanel.tsx   ← 選択デバイスの詳細パネル
+```
+
+レイヤー種別: `'zones' | 'devices' | 'cameras' | 'heatmap' | 'persons' | 'objects'`
+
+### 3.6 LLM への空間文脈提供
+
+`get_zone_status` ツールのレスポンスに追加済み:
+- `面積: {area_m2}㎡`
+- `隣接ゾーン: {adjacent_zones}`
+- `検出位置: (x.xm, y.ym), ...` (floor_position_m を持つ検出のみ)
 
 ---
 
-## 5. Implementation Phases
+## 4. Rationale
 
-### Phase A (読み取り先行)
-1. `config/spaces.yaml` 作成 (現在の main ゾーン定義)
-2. `SpatialRepository` (YAML 読み込みのみ、DB オーバーライドは後回し)
-3. `GET /spaces/{zone}` エンドポイント
-4. フロントエンドに `FloorPlanViewer` (読み取り専用、センサー値オーバーレイ)
-5. WorldModel に `spatial_config` フィールド追加 (ロードのみ)
+### なぜポリゴン形状か (矩形ではなく)
+L字型・変則形状の室内レイアウトに対応するため。矩形 `(x,y,w,h)` では実際のゾーン形状を表現できない。
 
-### Phase B (手動編集)
-1. `spatial_overrides` テーブルのマイグレーション追加
-2. `SpatialRepository` に DB マージロジック追加
-3. `PUT /spaces/...` エンドポイント群
-4. フロントエンドに `FloorPlanEditor` (ドラッグ編集 + 保存)
+### なぜ具体テーブル2本か (汎用 `spatial_overrides` ではなく)
+`device_positions` と `camera_positions` は編集フィールドが異なる。
+型安全・クエリ明確さ・マイグレーション容易さの点で具体テーブルが優れる。
+汎用 JSONB テーブルは3つ目のエンティティ型が必要になった時点で再検討。
 
-### Phase C (LLM 活用)
-1. `get_zone_status` ツールの spatial 情報出力
-2. Brain の system prompt に空間認識コンテキスト追加
-3. カメラ座標 ↔ 占有ヒートマップの対応付け (Perception 連携)
+### なぜ SVG か (react-konva / deck.gl ではなく)
+追加依存なし。室内メートル座標スケールでは WebGL の優位性なし。
+SVG は解像度非依存で印刷・エクスポートにも対応。
+
+### なぜ REST フォールバックを持つか
+Brain と Backend は同時起動するが起動順序は不定。
+YAML フォールバックにより Backend が遅延起動した場合も Brain が正常起動する。
 
 ---
 
-## 6. Alternatives Considered
+## 5. Implementation Status
 
-### 純粋 YAML のみ
-- UI 編集不可のため却下。空間レイアウトの微調整はダッシュボードから行いたい。
-
-### 純粋 DB (YAML なし)
-- 初期状態が DB データに依存し、`docker compose up` で再現性が失われる。コードレビューでレイアウト変更を追跡できない。
-
-### GeoJSON 形式
-- 屋外地理情報向け標準。室内メートル座標系では不要な複雑さ (CRS、投影など) が生じる。
-- 将来的に建物全体の地図を Leaflet/MapLibre で扱う場合は再検討。
-
-### react-konva / deck.gl
-- Canvas/WebGL ベース。SVG と比較してオフィス室内スケールでの優位性が薄い。
-- react-konva: ドラッグ編集は容易だが、依存追加のコストと見合わない。
-- deck.gl: ヒートマップ描画に優れるが、3D/大規模データ向けでオーバースペック。
+| 機能 | ステータス | 実装場所 |
+|------|-----------|---------|
+| `config/spatial.yaml` (ポリゴン定義) | ✅ | `config/spatial.yaml` |
+| SpatialDataRepository + PgSpatialRepository | ✅ | `repositories/` |
+| `/sensors/spatial/config,live,heatmap` | ✅ | `routers/spatial.py` |
+| `/devices/positions/` CRUD | ✅ | `routers/devices.py` |
+| `camera_positions` テーブル | ✅ | `models.py` |
+| `PUT /devices/cameras/{id}` | ✅ | `routers/devices.py` |
+| `/spaces` 統合ルーター | ✅ | `routers/spaces.py` |
+| Brain → REST 経由 spatial 取得 | ✅ | `dashboard_client.py` + `main.py` |
+| `CameraFov.tsx` FOV 可視化 | ✅ | `components/FloorPlan/CameraFov.tsx` |
+| `get_zone_status` 空間文脈 | ✅ | `tool_executor.py` |
+| フロアプラン viewer + editor | ✅ | `components/FloorPlan/` |
+| ヒートマップ可視化 | ✅ | `HeatmapLayer.tsx` + `AnalyticsPage.tsx` |
+| ArUco キャリブレーション | ✅ | `config/spatial.yaml` |
+| ゾーン境界の UI 編集 | ❌ | 多角形エディタは複雑 → Phase 2 以降 |
 
 ---
 
-## 7. Open Questions
+## 6. Open Questions
 
-- **座標系**: ゾーンローカル (各ゾーンの左下が原点) vs 建物グローバル座標。Phase A はゾーンローカルで開始し、Phase C でグローバル座標変換を追加する方針。
-- **フロアプラン画像**: YAML で SVG ファイルパスを指定できるようにするか、純粋なプログラマティック描画のみにするか。
-- **SensorSwarm Leaf ノード**: `swarm_hub_01.leaf_env_01` 形式のデバイス ID を spaces.yaml でどう扱うか (Hub レベルの位置のみ定義、Leaf は相対オフセットで定義するか)。
+- **`spatial_config.py` の重複**: Brain が常に Backend 経由で取得するようになれば
+  `services/brain/src/spatial_config.py` を削除できる。現状は YAML フォールバック用に維持。
+- **ゾーン境界の手動編集**: テキストエディタで YAML を編集 → コンテナ再起動が当面の運用方法。
+- **SensorSwarm Leaf ノード**: `swarm_hub_01.leaf_env_01` 形式の device_id を
+  `device_positions` にどう持つか未決定。Hub レベルの位置のみで十分か要検討。

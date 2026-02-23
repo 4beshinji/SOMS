@@ -8,7 +8,7 @@ from sqlalchemy import select, delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import DevicePosition
+from models import DevicePosition, CameraPosition
 
 logger = logging.getLogger(__name__)
 
@@ -139,3 +139,97 @@ async def delete_device_position(
     )
     await db.commit()
     logger.info("Device removed: %s", device_id)
+
+
+# ── Camera Position Endpoints ───────────────────────────────────────
+
+
+class CameraPositionOut(BaseModel):
+    camera_id: str
+    zone: str
+    x: float
+    y: float
+    z: float | None = None
+    fov_deg: float | None = None
+    orientation_deg: float | None = None
+
+
+class UpsertCameraPositionIn(BaseModel):
+    zone: str
+    x: float
+    y: float
+    z: float | None = None
+    fov_deg: float | None = None
+    orientation_deg: float | None = None
+
+
+def _cam_to_out(row: CameraPosition) -> CameraPositionOut:
+    return CameraPositionOut(
+        camera_id=row.camera_id,
+        zone=row.zone,
+        x=row.x,
+        y=row.y,
+        z=row.z,
+        fov_deg=row.fov_deg,
+        orientation_deg=row.orientation_deg,
+    )
+
+
+@router.get("/cameras/", response_model=list[CameraPositionOut])
+async def list_camera_positions(db: AsyncSession = Depends(get_db)):
+    """List all camera positions (DB overrides only)."""
+    result = await db.execute(select(CameraPosition))
+    return [_cam_to_out(row) for row in result.scalars().all()]
+
+
+@router.put("/cameras/{camera_id}", response_model=CameraPositionOut)
+async def upsert_camera_position(
+    camera_id: str,
+    body: UpsertCameraPositionIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create or update camera placement (upsert). Overrides YAML config."""
+    result = await db.execute(
+        select(CameraPosition).where(CameraPosition.camera_id == camera_id)
+    )
+    row = result.scalar_one_or_none()
+    if row:
+        row.zone = body.zone
+        row.x = body.x
+        row.y = body.y
+        row.z = body.z
+        row.fov_deg = body.fov_deg
+        row.orientation_deg = body.orientation_deg
+    else:
+        row = CameraPosition(
+            camera_id=camera_id,
+            zone=body.zone,
+            x=body.x,
+            y=body.y,
+            z=body.z,
+            fov_deg=body.fov_deg,
+            orientation_deg=body.orientation_deg,
+        )
+        db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    logger.info("Camera upserted: %s at (%s, %s) zone=%s", camera_id, body.x, body.y, body.zone)
+    return _cam_to_out(row)
+
+
+@router.delete("/cameras/{camera_id}", status_code=204)
+async def delete_camera_position(
+    camera_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove camera DB override (reverts to YAML default)."""
+    result = await db.execute(
+        select(CameraPosition).where(CameraPosition.camera_id == camera_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail=f"Camera '{camera_id}' has no DB override")
+    await db.execute(
+        sa_delete(CameraPosition).where(CameraPosition.camera_id == camera_id)
+    )
+    await db.commit()
+    logger.info("Camera override removed: %s (reverted to YAML)", camera_id)

@@ -225,6 +225,19 @@ class ToolExecutor:
             for dev_id, dev in zone.devices.items():
                 lines.append(f"デバイス {dev.device_type}({dev_id}): {dev.power_state}")
 
+        # Spatial metadata
+        meta = zone.metadata
+        if meta.area_m2 > 0:
+            lines.append(f"面積: {meta.area_m2:.1f}㎡")
+        if meta.adjacent_zones:
+            lines.append(f"隣接ゾーン: {', '.join(meta.adjacent_zones)}")
+
+        # Detected persons with floor coordinates
+        persons_with_pos = [p for p in zone.spatial.persons if p.floor_position_m]
+        if persons_with_pos:
+            pos_strs = [f"({p.floor_position_m[0]:.1f}m, {p.floor_position_m[1]:.1f}m)" for p in persons_with_pos]
+            lines.append(f"検出位置: {', '.join(pos_strs)}")
+
         return {"success": True, "result": "\n".join(lines)}
 
     async def _handle_get_active_tasks(self) -> Dict[str, Any]:

@@ -16,6 +16,7 @@ import ZoneLayer from './ZoneLayer';
 import DeviceLayer from './DeviceLayer';
 import HeatmapLayer from './HeatmapLayer';
 import PersonLayer from './PersonLayer';
+import CameraFov from './CameraFov';
 import FloorPlanControls from './FloorPlanControls';
 import DeviceDetailPanel from './DeviceDetailPanel';
 
@@ -294,6 +295,11 @@ export default function FloorPlanView() {
               zones={zones}
               heatmapData={heatmapData}
             />
+          )}
+
+          {/* Camera FOV sectors */}
+          {activeLayers.has('cameras') && (
+            <CameraFov cameras={cameras} />
           )}
 
           {/* Device positions */}

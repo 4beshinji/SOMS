@@ -56,9 +56,9 @@ class Brain:
         self.client.on_message = self.on_message
         self.mcp = MCPBridge(self.client)
         self.sanitizer = Sanitizer()
-        # Load spatial configuration
-        spatial_config = load_spatial_config("config/spatial.yaml")
-        self.world_model = WorldModel(spatial_config=spatial_config)
+        # WorldModel is initialized without spatial config here;
+        # spatial config is loaded in run() after HTTP session is available.
+        self.world_model = WorldModel()
         self.device_registry = DeviceRegistry()
         self.event_writer: EventWriter | None = None
 
@@ -582,6 +582,13 @@ class Brain:
             )
             self.wallet_bridge = WalletBridge(session, self.device_registry)
             logger.info("All components initialized with shared HTTP session")
+
+            # Load spatial config: REST first (includes DB overrides), YAML fallback
+            spatial_config = await self.dashboard.get_spatial_config()
+            if spatial_config is None:
+                logger.warning("Falling back to local spatial config YAML")
+                spatial_config = load_spatial_config("config/spatial.yaml")
+            self.world_model.apply_spatial_config(spatial_config)
 
             # Start reminder service
             asyncio.create_task(self.task_reminder.run_periodic_check())

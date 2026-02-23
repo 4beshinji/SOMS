@@ -57,6 +57,11 @@ class WorldModel:
         if spatial_config:
             self._apply_spatial_config(spatial_config)
 
+    def apply_spatial_config(self, config):
+        """Public method: (re-)apply spatial config after init (e.g. from REST)."""
+        self._spatial_config = config
+        self._apply_spatial_config(config)
+
     def _apply_spatial_config(self, config):
         """Apply spatial configuration to pre-create zones with metadata."""
         for zone_id, geom in config.zones.items():

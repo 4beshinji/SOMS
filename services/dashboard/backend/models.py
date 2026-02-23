@@ -75,6 +75,20 @@ class DevicePosition(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+class CameraPosition(Base):
+    __tablename__ = "camera_positions"
+    id = Column(Integer, primary_key=True, index=True)
+    camera_id = Column(String, unique=True, index=True)
+    zone = Column(String)
+    x = Column(Float)
+    y = Column(Float)
+    z = Column(Float, nullable=True)
+    fov_deg = Column(Float, nullable=True)
+    orientation_deg = Column(Float, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)

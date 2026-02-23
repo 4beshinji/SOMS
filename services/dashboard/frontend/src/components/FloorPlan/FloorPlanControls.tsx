@@ -22,6 +22,7 @@ interface FloorPlanControlsProps {
 const LAYER_LABELS: Record<FloorPlanLayer, string> = {
   zones: 'zones',
   devices: 'sensors',
+  cameras: 'cameras',
   heatmap: 'heatmap',
   persons: 'persons',
   objects: 'objects',

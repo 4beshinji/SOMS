@@ -66,4 +66,4 @@ export interface HeatmapData {
   period_end: string | null;
 }
 
-export type FloorPlanLayer = 'zones' | 'devices' | 'heatmap' | 'persons' | 'objects';
+export type FloorPlanLayer = 'zones' | 'devices' | 'cameras' | 'heatmap' | 'persons' | 'objects';

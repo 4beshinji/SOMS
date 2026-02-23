@@ -140,6 +140,70 @@ class DashboardClient:
             logger.error(f"Error fetching active tasks: {e}")
             return []
 
+    async def get_spatial_config(self):
+        """Fetch merged spatial config (YAML + DB overrides) from backend.
+
+        Returns SpatialConfig dataclass on success, None on failure.
+        Caller should fall back to load_spatial_config() if this returns None.
+        """
+        from spatial_config import (
+            SpatialConfig, BuildingConfig, ZoneGeometry, DevicePosition, CameraConfig
+        )
+        url = f"{self.api_url}/sensors/spatial/config"
+        try:
+            async with self._get_session() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status != 200:
+                        logger.warning("Spatial config fetch failed: {}", resp.status)
+                        return None
+                    raw = await resp.json()
+
+            config = SpatialConfig()
+
+            bld = raw.get("building", {})
+            config.building = BuildingConfig(
+                name=bld.get("name", "SOMS Office"),
+                width_m=bld.get("width_m", 15.0),
+                height_m=bld.get("height_m", 10.0),
+                floor_plan_image=bld.get("floor_plan_image"),
+            )
+            for zone_id, z in raw.get("zones", {}).items():
+                config.zones[zone_id] = ZoneGeometry(
+                    display_name=z.get("display_name", zone_id),
+                    polygon=z.get("polygon", []),
+                    area_m2=z.get("area_m2", 0.0),
+                    floor=z.get("floor", 1),
+                    adjacent_zones=z.get("adjacent_zones", []),
+                    grid_cols=z.get("grid_cols", 10),
+                    grid_rows=z.get("grid_rows", 10),
+                )
+            for dev_id, d in raw.get("devices", {}).items():
+                config.devices[dev_id] = DevicePosition(
+                    zone=d.get("zone", ""),
+                    position=d.get("position", [0.0, 0.0]),
+                    type=d.get("type", "sensor"),
+                    channels=d.get("channels", []),
+                )
+            for cam_id, c in raw.get("cameras", {}).items():
+                pos = c.get("position", [0.0, 0.0])
+                config.cameras[cam_id] = CameraConfig(
+                    zone=c.get("zone", ""),
+                    position=pos[:2] if len(pos) >= 2 else [0.0, 0.0],
+                    resolution=c.get("resolution", [640, 480]),
+                    fov_deg=c.get("fov_deg", 90.0),
+                    orientation_deg=c.get("orientation_deg", 0.0),
+                )
+
+            logger.info(
+                "Spatial config fetched from backend: {} zones, {} devices, {} cameras",
+                len(config.zones), len(config.devices), len(config.cameras),
+            )
+            return config
+
+        except Exception as e:
+            logger.warning("Could not fetch spatial config from backend: {}", e)
+            return None
+
     async def get_task_stats(self) -> dict:
         """Fetch task statistics from dashboard."""
         url = f"{self.api_url}/tasks/stats"

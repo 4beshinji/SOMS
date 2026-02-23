@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 from database import engine, Base
-from routers import tasks, users, voice_events, sensors, spatial, devices
+from routers import tasks, users, voice_events, sensors, spatial, devices, spaces
 import models # Make sure models are registered
 
 logger = logging.getLogger(__name__)
@@ -71,6 +71,7 @@ app.include_router(voice_events.router)
 app.include_router(sensors.router)
 app.include_router(spatial.router)
 app.include_router(devices.router)
+app.include_router(spaces.router)
 
 @app.get("/")
 async def root():

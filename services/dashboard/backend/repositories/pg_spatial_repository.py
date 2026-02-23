@@ -13,7 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from spatial_config import load_spatial_config
-from models import DevicePosition
+from models import DevicePosition, CameraPosition
 from .spatial_repository import (
     HeatmapData,
     LiveSpatialData,
@@ -55,6 +55,27 @@ class PgSpatialRepository(SpatialDataRepository):
         except Exception:
             logger.warning("Could not read device_positions table (may not exist yet)")
 
+        # Start with YAML cameras
+        cameras = {
+            cam_id: asdict(cam)
+            for cam_id, cam in config.cameras.items()
+        }
+
+        # Merge DB camera_positions (DB wins on same camera_id)
+        try:
+            result = await self._session.execute(select(CameraPosition))
+            for row in result.scalars().all():
+                cam = cameras.get(row.camera_id, {})
+                cam.update({k: v for k, v in {
+                    "zone": row.zone,
+                    "position": [row.x, row.y, row.z] if row.z is not None else [row.x, row.y],
+                    "fov_deg": row.fov_deg,
+                    "orientation_deg": row.orientation_deg,
+                }.items() if v is not None})
+                cameras[row.camera_id] = cam
+        except Exception:
+            logger.warning("Could not read camera_positions table (may not exist yet)")
+
         return SpatialConfigResponse(
             building=asdict(config.building),
             zones={
@@ -62,10 +83,7 @@ class PgSpatialRepository(SpatialDataRepository):
                 for zone_id, geom in config.zones.items()
             },
             devices=devices,
-            cameras={
-                cam_id: asdict(cam)
-                for cam_id, cam in config.cameras.items()
-            },
+            cameras=cameras,
         )
 
     async def get_live_spatial(
