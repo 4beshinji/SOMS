@@ -153,7 +153,7 @@ class DeviceRegistry:
         untrusted_count = len(all_devices) - len(devices)
 
         if not devices and untrusted_count:
-            return f"※未確認デバイス: {untrusted_count}台（稼働実績不足・対応不要）"
+            return ""  # Don't expose untrusted devices to LLM (prevents investigation task spam)
 
         if not devices:
             return ""
@@ -189,8 +189,8 @@ class DeviceRegistry:
                 mins_ago = int((time.time() - d.last_seen) / 60)
                 lines.append(f"✗ オフライン: {d.device_id} ({mins_ago}分前)")
 
-        if untrusted_count > 0:
-            lines.append(f"※未確認デバイス: {untrusted_count}台（稼働実績不足・対応不要）")
+        # Untrusted devices are intentionally hidden from LLM to prevent
+        # investigation task spam.
 
         return "\n".join(lines)
 
@@ -201,7 +201,7 @@ class DeviceRegistry:
         collapsed into a single summary line.
         """
         if not self.devices:
-            return "デバイスネットワーク: デバイス未登録"
+            return "デバイスネットワーク: 登録済みデバイスなし"
 
         self._update_device_states()
 
@@ -220,8 +220,7 @@ class DeviceRegistry:
         for root in sorted(trusted_roots, key=lambda d: d.device_id):
             self._render_tree_node(root, lines, indent=0, trusted_only=True)
 
-        if untrusted_count > 0:
-            lines.append(f"  (未確認: {untrusted_count}台)")
+        # Untrusted devices are intentionally hidden from the tree view.
 
         return "\n".join(lines)
 

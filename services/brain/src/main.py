@@ -35,6 +35,26 @@ MIN_CYCLE_INTERVAL = 25   # Minimum interval between cognitive cycles (seconds)
 MAX_SPEAK_PER_CYCLE = 1   # Maximum speak calls per cognitive cycle
 MAX_CONSECUTIVE_ERRORS = 1 # Stop cycle after this many consecutive tool errors
 
+# Keywords that indicate device investigation/registration tasks (spam source)
+_DEVICE_INVESTIGATION_KEYWORDS = [
+    "未登録", "未確認デバイス", "デバイス確認", "デバイス調査",
+    "デバイス登録", "デバイスの確認", "デバイスの調査", "デバイスの登録",
+    "未認識", "不明デバイス", "不明なデバイス",
+]
+
+
+def _is_device_investigation_task(title: str, description: str = "") -> bool:
+    """Return True if the task is a device investigation/registration task.
+
+    These tasks are always blocked because untrusted devices are hidden from
+    the LLM context and should never trigger human tasks.  Legitimate device
+    tasks (battery replacement, offline response) don't use these keywords.
+    """
+    text = f"{title} {description}".lower()
+    if "デバイス" not in text:
+        return False
+    return any(kw in text for kw in _DEVICE_INVESTIGATION_KEYWORDS)
+
 
 def _summarize_action(tool_name: str, args: dict) -> str:
     """Create a short summary of a tool call for action history."""
@@ -277,6 +297,11 @@ class Brain:
                     # (environment task already created, waiting for condition to resolve)
                     if self._is_task_for_suppressed_alert(args):
                         logger.warning(f"Skipping create_task: alert suppressed for '{proposed_title}'")
+                        continue
+
+                    # Guard 4d: Hard guard — block device investigation tasks entirely
+                    if _is_device_investigation_task(proposed_title, args.get("description", "")):
+                        logger.warning(f"Skipping create_task: device investigation blocked for '{proposed_title}'")
                         continue
 
                     # Guard 4b: Check against active tasks

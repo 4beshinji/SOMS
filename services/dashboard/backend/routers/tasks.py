@@ -74,6 +74,22 @@ def _publish_task_report(task: "models.Task"):
         logger.warning("MQTT publish failed for task %d: %s", task.id, e)
 
 
+# Category-based fuzzy duplicate detection (Stage 1.5)
+_TASK_CATEGORIES: dict[str, list[str]] = {
+    "device_check": ["デバイス確認", "デバイス調査", "デバイス登録", "未登録", "未確認デバイス",
+                      "デバイスの確認", "デバイスの調査", "デバイスの登録", "未認識", "不明デバイス"],
+    "temperature": ["温度", "室温", "エアコン", "空調"],
+    "co2": ["co2", "換気", "二酸化炭素"],
+    "humidity": ["湿度", "加湿", "除湿"],
+}
+
+
+def _classify_task(title: str, description: str = "") -> set[str]:
+    """Return set of category keys that match the task text."""
+    text = f"{title} {description}".lower()
+    return {cat for cat, keywords in _TASK_CATEGORIES.items() if any(kw in text for kw in keywords)}
+
+
 router = APIRouter(
     prefix="/tasks",
     tags=["tasks"]
@@ -158,6 +174,29 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
     )
     result = await db.execute(query)
     existing_task = result.scalars().first()
+
+    # Duplicate Check Stage 1.5: category-based fuzzy match
+    # Catches tasks with different titles but the same semantic category
+    # (e.g., "未登録デバイスを確認" vs "デバイス調査タスク")
+    if not existing_task:
+        new_categories = _classify_task(task.title, task.description or "")
+        if new_categories:
+            cat_query = select(models.Task).filter(
+                models.Task.is_completed == False,
+            )
+            if task.zone:
+                cat_query = cat_query.filter(models.Task.zone == task.zone)
+            cat_result = await db.execute(cat_query)
+            cat_candidates = cat_result.scalars().all()
+            for candidate in cat_candidates:
+                existing_cats = _classify_task(candidate.title, candidate.description or "")
+                if new_categories & existing_cats:
+                    existing_task = candidate
+                    logger.info(
+                        "Stage 1.5 duplicate: new='%s' matches existing id=%d categories=%s",
+                        task.title, candidate.id, new_categories & existing_cats,
+                    )
+                    break
 
     # Duplicate Check Stage 2: same zone + overlapping task_type
     # (LLM often generates slightly different titles for the same issue)
