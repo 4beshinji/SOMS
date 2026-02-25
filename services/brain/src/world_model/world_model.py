@@ -188,6 +188,8 @@ class WorldModel:
             self._update_spatial(zone, payload, device_id)
         elif device_type == "tracking":
             self._update_tracking(zone, payload)
+        elif device_type == "safety":
+            self._update_safety(zone, payload, channel)
         elif device_type == "task_report":
             self._handle_task_report(zone, payload, device_id)
         elif device_type in ["hvac", "light", "coffee_machine"]:
@@ -393,6 +395,28 @@ class WorldModel:
             vision_count=zone.tracking.person_count,
             pir_active=zone.occupancy.pir_detected,
         )
+
+    def _update_safety(self, zone: ZoneState, payload: dict, channel: str):
+        """Handle safety events (e.g., fall detection)."""
+        if channel == "fall":
+            conf = payload.get("confidence", 0)
+            duration = payload.get("duration_sec", 0)
+            event = Event(
+                timestamp=time.time(),
+                event_type="fall_detected",
+                severity="critical",
+                data={
+                    "confidence": conf,
+                    "duration_sec": duration,
+                    "bbox": payload.get("bbox", []),
+                    "tracker_id": payload.get("tracker_id"),
+                }
+            )
+            self._add_event(zone, event)
+            logger.warning(
+                "Fall detected in %s: confidence=%.2f duration=%.1fs",
+                zone.zone_id, conf, duration,
+            )
 
     def _accumulate_heatmap(self, zone: ZoneState, current_time: float):
         """Map pixel-space person positions to grid cells for heatmap."""

@@ -127,6 +127,10 @@ class Event(BaseModel):
             return f"ドアが開きました ({self.data.get('device_id', '')})"
         elif self.event_type == "door_closed":
             return f"ドアが閉まりました ({self.data.get('device_id', '')})"
+        elif self.event_type == "fall_detected":
+            conf = self.data.get("confidence", 0)
+            dur = self.data.get("duration_sec", 0)
+            return f"転倒検知: 信頼度{conf:.0%}、{dur:.0f}秒経過 ⚠️緊急"
         elif self.event_type == "task_report":
             status_labels = {
                 "no_issue": "問題なし",

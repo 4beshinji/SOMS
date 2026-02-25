@@ -16,6 +16,7 @@ from yolo_inference import YOLOInference
 from pose_estimator import PoseEstimator
 from activity_analyzer import ActivityAnalyzer
 from state_publisher import StatePublisher
+from fall_detector import FallDetector
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class ActivityMonitor(MonitorBase):
         camera_id: str,
         zone_name: str = "default",
         image_source=None,
+        fall_detection_config: dict = None,
     ):
         super().__init__(
             name=f"ActivityMonitor_{zone_name}",
@@ -40,6 +42,22 @@ class ActivityMonitor(MonitorBase):
         self.pose = PoseEstimator.get_instance()
         self.publisher = StatePublisher.get_instance()
         self.analyzer = ActivityAnalyzer(frame_size=(800, 600))
+
+        # Fall detection (optional, enabled via config)
+        fd_cfg = fall_detection_config or {}
+        if fd_cfg.get("enabled", False):
+            self.fall_detector = FallDetector(
+                torso_angle_threshold=fd_cfg.get("torso_angle_threshold", 60.0),
+                fall_confidence_threshold=fd_cfg.get("fall_confidence_threshold", 0.5),
+                confirmation_sec=fd_cfg.get("confirmation_sec", 5.0),
+                recovery_sec=fd_cfg.get("recovery_sec", 10.0),
+                alert_cooldown_sec=fd_cfg.get("alert_cooldown_sec", 120.0),
+                furniture_iou_threshold=fd_cfg.get("furniture_iou_threshold", 0.15),
+                transition_window_sec=fd_cfg.get("transition_window_sec", 1.0),
+            )
+            logger.info(f"[{self.name}] Fall detection enabled")
+        else:
+            self.fall_detector = None
 
     async def analyze(self, image: np.ndarray):
         """Two-tier: detect → pose (only if persons found)."""
@@ -134,3 +152,26 @@ class ActivityMonitor(MonitorBase):
             }
             spatial_topic = f"office/{self.zone_name}/spatial/{self.camera_id}"
             await self.publisher.publish(spatial_topic, spatial_payload)
+
+        # --- Fall detection ---
+        if self.fall_detector and persons_pose:
+            fall_alerts = self.fall_detector.update(
+                persons_pose,
+                analysis.get("all_detections", []),
+                analysis["image_shape"],
+            )
+            for alert in fall_alerts:
+                fall_payload = {
+                    "zone": self.zone_name,
+                    "confidence": alert.confidence,
+                    "duration_sec": alert.duration_sec,
+                    "bbox": alert.bbox,
+                    "tracker_id": alert.tracker_id,
+                    "timestamp": time.time(),
+                }
+                fall_topic = f"office/{self.zone_name}/safety/fall"
+                await self.publisher.publish(fall_topic, fall_payload)
+                logger.warning(
+                    f"[{self.name}] FALL DETECTED: conf={alert.confidence:.2f} "
+                    f"duration={alert.duration_sec:.1f}s"
+                )

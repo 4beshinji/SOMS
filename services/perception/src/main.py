@@ -57,6 +57,9 @@ async def main():
     # Create scheduler
     scheduler = TaskScheduler()
 
+    # Load fall detection config
+    fall_detection_config = config.get("fall_detection", {})
+
     # Collect static camera IDs to avoid duplicates from discovery
     static_camera_ids = set()
 
@@ -75,7 +78,10 @@ async def main():
         elif monitor_type == "WhiteboardMonitor":
             monitor = WhiteboardMonitor(camera_id, zone_name)
         elif monitor_type == "ActivityMonitor":
-            monitor = ActivityMonitor(camera_id, zone_name)
+            monitor = ActivityMonitor(
+                camera_id, zone_name,
+                fall_detection_config=fall_detection_config,
+            )
         else:
             logger.warning(f"Unknown monitor type: {monitor_type}")
             continue
@@ -110,6 +116,7 @@ async def main():
                 camera_id=cam.camera_id,
                 zone_name=cam.zone_name or cam.camera_id,
                 image_source=source,
+                fall_detection_config=fall_detection_config,
             )
             monitor.interval_sec = default_interval
             monitor_name = f"discovery_{cam.camera_id}"

@@ -26,6 +26,16 @@ discovery:
     "192.168.128.177": "desk_area_a"
     "192.168.128.178": "entrance"
 
+fall_detection:
+  enabled: true
+  torso_angle_threshold: 60.0
+  fall_confidence_threshold: 0.5
+  confirmation_sec: 5.0
+  recovery_sec: 10.0
+  alert_cooldown_sec: 120.0
+  furniture_iou_threshold: 0.15
+  transition_window_sec: 1.0
+
 yolo:
   model: yolo11s.pt
   pose_model: yolo11s-pose.pt
