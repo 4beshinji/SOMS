@@ -15,10 +15,22 @@ _KNOWN_WEAK_SECRETS = {"soms_dev_jwt_secret_change_me", "changeme", "secret", ""
 app = FastAPI(title="SOMS Dashboard API")
 
 # CORS configuration
+# Set CORS_ORIGINS to a comma-separated list of allowed origins in production.
+# e.g. CORS_ORIGINS=https://office.example.com,https://wallet.example.com
+# Wildcard ("*") cannot be combined with credentials — allow_credentials is
+# only enabled when explicit origins are configured.
+_cors_origins_raw = os.getenv("CORS_ORIGINS", "")
+if _cors_origins_raw:
+    _cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+    _cors_credentials = True
+else:
+    _cors_origins = ["*"]
+    _cors_credentials = False  # wildcard + credentials violates CORS spec
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -323,6 +323,12 @@ async def complete_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    # Authorization: if a user is authenticated AND the task is assigned to a
+    # specific user, only that user may complete it. Unauthenticated requests
+    # (kiosk mode) are still allowed when assigned_to is unset.
+    if auth_user and task.assigned_to and auth_user.id != task.assigned_to:
+        raise HTTPException(status_code=403, detail="Only the assigned user can complete this task")
+
     task.is_completed = True
     task.completed_at = func.now()
 
