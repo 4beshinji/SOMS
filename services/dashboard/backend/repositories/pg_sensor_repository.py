@@ -290,16 +290,18 @@ class PgSensorRepository(SensorDataRepository):
             """),
             {"zone": zone, "limit": limit},
         )
-        return [
-            EventItem(
+        items = []
+        for row in result.fetchall():
+            data = row[4] if isinstance(row[4], dict) else json.loads(row[4])
+            items.append(EventItem(
                 timestamp=row[0],
                 zone=row[1],
                 event_type=row[2],
                 source_device=row[3],
-                data=row[4] if isinstance(row[4], dict) else json.loads(row[4]),
-            )
-            for row in result.fetchall()
-        ]
+                severity=data.get("severity") if isinstance(data, dict) else None,
+                data=data,
+            ))
+        return items
 
     async def get_llm_activity(self, hours: int = 24) -> LLMActivitySummary:
         result = await self._session.execute(

@@ -53,6 +53,7 @@ class EventItem(BaseModel):
     zone: str
     event_type: str
     source_device: str | None = None
+    severity: str | None = None
     data: dict[str, Any] = {}
 
 

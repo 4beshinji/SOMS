@@ -649,7 +649,9 @@ function LLMActivitySection() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                        evt.event_type.includes('alert')
+                        evt.severity === 'critical' || evt.event_type.includes('fall')
+                          ? 'bg-[var(--error-50)] text-[var(--error-700)]'
+                          : /alert|exceeded|spike|tamper/.test(evt.event_type)
                           ? 'bg-[var(--error-50)] text-[var(--error-700)]'
                           : evt.event_type.includes('change')
                           ? 'bg-[var(--warning-50)] text-[var(--warning-700)]'

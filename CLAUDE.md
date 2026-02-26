@@ -64,7 +64,7 @@ pnpm run lint     # ESLint
 
 ### Testing
 
-Unit tests (pytest, no running services required — **711 tests total**):
+Unit tests (pytest, no running services required — **724 tests total**):
 ```bash
 # All unit tests (run per-service to avoid conftest collisions)
 for d in services/brain/tests services/auth/tests services/voice/tests services/dashboard/backend/tests services/wallet/tests services/switchbot/tests services/perception/tests; do echo "=== $d ===" && .venv/bin/python -m pytest "$d" -v --tb=short; done
@@ -73,7 +73,7 @@ for d in services/brain/tests services/auth/tests services/voice/tests services/
 .venv/bin/python -m pytest services/brain/tests/              # Brain: 167 tests (queue, sanitizer, sensor fusion, tools, executor, dashboard client)
 .venv/bin/python -m pytest services/auth/tests/               # Auth: 97 tests (OAuth, JWT, middleware)
 .venv/bin/python -m pytest services/voice/tests/              # Voice: 79 tests (API endpoints, rejection/acceptance/currency stock)
-.venv/bin/python -m pytest services/dashboard/backend/tests/  # Dashboard: 159 tests (JWT auth, protected endpoints, task/sensor/device/voice CRUD)
+.venv/bin/python -m pytest services/dashboard/backend/tests/  # Dashboard: 172 tests (JWT auth, protected endpoints, task/sensor/device/voice CRUD)
 .venv/bin/python -m pytest services/wallet/tests/             # Wallet: 64 tests (JWT auth, financial endpoints)
 .venv/bin/python -m pytest services/switchbot/tests/          # SwitchBot: 59 tests (config, device manager, API)
 .venv/bin/python -m pytest services/perception/tests/         # Perception: 86 tests (ArUco, ReID, tracklet, fall detection)

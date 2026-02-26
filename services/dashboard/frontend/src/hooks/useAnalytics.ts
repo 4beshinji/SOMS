@@ -39,6 +39,7 @@ export interface EventItem {
   zone: string;
   event_type: string;
   source_device: string | null;
+  severity: string | null;
   data: Record<string, unknown>;
 }
 

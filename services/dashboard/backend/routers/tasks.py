@@ -124,12 +124,12 @@ async def read_tasks(skip: int = 0, limit: int = 100, db: AsyncSession = Depends
         if t.task_type:
             try:
                 t_dict['task_type'] = json.loads(t.task_type)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 t_dict['task_type'] = []
         else:
             t_dict['task_type'] = []
         tasks.append(schemas.Task(**t_dict))
-        
+
     return tasks
 
 def _task_to_response(task_model: models.Task) -> schemas.Task:
@@ -399,12 +399,12 @@ async def get_queued_tasks(db: AsyncSession = Depends(get_db)):
         if t.task_type:
             try:
                 t_dict['task_type'] = json.loads(t.task_type)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 t_dict['task_type'] = []
         else:
             t_dict['task_type'] = []
         tasks.append(schemas.Task(**t_dict))
-    
+
     return tasks
 
 
@@ -425,11 +425,11 @@ async def dispatch_task(task_id: int, db: AsyncSession = Depends(get_db)):
     if task.task_type:
         try:
             t_dict['task_type'] = json.loads(task.task_type)
-        except:
+        except (json.JSONDecodeError, TypeError, ValueError):
             t_dict['task_type'] = []
     else:
         t_dict['task_type'] = []
-    
+
     return schemas.Task(**t_dict)
 
 
