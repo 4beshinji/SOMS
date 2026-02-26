@@ -21,7 +21,7 @@ from schemas import (
 from services.stake_service import (
     open_funding, close_funding, buy_shares, return_shares,
 )
-from jwt_auth import AuthUser, get_current_user
+from jwt_auth import AuthUser, require_auth
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ async def api_open_funding(
     device_id: str,
     body: FundingOpenRequest,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     """Owner opens funding: list shares for sale."""
     try:
@@ -63,6 +64,7 @@ async def api_close_funding(
     device_id: str,
     body: FundingCloseRequest,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     """Owner closes funding. Existing stakes remain."""
     try:
@@ -79,10 +81,10 @@ async def api_buy_shares(
     device_id: str,
     body: StakeBuyRequest,
     db: AsyncSession = Depends(get_db),
-    auth_user: Optional[AuthUser] = Depends(get_current_user),
+    auth_user: AuthUser = Depends(require_auth),
 ):
     """Investor buys shares with SOMS."""
-    if auth_user and auth_user.id != body.user_id:
+    if auth_user.id != body.user_id:
         raise HTTPException(status_code=403, detail="Cannot buy shares for another user")
     try:
         stake = await buy_shares(db, device_id, body.user_id, body.shares)
@@ -103,10 +105,10 @@ async def api_return_shares(
     device_id: str,
     body: StakeReturnRequest,
     db: AsyncSession = Depends(get_db),
-    auth_user: Optional[AuthUser] = Depends(get_current_user),
+    auth_user: AuthUser = Depends(require_auth),
 ):
     """Investor returns shares. System buys back at share_price."""
-    if auth_user and auth_user.id != body.user_id:
+    if auth_user.id != body.user_id:
         raise HTTPException(status_code=403, detail="Cannot return shares for another user")
     try:
         stake = await return_shares(db, device_id, body.user_id, body.shares)

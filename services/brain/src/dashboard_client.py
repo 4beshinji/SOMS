@@ -11,6 +11,11 @@ class DashboardClient:
         self.voice_url = voice_url or os.getenv("VOICE_SERVICE_URL", "http://voice-service:8000")
         self.enable_voice = enable_voice
         self._session = session
+        self._service_token = os.getenv("INTERNAL_SERVICE_TOKEN", "")
+
+    def _service_headers(self) -> dict:
+        """Return headers for authenticated service-to-service calls."""
+        return {"X-Service-Token": self._service_token} if self._service_token else {}
 
     @contextlib.asynccontextmanager
     async def _get_session(self):
@@ -103,7 +108,7 @@ class DashboardClient:
 
         try:
             async with self._get_session() as session:
-                async with session.post(url, json=payload) as response:
+                async with session.post(url, json=payload, headers=self._service_headers()) as response:
                     if response.status == 200:
                         data = await response.json()
                         logger.info(f"Task created successfully: {data}")

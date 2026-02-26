@@ -7,6 +7,7 @@ from sqlalchemy import func as sa_func
 from typing import List
 
 from database import get_db
+from jwt_auth import AuthUser, require_service_auth
 from models import Device, RewardRate
 from schemas import (
     DeviceCreate, DeviceUpdate, DeviceResponse,
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 
 
 @router.post("/", response_model=DeviceResponse)
-async def register_device(body: DeviceCreate, db: AsyncSession = Depends(get_db)):
+async def register_device(body: DeviceCreate, db: AsyncSession = Depends(get_db), _auth: AuthUser = Depends(require_service_auth)):
     existing = await db.execute(
         select(Device).filter(Device.device_id == body.device_id)
     )
@@ -58,6 +59,7 @@ async def update_device(
     device_id: str,
     body: DeviceUpdate,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_service_auth),
 ):
     result = await db.execute(
         select(Device).filter(Device.device_id == device_id)
@@ -79,7 +81,7 @@ async def update_device(
 
 
 @router.post("/xp-grant", response_model=DeviceXpResponse)
-async def xp_grant(body: DeviceXpGrantRequest, db: AsyncSession = Depends(get_db)):
+async def xp_grant(body: DeviceXpGrantRequest, db: AsyncSession = Depends(get_db), _auth: AuthUser = Depends(require_service_auth)):
     """Grant XP to all active devices in a zone."""
     devices_awarded, total_xp, device_ids = await grant_xp_to_zone(
         db,
@@ -101,6 +103,7 @@ async def device_heartbeat(
     device_id: str,
     body: HeartbeatRequest = None,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_service_auth),
 ):
     """Record device heartbeat and auto-grant infrastructure reward if eligible.
 
@@ -177,6 +180,7 @@ async def update_utility_score(
     device_id: str,
     body: UtilityScoreUpdate,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_service_auth),
 ):
     """Brain updates a device's utility_score (clamped to 0.5-2.0)."""
     result = await db.execute(

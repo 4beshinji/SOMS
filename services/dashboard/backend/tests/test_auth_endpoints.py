@@ -161,15 +161,15 @@ def _create_app(db_mock):
 class TestAcceptTaskAuth:
     """Auth guard on PUT /tasks/{task_id}/accept."""
 
-    def test_unauthenticated_request_allowed(self):
-        """No JWT → auth_user=None → no 403, proceeds to task lookup."""
+    def test_unauthenticated_request_returns_401(self):
+        """No JWT → 401 (require_auth rejects unauthenticated requests)."""
         task = _make_task_obj(id=1)
         db = _make_mock_db([[task]])
         app = _create_app(db)
         client = TestClient(app)
 
         resp = client.put("/tasks/1/accept", json={"user_id": 5})
-        assert resp.status_code != 403
+        assert resp.status_code == 401
 
     def test_authenticated_matching_user_allowed(self):
         """JWT user_id == body.user_id → no 403."""
@@ -219,8 +219,8 @@ class TestAcceptTaskAuth:
                           headers=_auth_header(sub=99))
         assert resp.status_code != 403
 
-    def test_expired_token_treated_as_unauthenticated(self):
-        """Expired JWT → auth_user=None → no 403."""
+    def test_expired_token_returns_401(self):
+        """Expired JWT → 401 (require_auth rejects expired tokens)."""
         task = _make_task_obj(id=1)
         db = _make_mock_db([[task]])
         app = _create_app(db)
@@ -229,10 +229,10 @@ class TestAcceptTaskAuth:
         resp = client.put("/tasks/1/accept",
                           json={"user_id": 5},
                           headers={"Authorization": f"Bearer {_make_token(sub=99, exp_delta_sec=-60)}"})
-        assert resp.status_code != 403
+        assert resp.status_code == 401
 
-    def test_wrong_secret_treated_as_unauthenticated(self):
-        """Token with wrong secret → auth_user=None → no 403."""
+    def test_wrong_secret_returns_401(self):
+        """Token with wrong secret → 401."""
         task = _make_task_obj(id=1)
         db = _make_mock_db([[task]])
         app = _create_app(db)
@@ -241,7 +241,7 @@ class TestAcceptTaskAuth:
         resp = client.put("/tasks/1/accept",
                           json={"user_id": 5},
                           headers={"Authorization": f"Bearer {_make_token(sub=99, secret='wrong_secret_32bytes_longgggg!!')}"})
-        assert resp.status_code != 403
+        assert resp.status_code == 401
 
     def test_task_not_found_returns_404(self):
         """Task doesn't exist → 404 (after auth passes)."""
@@ -336,8 +336,8 @@ class TestCompleteTaskAuth:
     receives auth_user via the dependency but doesn't compare user_id.
     """
 
-    def test_unauthenticated_request_allowed(self):
-        """No JWT → auth_user=None → proceeds normally."""
+    def test_unauthenticated_request_returns_401(self):
+        """No JWT → 401 (require_auth rejects unauthenticated requests)."""
         task = _make_task_obj(id=1, zone=None, assigned_to=None, bounty_xp=0)
         sys_stats = _make_sys_stats()
         db = _make_mock_db([[task], [sys_stats]])
@@ -347,7 +347,7 @@ class TestCompleteTaskAuth:
             app = _create_app(db)
             client = TestClient(app)
             resp = client.put("/tasks/1/complete", json={})
-            assert resp.status_code != 403
+            assert resp.status_code == 401
 
     def test_authenticated_request_allowed(self):
         """Any authenticated user can complete — no user_id check."""
@@ -363,8 +363,8 @@ class TestCompleteTaskAuth:
                               headers=_auth_header(sub=42))
             assert resp.status_code != 403
 
-    def test_expired_token_treated_as_unauthenticated(self):
-        """Expired JWT → auth_user=None → still works."""
+    def test_expired_token_returns_401(self):
+        """Expired JWT → 401 (require_auth rejects expired tokens)."""
         task = _make_task_obj(id=1, zone=None, assigned_to=None, bounty_xp=0)
         sys_stats = _make_sys_stats()
         db = _make_mock_db([[task], [sys_stats]])
@@ -375,7 +375,7 @@ class TestCompleteTaskAuth:
             client = TestClient(app)
             resp = client.put("/tasks/1/complete", json={},
                               headers={"Authorization": f"Bearer {_make_token(sub=1, exp_delta_sec=-60)}"})
-            assert resp.status_code != 403
+            assert resp.status_code == 401
 
     def test_task_not_found_returns_404(self):
         db = _make_mock_db([[]])
@@ -413,7 +413,8 @@ class TestCompleteTaskAuth:
             app = _create_app(db)
             client = TestClient(app)
             client.put("/tasks/1/complete",
-                       json={"completion_note": "X" * 1000})
+                       json={"completion_note": "X" * 1000},
+                       headers=_auth_header(sub=1))
             assert len(task.completion_note) == 500
 
     def test_complete_marks_is_completed(self):
@@ -426,7 +427,8 @@ class TestCompleteTaskAuth:
              patch("routers.tasks._publish_task_report"):
             app = _create_app(db)
             client = TestClient(app)
-            resp = client.put("/tasks/1/complete", json={})
+            resp = client.put("/tasks/1/complete", json={},
+                              headers=_auth_header(sub=1))
             assert resp.status_code == 200
             assert task.is_completed is True
 
@@ -440,7 +442,8 @@ class TestCompleteTaskAuth:
              patch("routers.tasks._publish_task_report"):
             app = _create_app(db)
             client = TestClient(app)
-            client.put("/tasks/1/complete", json={})
+            client.put("/tasks/1/complete", json={},
+                       headers=_auth_header(sub=1))
             assert sys_stats.tasks_completed == 1
             assert sys_stats.total_xp == 100
 
@@ -450,8 +453,8 @@ class TestCompleteTaskAuth:
 
 class TestAuthEdgeCases:
 
-    def test_accept_with_wrong_issuer_treated_as_unauthenticated(self):
-        """Token with wrong issuer → auth_user=None → no 403."""
+    def test_accept_with_wrong_issuer_returns_401(self):
+        """Token with wrong issuer → 401."""
         task = _make_task_obj(id=1)
         db = _make_mock_db([[task]])
         app = _create_app(db)
@@ -460,10 +463,10 @@ class TestAuthEdgeCases:
         resp = client.put("/tasks/1/accept",
                           json={"user_id": 5},
                           headers={"Authorization": f"Bearer {_make_token(sub=99, iss='evil')}"})
-        assert resp.status_code != 403
+        assert resp.status_code == 401
 
-    def test_accept_with_non_bearer_prefix_treated_as_unauthenticated(self):
-        """'Basic' prefix → auth_user=None → no 403."""
+    def test_accept_with_non_bearer_prefix_returns_401(self):
+        """'Basic' prefix → 401."""
         task = _make_task_obj(id=1)
         db = _make_mock_db([[task]])
         app = _create_app(db)
@@ -472,7 +475,7 @@ class TestAuthEdgeCases:
         resp = client.put("/tasks/1/accept",
                           json={"user_id": 5},
                           headers={"Authorization": "Basic sometoken"})
-        assert resp.status_code != 403
+        assert resp.status_code == 401
 
     def test_accept_auth_user_id_zero_system_wallet(self):
         """System wallet (user_id=0) authenticated, accepting for user_id=0."""
@@ -497,8 +500,8 @@ class TestAuthEdgeCases:
                           headers=_auth_header(sub=0))
         assert resp.status_code == 403
 
-    def test_malformed_jwt_in_accept_treated_as_unauthenticated(self):
-        """Malformed JWT → no 403."""
+    def test_malformed_jwt_in_accept_returns_401(self):
+        """Malformed JWT → 401."""
         task = _make_task_obj(id=1)
         db = _make_mock_db([[task]])
         app = _create_app(db)
@@ -507,10 +510,10 @@ class TestAuthEdgeCases:
         resp = client.put("/tasks/1/accept",
                           json={"user_id": 5},
                           headers={"Authorization": "Bearer not.valid.jwt"})
-        assert resp.status_code != 403
+        assert resp.status_code == 401
 
-    def test_malformed_jwt_in_complete_treated_as_unauthenticated(self):
-        """Malformed JWT on complete → no 403."""
+    def test_malformed_jwt_in_complete_returns_401(self):
+        """Malformed JWT on complete → 401."""
         task = _make_task_obj(id=1, zone=None, assigned_to=None, bounty_xp=0)
         sys_stats = _make_sys_stats()
         db = _make_mock_db([[task], [sys_stats]])
@@ -521,4 +524,4 @@ class TestAuthEdgeCases:
             client = TestClient(app)
             resp = client.put("/tasks/1/complete", json={},
                               headers={"Authorization": "Bearer not.valid.jwt"})
-            assert resp.status_code != 403
+            assert resp.status_code == 401

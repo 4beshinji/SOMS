@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +9,8 @@ from routers import tasks, users, voice_events, sensors, spatial, devices
 import models # Make sure models are registered
 
 logger = logging.getLogger(__name__)
+
+_KNOWN_WEAK_SECRETS = {"soms_dev_jwt_secret_change_me", "changeme", "secret", ""}
 
 app = FastAPI(title="SOMS Dashboard API")
 
@@ -55,6 +58,13 @@ def _migrate_add_columns(conn):
 # Startup Event
 @app.on_event("startup")
 async def startup():
+    # JWT secret validation
+    jwt_secret = os.getenv("JWT_SECRET", "")
+    if jwt_secret in _KNOWN_WEAK_SECRETS:
+        if os.getenv("SOMS_ENV", "production") != "development":
+            raise RuntimeError("JWT_SECRET must be set to a strong, unique value")
+        logger.warning("WEAK JWT_SECRET — acceptable only in development mode")
+
     async with engine.begin() as conn:
         # Create all tables
         await conn.run_sync(Base.metadata.create_all)

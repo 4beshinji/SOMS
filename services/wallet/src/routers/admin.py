@@ -6,6 +6,7 @@ from sqlalchemy.future import select
 from typing import List
 
 from database import get_db
+from jwt_auth import AuthUser, require_auth
 from models import SupplyStats, RewardRate
 from schemas import SupplyResponse, RewardRateResponse, RewardRateUpdate
 from services.demurrage import apply_demurrage
@@ -36,7 +37,7 @@ async def get_supply(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/demurrage/trigger")
-async def trigger_demurrage():
+async def trigger_demurrage(_auth: AuthUser = Depends(require_auth)):
     """Manually trigger a demurrage cycle (admin/testing use)."""
     await apply_demurrage()
     # Invalidate supply cache after demurrage burns
@@ -56,6 +57,7 @@ async def update_reward_rate(
     device_type: str,
     body: RewardRateUpdate,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     result = await db.execute(
         select(RewardRate).filter(RewardRate.device_type == device_type)

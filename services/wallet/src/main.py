@@ -26,8 +26,18 @@ SEED_REWARD_RATES = [
 ]
 
 
+_KNOWN_WEAK_SECRETS = {"soms_dev_jwt_secret_change_me", "changeme", "secret", ""}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # JWT secret validation
+    jwt_secret = os.getenv("JWT_SECRET", "")
+    if jwt_secret in _KNOWN_WEAK_SECRETS:
+        if os.getenv("SOMS_ENV", "production") != "development":
+            raise RuntimeError("JWT_SECRET must be set to a strong, unique value")
+        logger.warning("WEAK JWT_SECRET — acceptable only in development mode")
+
     # Create tables in wallet schema
     async with engine.begin() as conn:
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS wallet"))

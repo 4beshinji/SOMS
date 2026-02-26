@@ -22,7 +22,7 @@ from services.monetary_policy import (
     calc_min_transfer,
     get_circulating,
 )
-from jwt_auth import AuthUser, require_auth, get_current_user
+from jwt_auth import AuthUser, require_auth, require_service_auth, get_current_user
 
 import os
 REGION_ID = os.getenv("SOMS_REGION_ID", "local")
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
 @router.post("/task-reward", response_model=TransactionResponse)
-async def task_reward(body: TaskRewardRequest, db: AsyncSession = Depends(get_db)):
+async def task_reward(body: TaskRewardRequest, db: AsyncSession = Depends(get_db), _auth: AuthUser = Depends(require_service_auth)):
     """Pay task bounty from system wallet to user wallet."""
     reference = f"{REGION_ID}:task:{body.task_id}"
     description = body.description or f"Task #{body.task_id} reward"
@@ -58,11 +58,11 @@ async def task_reward(body: TaskRewardRequest, db: AsyncSession = Depends(get_db
 async def p2p_transfer(
     body: P2PTransferRequest,
     db: AsyncSession = Depends(get_db),
-    auth_user: Optional[AuthUser] = Depends(get_current_user),
+    auth_user: AuthUser = Depends(require_auth),
 ):
     """Transfer funds between two user wallets (fee is burned)."""
-    # If authenticated, verify the sender matches the JWT user
-    if auth_user and auth_user.id != body.from_user_id:
+    # Verify the sender matches the JWT user
+    if auth_user.id != body.from_user_id:
         raise HTTPException(status_code=403, detail="Cannot transfer from another user's wallet")
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")

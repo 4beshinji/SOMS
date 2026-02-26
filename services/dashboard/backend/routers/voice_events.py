@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List
 
 from database import get_db
+from jwt_auth import AuthUser, require_service_auth
 import models
 import schemas
 
@@ -15,6 +16,7 @@ router = APIRouter(prefix="/voice-events", tags=["voice-events"])
 async def create_voice_event(
     event: schemas.VoiceEventCreate,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_service_auth),
 ):
     """Record a voice event from Brain speak tool."""
     db_event = models.VoiceEvent(

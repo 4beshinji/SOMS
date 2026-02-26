@@ -11,3 +11,4 @@ if _BACKEND_DIR not in sys.path:
 # Set test-safe environment before imports
 os.environ.setdefault("JWT_SECRET", "test_jwt_secret_dashboard_32b!!")
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/test")
+os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test_service_token_for_unit_tests")

@@ -17,8 +17,13 @@ class WalletBridge:
         self.session = session
         self.device_registry = device_registry
         self.wallet_url = os.getenv("WALLET_SERVICE_URL", "http://wallet:8000")
+        self._service_token = os.getenv("INTERNAL_SERVICE_TOKEN", "")
         self._last_forwarded: dict[str, float] = {}
         self.forward_interval = 300  # 5 min throttle
+
+    def _service_headers(self) -> dict:
+        """Return headers for authenticated service-to-service calls."""
+        return {"X-Service-Token": self._service_token} if self._service_token else {}
 
     async def forward_heartbeat(self, device_id: str, payload: dict):
         """Forward a heartbeat to Wallet service with DeviceRegistry metrics.
@@ -40,7 +45,7 @@ class WalletBridge:
 
         url = f"{self.wallet_url}/devices/{device_id}/heartbeat"
         try:
-            async with self.session.post(url, json=body, timeout=10) as resp:
+            async with self.session.post(url, json=body, headers=self._service_headers(), timeout=10) as resp:
                 if resp.status == 200:
                     self._last_forwarded[device_id] = now
                     logger.debug("Heartbeat forwarded: %s → Wallet", device_id)

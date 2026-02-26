@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from database import get_db
+from jwt_auth import AuthUser, require_service_auth
 from models import LedgerEntry
 from schemas import WalletCreate, WalletResponse, LedgerEntryResponse
 from services.ledger import get_or_create_wallet
@@ -11,7 +12,7 @@ router = APIRouter(prefix="/wallets", tags=["wallets"])
 
 
 @router.post("/", response_model=WalletResponse)
-async def create_wallet(body: WalletCreate, db: AsyncSession = Depends(get_db)):
+async def create_wallet(body: WalletCreate, db: AsyncSession = Depends(get_db), _auth: AuthUser = Depends(require_service_auth)):
     wallet = await get_or_create_wallet(db, body.user_id)
     await db.commit()
     await db.refresh(wallet)

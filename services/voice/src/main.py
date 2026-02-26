@@ -421,11 +421,19 @@ async def clear_currency_unit_stock():
     return {"status": "cleared", "stock_count": currency_unit_stock.count}
 
 
+def _safe_audio_path(base_dir: Path, filename: str) -> Path:
+    """Resolve path and verify it stays within base directory."""
+    resolved = (base_dir / filename).resolve()
+    if not resolved.is_relative_to(base_dir.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    return resolved
+
+
 @app.get("/audio/rejections/{filename}")
 async def serve_rejection_audio(filename: str):
     """Serve pre-generated rejection audio files."""
     from rejection_stock import STOCK_DIR
-    audio_path = STOCK_DIR / filename
+    audio_path = _safe_audio_path(STOCK_DIR, filename)
 
     if not audio_path.exists():
         raise HTTPException(status_code=404, detail="Audio not found")
@@ -437,7 +445,7 @@ async def serve_rejection_audio(filename: str):
 async def serve_acceptance_audio(filename: str):
     """Serve pre-generated acceptance audio files."""
     from acceptance_stock import STOCK_DIR
-    audio_path = STOCK_DIR / filename
+    audio_path = _safe_audio_path(STOCK_DIR, filename)
 
     if not audio_path.exists():
         raise HTTPException(status_code=404, detail="Audio not found")
@@ -448,13 +456,11 @@ async def serve_acceptance_audio(filename: str):
 @app.get("/audio/{filename}")
 async def serve_audio(filename: str):
     """Serve generated audio files."""
-    audio_path = AUDIO_DIR / filename
+    audio_path = _safe_audio_path(AUDIO_DIR, filename)
 
     if not audio_path.exists():
         raise HTTPException(status_code=404, detail="Audio not found")
 
-    # We omit the filename argument to default to inline disposition,
-    # which is better for web playback in <audio> or Audio objects.
     return FileResponse(
         audio_path,
         media_type="audio/mpeg"

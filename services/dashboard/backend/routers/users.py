@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from database import get_db
+from jwt_auth import AuthUser, require_auth, require_service_auth
 import models
 import schemas
 
@@ -38,7 +39,7 @@ async def read_user(user_id: int, db: AsyncSession = Depends(get_db)):
     return user
 
 @router.post("/", response_model=schemas.User, status_code=201)
-async def create_user(user: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
+async def create_user(user: schemas.UserCreate, db: AsyncSession = Depends(get_db), _auth: AuthUser = Depends(require_service_auth)):
     db_user = models.User(
         username=user.username,
         display_name=user.display_name,
@@ -57,6 +58,7 @@ async def update_user(
     user_id: int,
     user_update: schemas.UserUpdate,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     result = await db.execute(
         select(models.User).where(models.User.id == user_id)

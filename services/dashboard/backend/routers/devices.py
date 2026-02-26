@@ -8,6 +8,7 @@ from sqlalchemy import select, delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
+from jwt_auth import AuthUser, require_auth
 from models import DevicePosition, CameraPosition
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ async def list_device_positions(db: AsyncSession = Depends(get_db)):
 async def create_device_position(
     body: CreateDevicePositionIn,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     """Place a new device on the floor plan."""
     # Check for duplicate
@@ -102,6 +104,7 @@ async def update_device_position(
     device_id: str,
     body: UpdateDevicePositionIn,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     """Update device position (after drag)."""
     result = await db.execute(
@@ -125,6 +128,7 @@ async def update_device_position(
 async def delete_device_position(
     device_id: str,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     """Remove a device from the floor plan."""
     result = await db.execute(
@@ -187,6 +191,7 @@ async def upsert_camera_position(
     camera_id: str,
     body: UpsertCameraPositionIn,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     """Create or update camera placement (upsert). Overrides YAML config."""
     result = await db.execute(
@@ -221,6 +226,7 @@ async def upsert_camera_position(
 async def delete_camera_position(
     camera_id: str,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     """Remove camera DB override (reverts to YAML default)."""
     result = await db.execute(

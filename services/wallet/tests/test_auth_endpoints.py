@@ -117,8 +117,8 @@ class TestP2PTransferAuth:
             headers=headers,
         )
 
-    def test_unauthenticated_request_allowed(self):
-        """No JWT → auth_user=None → no 403, request proceeds to business logic."""
+    def test_unauthenticated_request_returns_401(self):
+        """No JWT → 401 (require_auth rejects unauthenticated requests)."""
         wallet = _make_wallet(user_id=1, balance=10000)
         txn_id = uuid4()
         db = _mock_db_with_entries([_make_ledger_entry(txn_id)])
@@ -128,7 +128,7 @@ class TestP2PTransferAuth:
             app = self._create_app(db)
             client = TestClient(app)
             resp = self._run_p2p(client)
-            assert resp.status_code != 403
+            assert resp.status_code == 401
 
     def test_authenticated_matching_user_allowed(self):
         """JWT user_id == from_user_id → no 403."""
@@ -153,8 +153,8 @@ class TestP2PTransferAuth:
         assert resp.status_code == 403
         assert "Cannot transfer from another user" in resp.json()["detail"]
 
-    def test_expired_token_treated_as_unauthenticated(self):
-        """Expired JWT → auth_user=None → no 403 (treated as unauthenticated)."""
+    def test_expired_token_returns_401(self):
+        """Expired JWT → 401 (require_auth rejects expired tokens)."""
         wallet = _make_wallet(user_id=1, balance=10000)
         txn_id = uuid4()
         db = _mock_db_with_entries([_make_ledger_entry(txn_id)])
@@ -165,10 +165,10 @@ class TestP2PTransferAuth:
             client = TestClient(app)
             headers = {"Authorization": f"Bearer {_make_token(sub=99, exp_delta_sec=-60)}"}
             resp = self._run_p2p(client, headers=headers)
-            assert resp.status_code != 403
+            assert resp.status_code == 401
 
-    def test_invalid_token_treated_as_unauthenticated(self):
-        """Malformed JWT → auth_user=None → no 403."""
+    def test_invalid_token_returns_401(self):
+        """Malformed JWT → 401."""
         wallet = _make_wallet(user_id=1, balance=10000)
         txn_id = uuid4()
         db = _mock_db_with_entries([_make_ledger_entry(txn_id)])
@@ -178,7 +178,7 @@ class TestP2PTransferAuth:
             app = self._create_app(db)
             client = TestClient(app)
             resp = self._run_p2p(client, headers={"Authorization": "Bearer invalid.jwt.token"})
-            assert resp.status_code != 403
+            assert resp.status_code == 401
 
     def test_403_detail_message(self):
         """Verify the exact error message for user mismatch."""
@@ -244,14 +244,14 @@ class TestStakesBuyAuth:
         app.dependency_overrides[get_db] = lambda: db_mock
         return app
 
-    def test_unauthenticated_request_allowed(self):
-        """No JWT → proceeds to business logic."""
+    def test_unauthenticated_request_returns_401(self):
+        """No JWT → 401 (require_auth rejects unauthenticated requests)."""
         db = _stakes_db(_make_device_mock())
         with patch("routers.stakes.buy_shares", return_value=_make_stake_mock()):
             app = self._create_app(db)
             client = TestClient(app)
             resp = client.post("/devices/dev1/stakes/buy", json={"user_id": 5, "shares": 10})
-            assert resp.status_code != 403
+            assert resp.status_code == 401
 
     def test_authenticated_matching_user_allowed(self):
         """JWT user_id == body.user_id → no 403."""
@@ -275,8 +275,8 @@ class TestStakesBuyAuth:
         assert resp.status_code == 403
         assert "Cannot buy shares for another user" in resp.json()["detail"]
 
-    def test_expired_token_treated_as_unauthenticated(self):
-        """Expired JWT → auth_user=None → no 403."""
+    def test_expired_token_returns_401(self):
+        """Expired JWT → 401 (require_auth rejects expired tokens)."""
         db = _stakes_db(_make_device_mock())
         with patch("routers.stakes.buy_shares", return_value=_make_stake_mock()):
             app = self._create_app(db)
@@ -284,7 +284,7 @@ class TestStakesBuyAuth:
             resp = client.post("/devices/dev1/stakes/buy",
                                json={"user_id": 5, "shares": 10},
                                headers={"Authorization": f"Bearer {_make_token(sub=99, exp_delta_sec=-60)}"})
-            assert resp.status_code != 403
+            assert resp.status_code == 401
 
     def test_403_exact_message(self):
         db = AsyncMock()
@@ -308,15 +308,15 @@ class TestStakesReturnAuth:
         app.dependency_overrides[get_db] = lambda: db_mock
         return app
 
-    def test_unauthenticated_request_allowed(self):
-        """No JWT → proceeds to business logic."""
+    def test_unauthenticated_request_returns_401(self):
+        """No JWT → 401 (require_auth rejects unauthenticated requests)."""
         db = AsyncMock()
         with patch("routers.stakes.return_shares", return_value=None):
             app = self._create_app(db)
             client = TestClient(app)
             resp = client.post("/devices/dev1/stakes/return",
                                json={"user_id": 5, "shares": 10})
-            assert resp.status_code != 403
+            assert resp.status_code == 401
 
     def test_authenticated_matching_user_allowed(self):
         """JWT user_id == body.user_id → no 403."""
@@ -340,8 +340,8 @@ class TestStakesReturnAuth:
         assert resp.status_code == 403
         assert "Cannot return shares for another user" in resp.json()["detail"]
 
-    def test_expired_token_treated_as_unauthenticated(self):
-        """Expired JWT → auth_user=None → no 403."""
+    def test_expired_token_returns_401(self):
+        """Expired JWT → 401 (require_auth rejects expired tokens)."""
         db = AsyncMock()
         with patch("routers.stakes.return_shares", return_value=None):
             app = self._create_app(db)
@@ -349,10 +349,10 @@ class TestStakesReturnAuth:
             resp = client.post("/devices/dev1/stakes/return",
                                json={"user_id": 5, "shares": 10},
                                headers={"Authorization": f"Bearer {_make_token(sub=99, exp_delta_sec=-60)}"})
-            assert resp.status_code != 403
+            assert resp.status_code == 401
 
-    def test_wrong_secret_treated_as_unauthenticated(self):
-        """Token signed with wrong secret → auth_user=None → no 403."""
+    def test_wrong_secret_returns_401(self):
+        """Token signed with wrong secret → 401."""
         db = AsyncMock()
         with patch("routers.stakes.return_shares", return_value=None):
             app = self._create_app(db)
@@ -360,7 +360,7 @@ class TestStakesReturnAuth:
             resp = client.post("/devices/dev1/stakes/return",
                                json={"user_id": 5, "shares": 10},
                                headers={"Authorization": f"Bearer {_make_token(sub=99, secret='wrong_secret_32bytes_longgggg!!')}"})
-            assert resp.status_code != 403
+            assert resp.status_code == 401
 
     def test_403_exact_message(self):
         db = AsyncMock()

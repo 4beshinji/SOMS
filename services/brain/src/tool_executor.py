@@ -19,6 +19,11 @@ class ToolExecutor:
         self.device_registry = device_registry
         self.voice_url = os.getenv("VOICE_SERVICE_URL", "http://voice-service:8000")
         self.dashboard_api_url = os.getenv("DASHBOARD_API_URL", "http://backend:8000")
+        self._service_token = os.getenv("INTERNAL_SERVICE_TOKEN", "")
+
+    def _service_headers(self) -> dict:
+        """Return headers for authenticated service-to-service calls."""
+        return {"X-Service-Token": self._service_token} if self._service_token else {}
 
     async def execute(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -127,6 +132,7 @@ class ToolExecutor:
                     "zone": zone,
                     "tone": tone,
                 },
+                headers=self._service_headers(),
                 timeout=aiohttp.ClientTimeout(total=10),
             )
         except Exception as e:

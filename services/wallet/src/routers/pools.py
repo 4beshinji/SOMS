@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from database import get_db
+from jwt_auth import AuthUser, require_auth
 from models import FundingPool, PoolContribution
 from schemas import (
     PoolCreateRequest, PoolContributeRequest, PoolActivateRequest,
@@ -31,6 +32,7 @@ admin_router = APIRouter(prefix="/admin/pools", tags=["pools-admin"])
 async def api_create_pool(
     body: PoolCreateRequest,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     """Admin creates a funding pool."""
     try:
@@ -123,6 +125,7 @@ async def api_contribute(
     pool_id: int,
     body: PoolContributeRequest,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     """Admin records a cash contribution."""
     try:
@@ -139,6 +142,7 @@ async def api_activate_pool(
     pool_id: int,
     body: PoolActivateRequest,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     """Admin activates pool: links device and allocates shares."""
     try:

@@ -101,9 +101,12 @@ async def oauth_callback(
         logger.info("New user registered via %s: user_id=%d", provider, user.id)
 
     # Redirect to frontend with tokens in fragment
-    user_json = urllib.parse.quote(
-        f'{{"id":{user.id},"username":"{user.username}","display_name":"{user.display_name or user.username}"}}'
-    )
+    import json
+    user_json = urllib.parse.quote(json.dumps({
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name or user.username,
+    }))
     fragment = urllib.parse.urlencode({
         "access_token": access_token,
         "refresh_token": raw_refresh,

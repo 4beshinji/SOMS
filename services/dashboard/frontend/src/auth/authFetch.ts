@@ -21,6 +21,8 @@ export async function authFetch(
     const refreshed = await tryRefresh();
     if (refreshed) {
       res = await doFetch(getAccessToken());
+    } else {
+      window.dispatchEvent(new CustomEvent('soms-auth-logout'));
     }
   }
 

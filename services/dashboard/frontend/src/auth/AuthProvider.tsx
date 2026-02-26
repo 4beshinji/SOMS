@@ -125,6 +125,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('soms-auth-callback', handler as EventListener);
   }, [scheduleRefresh]);
 
+  // Listen for forced logout events (e.g. from authFetch when 401 refresh fails)
+  useEffect(() => {
+    const handler = () => {
+      clearAuth();
+    };
+    window.addEventListener('soms-auth-logout', handler as EventListener);
+    return () => window.removeEventListener('soms-auth-logout', handler as EventListener);
+  }, [clearAuth]);
+
   const login = useCallback((provider: 'slack' | 'github') => {
     window.location.href = `${AUTH_API}/${provider}/login`;
   }, []);

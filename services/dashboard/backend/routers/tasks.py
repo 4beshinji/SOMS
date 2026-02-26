@@ -12,15 +12,21 @@ import httpx
 from database import get_db
 import models
 import json
-from jwt_auth import AuthUser, get_current_user
+from jwt_auth import AuthUser, get_current_user, require_auth, require_service_auth
 
 logger = logging.getLogger(__name__)
 
 WALLET_SERVICE_URL = os.getenv("WALLET_SERVICE_URL", "http://wallet:8000")
+INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "")
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mosquitto")
 MQTT_USER = os.getenv("MQTT_USER", "soms")
 MQTT_PASS = os.getenv("MQTT_PASS", "soms_dev_mqtt")
 REGION_ID = os.getenv("SOMS_REGION_ID", "local")
+
+
+def _wallet_headers() -> dict:
+    """Return headers for internal wallet service calls."""
+    return {"X-Service-Token": INTERNAL_SERVICE_TOKEN} if INTERNAL_SERVICE_TOKEN else {}
 
 
 async def _grant_device_xp(zone: str, task_id: int, xp_amount: int, event_type: str):
@@ -35,6 +41,7 @@ async def _grant_device_xp(zone: str, task_id: int, xp_amount: int, event_type: 
                     "xp_amount": xp_amount,
                     "event_type": event_type,
                 },
+                headers=_wallet_headers(),
             )
     except Exception as e:
         logger.warning("XP grant failed for zone=%s task=%d: %s", zone, task_id, e)
@@ -44,7 +51,7 @@ async def _get_zone_multiplier(zone: str) -> float:
     """Fetch reward multiplier for a zone from wallet service. Returns 1.0 on failure."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{WALLET_SERVICE_URL}/devices/zone-multiplier/{zone}")
+            resp = await client.get(f"{WALLET_SERVICE_URL}/devices/zone-multiplier/{zone}", headers=_wallet_headers())
             if resp.status_code == 200:
                 return resp.json().get("multiplier", 1.0)
     except Exception as e:
@@ -165,7 +172,7 @@ def _task_to_response(task_model: models.Task) -> schemas.Task:
     )
 
 @router.post("/", response_model=schemas.Task)
-async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_db)):
+async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_db), _auth: AuthUser = Depends(require_service_auth)):
     # Duplicate Check Stage 1: exact title + location match
     query = select(models.Task).filter(
         models.Task.title == task.title,
@@ -281,7 +288,7 @@ async def accept_task(
     task_id: int,
     body: schemas.TaskAccept,
     db: AsyncSession = Depends(get_db),
-    auth_user: Optional[AuthUser] = Depends(get_current_user),
+    auth_user: AuthUser = Depends(require_auth),
 ):
     """Assign a task to a user."""
     # If authenticated, verify user_id matches
@@ -309,7 +316,7 @@ async def complete_task(
     task_id: int,
     body: schemas.TaskComplete = None,
     db: AsyncSession = Depends(get_db),
-    auth_user: Optional[AuthUser] = Depends(get_current_user),
+    auth_user: AuthUser = Depends(require_auth),
 ):
     result = await db.execute(select(models.Task).filter(models.Task.id == task_id))
     task = result.scalars().first()
@@ -357,6 +364,7 @@ async def complete_task(
                         "task_id": task.id,
                         "description": f"Task: {task.title} ({multiplier:.1f}x)",
                     },
+                    headers=_wallet_headers(),
                 )
         except Exception as e:
             logger.warning("Wallet payment failed for task %d: %s", task.id, e)
@@ -373,7 +381,7 @@ async def complete_task(
     )
 
 @router.put("/{task_id}/reminded", response_model=schemas.Task)
-async def mark_task_reminded(task_id: int, db: AsyncSession = Depends(get_db)):
+async def mark_task_reminded(task_id: int, db: AsyncSession = Depends(get_db), _auth: AuthUser = Depends(require_service_auth)):
     """Update the last_reminded_at timestamp for a task."""
     result = await db.execute(select(models.Task).filter(models.Task.id == task_id))
     task = result.scalars().first()
@@ -409,7 +417,7 @@ async def get_queued_tasks(db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{task_id}/dispatch", response_model=schemas.Task)
-async def dispatch_task(task_id: int, db: AsyncSession = Depends(get_db)):
+async def dispatch_task(task_id: int, db: AsyncSession = Depends(get_db), _auth: AuthUser = Depends(require_service_auth)):
     """Mark a queued task as dispatched (send to dashboard)."""
     result = await db.execute(select(models.Task).filter(models.Task.id == task_id))
     task = result.scalars().first()
