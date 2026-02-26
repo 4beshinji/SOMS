@@ -64,7 +64,7 @@ pnpm run lint     # ESLint
 
 ### Testing
 
-Unit tests (pytest, no running services required — **587 tests total**):
+Unit tests (pytest, no running services required — **711 tests total**):
 ```bash
 # All unit tests (run per-service to avoid conftest collisions)
 for d in services/brain/tests services/auth/tests services/voice/tests services/dashboard/backend/tests services/wallet/tests services/switchbot/tests services/perception/tests; do echo "=== $d ===" && .venv/bin/python -m pytest "$d" -v --tb=short; done
@@ -73,10 +73,10 @@ for d in services/brain/tests services/auth/tests services/voice/tests services/
 .venv/bin/python -m pytest services/brain/tests/              # Brain: 167 tests (queue, sanitizer, sensor fusion, tools, executor, dashboard client)
 .venv/bin/python -m pytest services/auth/tests/               # Auth: 97 tests (OAuth, JWT, middleware)
 .venv/bin/python -m pytest services/voice/tests/              # Voice: 79 tests (API endpoints, rejection/acceptance/currency stock)
-.venv/bin/python -m pytest services/dashboard/backend/tests/  # Dashboard: 71 tests (JWT auth, protected endpoints)
+.venv/bin/python -m pytest services/dashboard/backend/tests/  # Dashboard: 159 tests (JWT auth, protected endpoints, task/sensor/device/voice CRUD)
 .venv/bin/python -m pytest services/wallet/tests/             # Wallet: 64 tests (JWT auth, financial endpoints)
 .venv/bin/python -m pytest services/switchbot/tests/          # SwitchBot: 59 tests (config, device manager, API)
-.venv/bin/python -m pytest services/perception/tests/         # Perception: 50 tests (ArUco, ReID, tracklet)
+.venv/bin/python -m pytest services/perception/tests/         # Perception: 86 tests (ArUco, ReID, tracklet, fall detection)
 ```
 
 Integration tests (standalone scripts, requires running services):
@@ -102,7 +102,7 @@ python3 services/perception/test_yolo_detect.py
 ### 4-Layer Design
 
 1. **Central Intelligence** (`services/brain/`) — LLM-driven decision engine using a ReAct (Think→Act→Observe) cognitive loop. Cycles every 30s or on new MQTT events, max 5 iterations per cycle, 3s event batch delay.
-2. **Perception** (`services/perception/`) — YOLOv11 vision system with pluggable monitors (occupancy, whiteboard, activity) defined in `config/monitors.yaml`. Uses host networking for camera access.
+2. **Perception** (`services/perception/`) — YOLOv11 vision system with pluggable monitors (occupancy, whiteboard, activity, fall detection) defined in `config/monitors.yaml`. Uses host networking for camera access.
 3. **Communication** — MQTT broker (Mosquitto) as central message bus. Uses MCP (Model Context Protocol) over MQTT with JSON-RPC 2.0 payloads.
 4. **Edge** (`edge/`) — ESP32 devices for sensors and relays. Two firmware variants: MicroPython (`edge/office/`) for production, PlatformIO C++ (`edge/test-edge/`) for development. Shared MicroPython library in `edge/lib/soms_mcp.py`. Diagnostic scripts in `edge/tools/`. All devices use MCP (JSON-RPC 2.0) and publish per-channel telemetry (`{"value": X}`) for WorldModel compatibility.
 5. **SensorSwarm** (`edge/swarm/`, `edge/lib/swarm/`) — Hub+Leaf 2-tier sensor network. Hub (ESP32 with WiFi+MQTT) aggregates Leaf nodes via ESP-NOW, UART, I2C, or BLE. Binary protocol (5-245 bytes, MAGIC 0x53, XOR checksum). Device IDs use dot notation: `swarm_hub_01.leaf_env_01`. See `edge/swarm/README.md`.
@@ -153,6 +153,9 @@ office/{zone}/activity/{monitor_id}
 mcp/{agent_id}/request/{method}
 mcp/{agent_id}/response/{request_id}
 
+# Safety alerts (fall detection etc.)
+office/{zone}/safety/fall
+
 # Task completion report (published by backend)
 office/{zone}/task_report/{task_id}
 
@@ -177,11 +180,11 @@ Brain subscribes to `office/#` and `mcp/+/response/#`.
 - `main.py` — `Brain` class: ReAct cognitive loop, MQTT event handler, component orchestration
 - `llm_client.py` — Async OpenAI-compatible API wrapper (aiohttp, 120s timeout)
 - `mcp_bridge.py` — MQTT ↔ JSON-RPC 2.0 translation layer (10s timeout per call)
-- `world_model/` — `WorldModel` maintains unified zone state from MQTT; `SensorFusion` aggregates readings; `ZoneState`/`EnvironmentData`/`Event` dataclasses
+- `world_model/` — `WorldModel` maintains unified zone state from MQTT; `SensorFusion` aggregates readings; `ZoneState`/`EnvironmentData`/`Event` dataclasses. Routes `office/{zone}/safety/fall` to critical events
 - `task_scheduling/` — `TaskQueueManager` with priority scoring and decision logic
 - `tool_registry.py` — OpenAI function-calling schema definitions (6 tools)
 - `tool_executor.py` — Routes and executes tool calls with sanitizer validation
-- `system_prompt.py` — Constitutional AI system prompt builder
+- `system_prompt.py` — Constitutional AI system prompt builder (includes fall detection response guidance)
 - `sanitizer.py` — Input validation and security
 - `dashboard_client.py` — REST client for dashboard backend
 - `task_reminder.py` — Periodic reminder service (re-announces tasks after 1 hour)
@@ -207,9 +210,10 @@ Brain subscribes to `office/#` and `mcp/+/response/#`.
 - Monitors are pluggable: `OccupancyMonitor`, `WhiteboardMonitor`, `ActivityMonitor`, `TrackingMonitor` (all extend `MonitorBase`)
 - Image sources abstracted: `RTSPSource`, `MQTTSource`, `HTTPStream` via `ImageSourceFactory`
 - `activity_analyzer.py` — Tiered pose buffer (4 tiers, up to 4 hours) with posture normalization
+- `fall_detector.py` — Geometric heuristic fall detection with furniture-aware discrimination. Uses torso angle, head position, bbox ratio, rapid transition, and ankle spread as positive signals; furniture IoU and hip-in-furniture as negative penalties. State machine: NORMAL → SUSPICIOUS (5s) → FALL_CONFIRMED → ALERT_SENT, with 120s cooldown. Integrated into `ActivityMonitor.process_results()`, publishes to `office/{zone}/safety/fall`
 - `camera_discovery.py` — Async TCP port scan + URL probe + YOLO verification for auto-discovery
 - `tracking/` — MTMC (Multi-Target Multi-Camera) person tracking: `CrossCameraTracker`, `ArUcoCalibrator` (coordinate calibration), `ReIDEmbedder` (person re-identification), `Tracklet`, `MTMCPublisher`, `Homography` (camera-to-floor transform)
-- Monitor config in `services/perception/config/monitors.yaml` includes YOLO model paths, camera-zone mappings, tracker/ReID settings, and discovery settings
+- Monitor config in `services/perception/config/monitors.yaml` includes YOLO model paths, camera-zone mappings, tracker/ReID settings, fall detection parameters, and discovery settings
 
 ### SwitchBot Cloud Bridge (`services/switchbot/src/`)
 
