@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Spinner } from '@soms/ui';
 
 export default function CallbackPage() {
   const navigate = useNavigate();
@@ -16,7 +17,6 @@ export default function CallbackPage() {
     if (access_token && refresh_token && userRaw) {
       try {
         const user = JSON.parse(decodeURIComponent(userRaw));
-        // Dispatch event for AuthProvider to pick up
         window.dispatchEvent(
           new CustomEvent('soms-auth-callback', {
             detail: { access_token, refresh_token, expires_in, user },
@@ -27,13 +27,15 @@ export default function CallbackPage() {
       }
     }
 
-    // Clear fragment and go home
     navigate('/', { replace: true });
   }, [navigate]);
 
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-gray-400">Signing in...</div>
+    <div className="flex items-center justify-center min-h-screen bg-[var(--gray-50)]">
+      <div className="text-center">
+        <Spinner size="large" className="text-[var(--primary-500)] mx-auto" />
+        <p className="text-[var(--gray-500)] mt-4">ログイン中...</p>
+      </div>
     </div>
   );
 }

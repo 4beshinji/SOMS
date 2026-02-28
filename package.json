@@ -1,0 +1,18 @@
+{
+  "private": true,
+  "packageManager": "pnpm@10.30.0",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "build:packages": "pnpm -C packages/types build && pnpm -C packages/auth build && pnpm -C packages/ui build",
+    "build:dashboard": "pnpm -C services/dashboard/frontend build",
+    "build:wallet-app": "pnpm -C services/wallet-app build",
+    "build:admin": "pnpm -C services/admin/frontend build",
+    "lint": "pnpm -r run lint",
+    "dev:dashboard": "pnpm -C services/dashboard/frontend dev",
+    "dev:wallet-app": "pnpm -C services/wallet-app dev",
+    "dev:admin": "pnpm -C services/admin/frontend dev"
+  }
+}

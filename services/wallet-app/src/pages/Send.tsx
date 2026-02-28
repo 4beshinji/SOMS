@@ -13,7 +13,6 @@ export default function Send({ userId }: SendProps) {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Real-time fee preview
   useEffect(() => {
     const millis = Math.floor(parseFloat(amount || '0') * 1000);
     if (millis <= 0) {
@@ -42,13 +41,13 @@ export default function Send({ userId }: SendProps) {
     setResult(null);
     try {
       await sendTransfer(userId, to, millis, description || undefined);
-      setResult({ success: true, message: `Sent ${(millis / 1000).toFixed(3)} SOMS to user #${to}` });
+      setResult({ success: true, message: `ユーザー #${to} に ${(millis / 1000).toFixed(3)} SOMS を送金しました` });
       setToUserId('');
       setAmount('');
       setDescription('');
       setFee(null);
     } catch (e) {
-      setResult({ success: false, message: e instanceof Error ? e.message : 'Transfer failed' });
+      setResult({ success: false, message: e instanceof Error ? e.message : '送金に失敗しました' });
     } finally {
       setSending(false);
     }
@@ -59,23 +58,23 @@ export default function Send({ userId }: SendProps) {
 
   return (
     <div className="p-4 pb-24 space-y-6">
-      <h1 className="text-xl font-bold">Send SOMS</h1>
+      <h1 className="text-xl font-bold text-[var(--gray-900)]">送金</h1>
 
       <div className="space-y-4">
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Recipient User ID</label>
+          <label className="block text-sm text-[var(--gray-500)] mb-1">送信先ユーザーID</label>
           <input
             type="number"
             inputMode="numeric"
             value={toUserId}
             onChange={e => setToUserId(e.target.value)}
-            placeholder="e.g. 2"
-            className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-amber-500"
+            placeholder="例: 2"
+            className="w-full bg-[var(--gray-100)] border border-[var(--gray-300)] rounded-xl px-4 py-3 text-[var(--gray-900)] placeholder-[var(--gray-400)] focus:outline-none focus:border-[var(--primary-500)] focus:ring-2 focus:ring-[var(--primary-500)]"
           />
         </div>
 
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Amount (SOMS)</label>
+          <label className="block text-sm text-[var(--gray-500)] mb-1">金額 (SOMS)</label>
           <input
             type="number"
             inputMode="decimal"
@@ -84,36 +83,36 @@ export default function Send({ userId }: SendProps) {
             value={amount}
             onChange={e => setAmount(e.target.value)}
             placeholder="0.000"
-            className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white text-2xl font-bold placeholder-gray-600 focus:outline-none focus:border-amber-500"
+            className="w-full bg-[var(--gray-100)] border border-[var(--gray-300)] rounded-xl px-4 py-3 text-[var(--gray-900)] text-2xl font-bold placeholder-[var(--gray-400)] focus:outline-none focus:border-[var(--primary-500)] focus:ring-2 focus:ring-[var(--primary-500)]"
           />
         </div>
 
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Note (optional)</label>
+          <label className="block text-sm text-[var(--gray-500)] mb-1">メモ（任意）</label>
           <input
             type="text"
             value={description}
             onChange={e => setDescription(e.target.value)}
-            placeholder="What's this for?"
+            placeholder="何のための送金ですか？"
             maxLength={100}
-            className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-amber-500"
+            className="w-full bg-[var(--gray-100)] border border-[var(--gray-300)] rounded-xl px-4 py-3 text-[var(--gray-900)] placeholder-[var(--gray-400)] focus:outline-none focus:border-[var(--primary-500)] focus:ring-2 focus:ring-[var(--primary-500)]"
           />
         </div>
       </div>
 
       {fee && (
-        <div className="bg-gray-900 rounded-xl p-4 space-y-2 text-sm">
-          <div className="flex justify-between text-gray-400">
-            <span>Fee ({(fee.fee_rate * 100).toFixed(0)}%)</span>
-            <span className="text-red-400">-{(fee.fee_amount / 1000).toFixed(3)}</span>
+        <div className="bg-white rounded-xl p-4 space-y-2 text-sm elevation-1">
+          <div className="flex justify-between text-[var(--gray-500)]">
+            <span>手数料 ({(fee.fee_rate * 100).toFixed(0)}%)</span>
+            <span className="text-[var(--error-700)]">-{(fee.fee_amount / 1000).toFixed(3)}</span>
           </div>
-          <div className="flex justify-between text-gray-200 font-semibold">
-            <span>Recipient gets</span>
-            <span className="text-emerald-400">{(fee.net_amount / 1000).toFixed(3)}</span>
+          <div className="flex justify-between text-[var(--gray-800)] font-semibold">
+            <span>受取額</span>
+            <span className="text-[var(--success-700)]">{(fee.net_amount / 1000).toFixed(3)}</span>
           </div>
           {fee.below_minimum && (
-            <p className="text-red-400 text-xs">
-              Below minimum transfer ({(fee.min_transfer / 1000).toFixed(3)} SOMS)
+            <p className="text-[var(--error-700)] text-xs">
+              最低送金額 ({(fee.min_transfer / 1000).toFixed(3)} SOMS) に達していません
             </p>
           )}
         </div>
@@ -121,8 +120,8 @@ export default function Send({ userId }: SendProps) {
 
       {result && (
         <div className={`rounded-lg p-3 text-sm ${
-          result.success ? 'bg-emerald-900/30 border border-emerald-700 text-emerald-300' :
-          'bg-red-900/30 border border-red-700 text-red-300'
+          result.success ? 'bg-[var(--success-50)] border border-[var(--success-500)] text-[var(--success-700)]' :
+          'bg-[var(--error-50)] border border-[var(--error-500)] text-[var(--error-700)]'
         }`}>
           {result.message}
         </div>
@@ -131,9 +130,9 @@ export default function Send({ userId }: SendProps) {
       <button
         onClick={handleSend}
         disabled={!canSend}
-        className="w-full py-3 bg-amber-500 text-black font-semibold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full py-3 bg-[var(--primary-500)] hover:bg-[var(--primary-700)] text-white font-semibold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
       >
-        {sending ? 'Sending...' : 'Send'}
+        {sending ? '送信中...' : '送金'}
       </button>
     </div>
   );

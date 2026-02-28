@@ -361,6 +361,29 @@ services:
       retries: 3
       start_period: 60s
 
+  # --- Admin Panel ---
+  admin-frontend:
+    build: ../services/admin/frontend
+    container_name: soms-admin
+    restart: always
+    ports:
+      - "${SOMS_PORT_ADMIN:-8007}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      wallet:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    networks:
+      - soms-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 volumes:
   soms_mqtt_data:
   soms_mqtt_log:

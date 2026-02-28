@@ -4,12 +4,12 @@ import TransactionItem from '../components/TransactionItem';
 
 const TX_TYPES = ['ALL', 'TASK_REWARD', 'P2P_TRANSFER', 'INFRASTRUCTURE_REWARD', 'FEE_BURN', 'DEMURRAGE_BURN'] as const;
 const TYPE_LABELS: Record<string, string> = {
-  ALL: 'All',
-  TASK_REWARD: 'Task',
-  P2P_TRANSFER: 'P2P',
-  INFRASTRUCTURE_REWARD: 'Infra',
-  FEE_BURN: 'Fee',
-  DEMURRAGE_BURN: 'Demurrage',
+  ALL: 'すべて',
+  TASK_REWARD: 'タスク',
+  P2P_TRANSFER: '送金',
+  INFRASTRUCTURE_REWARD: 'インフラ',
+  FEE_BURN: '手数料',
+  DEMURRAGE_BURN: '減価',
 };
 
 interface HistoryProps {
@@ -41,7 +41,6 @@ export default function History({ userId }: HistoryProps) {
     }
   }, [userId, hasMore]);
 
-  // Initial load
   useEffect(() => {
     offsetRef.current = 0;
     setEntries([]);
@@ -50,7 +49,6 @@ export default function History({ userId }: HistoryProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  // Infinite scroll via IntersectionObserver
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
@@ -69,18 +67,17 @@ export default function History({ userId }: HistoryProps) {
 
   return (
     <div className="p-4 pb-24 space-y-4">
-      <h1 className="text-xl font-bold">Transaction History</h1>
+      <h1 className="text-xl font-bold text-[var(--gray-900)]">取引履歴</h1>
 
-      {/* Filter chips */}
       <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
         {TX_TYPES.map(type => (
           <button
             key={type}
             onClick={() => setFilter(type)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
               filter === type
-                ? 'bg-amber-500 text-black'
-                : 'bg-gray-800 text-gray-400'
+                ? 'bg-[var(--primary-500)] text-white'
+                : 'bg-[var(--gray-100)] text-[var(--gray-500)]'
             }`}
           >
             {TYPE_LABELS[type]}
@@ -89,9 +86,9 @@ export default function History({ userId }: HistoryProps) {
       </div>
 
       {filtered.length === 0 && !loading ? (
-        <p className="text-gray-500 text-sm text-center py-8">No transactions found.</p>
+        <p className="text-[var(--gray-500)] text-sm text-center py-8">取引が見つかりません</p>
       ) : (
-        <div className="bg-gray-900 rounded-xl px-4">
+        <div className="bg-white rounded-xl px-4 elevation-1">
           {filtered.map(entry => (
             <TransactionItem key={entry.id} entry={entry} />
           ))}
@@ -102,7 +99,7 @@ export default function History({ userId }: HistoryProps) {
 
       {loading && (
         <div className="flex justify-center py-4">
-          <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-[var(--primary-500)] border-t-transparent rounded-full animate-spin" />
         </div>
       )}
     </div>

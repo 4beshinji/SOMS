@@ -4,9 +4,6 @@
   "version": "0.0.0",
   "type": "module",
   "packageManager": "pnpm@10.30.0",
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
-  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -14,17 +11,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@soms/auth": "workspace:*",
+    "@soms/types": "workspace:*",
+    "@soms/ui": "workspace:*",
     "@tanstack/react-query": "^5.90.21",
-    "@use-gesture/react": "^10.3.1",
-    "axios": "^1.13.5",
-    "clsx": "^2.1.1",
     "framer-motion": "^12.34.0",
     "lucide-react": "^0.563.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "recharts": "^2.15.3",
-    "tailwind-merge": "^3.4.0"
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

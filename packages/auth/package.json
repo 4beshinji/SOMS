@@ -1,0 +1,22 @@
+{
+  "name": "@soms/auth",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@soms/types": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "typescript": "~5.9.3"
+  }
+}

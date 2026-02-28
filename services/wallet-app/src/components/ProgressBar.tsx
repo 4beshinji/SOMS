@@ -1,7 +1,7 @@
 export default function ProgressBar({
   value,
   label,
-  color = 'bg-amber-500',
+  color = 'bg-[var(--primary-500)]',
 }: {
   value: number;
   label?: string;
@@ -11,12 +11,12 @@ export default function ProgressBar({
   return (
     <div>
       {label && (
-        <div className="flex justify-between text-xs text-gray-400 mb-1">
+        <div className="flex justify-between text-xs text-[var(--gray-500)] mb-1">
           <span>{label}</span>
           <span>{pct.toFixed(0)}%</span>
         </div>
       )}
-      <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+      <div className="h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all ${color}`}
           style={{ width: `${pct}%` }}

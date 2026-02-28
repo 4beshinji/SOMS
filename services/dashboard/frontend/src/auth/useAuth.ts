@@ -1,6 +1,2 @@
-import { useContext } from 'react';
-import { AuthContext, type AuthContextType } from './AuthContext';
-
-export function useAuth(): AuthContextType {
-  return useContext(AuthContext);
-}
+// Re-export from shared package
+export { useAuth } from '@soms/auth';

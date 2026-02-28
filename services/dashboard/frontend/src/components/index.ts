@@ -1,13 +1,9 @@
-// UI Components
-export { default as Button } from './ui/Button';
-export type { ButtonProps } from './ui/Button';
-
-export { default as Card } from './ui/Card';
-export type { CardProps } from './ui/Card';
-
-export { default as Badge } from './ui/Badge';
-export type { BadgeProps } from './ui/Badge';
+// UI Components (re-exported from @soms/ui)
+export { Button, Card, Badge } from '@soms/ui';
+export type { ButtonProps, CardProps, BadgeProps } from '@soms/ui';
 
 // Feature Components
 export { default as TaskCard } from './TaskCard';
-export type { Task } from './TaskCard';
+
+// Types (re-exported from @soms/types)
+export type { Task, TaskReport } from '@soms/types';

@@ -3,7 +3,7 @@
   "short_name": "Wallet",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1a1a2e",
-  "theme_color": "#1a1a2e",
+  "background_color": "#FAFAFA",
+  "theme_color": "#2196F3",
   "icons": []
 }

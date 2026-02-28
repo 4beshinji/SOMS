@@ -1,40 +1,9 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, Coins, Zap, Circle, AlertCircle, AlertTriangle, QrCode, X, TrendingUp } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import Card from './ui/Card';
-import Badge from './ui/Badge';
-import Button from './ui/Button';
-import type { ZoneMultiplierInfo } from '../api';
-
-export interface Task {
-    id: number;
-    title: string;
-    description: string;
-    location?: string;
-    bounty_gold: number;
-    bounty_xp: number;
-    urgency: number;
-    is_completed: boolean;
-    announcement_audio_url?: string;
-    announcement_text?: string;
-    completion_audio_url?: string;
-    completion_text?: string;
-    created_at: string;
-    completed_at?: string;
-    task_type?: string[];
-    assigned_to?: number;
-    report_status?: string;
-    completion_note?: string;
-    zone?: string;
-    reward_multiplier?: number;
-    reward_adjusted_bounty?: number;
-}
-
-export interface TaskReport {
-    status: string;
-    note: string;
-}
+import { Card, Badge, Button } from '@soms/ui';
+import type { Task, TaskReport, ZoneMultiplierInfo } from '@soms/types';
 
 interface TaskCardProps {
     task: Task;
@@ -74,7 +43,7 @@ const REPORT_STATUSES = [
     { value: 'cannot_resolve', label: '対応不可' },
 ] as const;
 
-export default function TaskCard({ task, isAccepted, zoneMultiplier, onAccept, onComplete, onIgnore }: TaskCardProps) {
+const TaskCard = React.memo(function TaskCard({ task, isAccepted, zoneMultiplier, onAccept, onComplete, onIgnore }: TaskCardProps) {
     const urgencyBadge = getUrgencyBadge(task.urgency ?? 2);
     const [showReport, setShowReport] = useState(false);
     const [reportStatus, setReportStatus] = useState('');
@@ -87,7 +56,7 @@ export default function TaskCard({ task, isAccepted, zoneMultiplier, onAccept, o
                 {/* Header with title and urgency */}
                 <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
-                        <h3 className="text-xl font-semibold text-[var(--gray-900)] mb-1">
+                        <h3 className="text-2xl font-semibold text-[var(--gray-900)] mb-1">
                             {task.title}
                         </h3>
                         {task.location && (
@@ -250,6 +219,7 @@ export default function TaskCard({ task, isAccepted, zoneMultiplier, onAccept, o
                                 size="small"
                                 onClick={() => setShowQR(true)}
                                 className="flex items-center gap-1"
+                                aria-label="QRコードを表示して報酬を受け取る"
                             >
                                 <QrCode size={14} />
                                 QR で報酬を受け取る
@@ -264,6 +234,8 @@ export default function TaskCard({ task, isAccepted, zoneMultiplier, onAccept, o
                 {showQR && (
                     <motion.div
                         className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+                        role="dialog"
+                        aria-modal="true"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -279,6 +251,7 @@ export default function TaskCard({ task, isAccepted, zoneMultiplier, onAccept, o
                             <button
                                 onClick={() => setShowQR(false)}
                                 className="absolute top-3 right-3 text-[var(--gray-400)] hover:text-[var(--gray-600)]"
+                                aria-label="QRモーダルを閉じる"
                             >
                                 <X size={20} />
                             </button>
@@ -308,4 +281,6 @@ export default function TaskCard({ task, isAccepted, zoneMultiplier, onAccept, o
             </AnimatePresence>
         </Card>
     );
-}
+});
+
+export default TaskCard;
