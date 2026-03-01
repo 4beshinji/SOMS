@@ -15,6 +15,11 @@ export default defineConfig({
       usePolling: true
     },
     proxy: {
+      '/api/auth': {
+        target: 'http://localhost:8006',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/auth/, ''),
+      },
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,

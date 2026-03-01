@@ -1,2 +1,3 @@
 user soms
 topic readwrite #
+topic read $SYS/#

@@ -14,7 +14,7 @@ export interface CardProps extends HTMLMotionProps<"div"> {
 const Card = forwardRef<HTMLDivElement, CardProps>(
     (
         {
-            elevation = 2,
+            elevation = 1,
             padding = 'medium',
             header,
             footer,
@@ -25,7 +25,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
         },
         ref
     ) => {
-        const baseStyles = 'bg-white rounded-xl transition-all';
+        const baseStyles = 'bg-white rounded-xl border border-[var(--gray-100)] transition-all';
 
         const elevationStyles = {
             1: 'elevation-1',
@@ -42,7 +42,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
         };
 
         const hoverStyles = hoverable
-            ? 'hover:elevation-3 hover:-translate-y-1 cursor-pointer'
+            ? 'hover:elevation-3 hover:-translate-y-0.5 cursor-pointer'
             : '';
 
         return (

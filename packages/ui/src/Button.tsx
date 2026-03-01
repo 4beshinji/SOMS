@@ -23,11 +23,11 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         },
         ref
     ) => {
-        const baseStyles = 'inline-flex items-center justify-center font-medium rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+        const baseStyles = 'inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
 
         const variantStyles = {
             primary: 'bg-[var(--primary-500)] text-white hover:bg-[var(--primary-700)] focus:ring-[var(--primary-500)] active:bg-[var(--primary-900)]',
-            secondary: 'bg-white text-[var(--primary-500)] border-2 border-[var(--primary-500)] hover:bg-[var(--primary-50)] focus:ring-[var(--primary-500)]',
+            secondary: 'bg-white text-[var(--primary-700)] border border-[var(--primary-300)] hover:bg-[var(--primary-50)] focus:ring-[var(--primary-500)]',
             ghost: 'bg-transparent text-[var(--gray-700)] hover:bg-[var(--gray-100)] focus:ring-[var(--gray-400)]',
             danger: 'bg-[var(--error-500)] text-white hover:bg-[var(--error-700)] focus:ring-[var(--error-500)]',
         };

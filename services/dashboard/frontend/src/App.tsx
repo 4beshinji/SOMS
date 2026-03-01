@@ -1,5 +1,6 @@
 import { ErrorBoundary } from '@soms/ui';
 import { useAuth } from '@soms/auth';
+import UIPreview from './UIPreview';
 import MonitorHeader from './components/MonitorHeader';
 import TaskList from './components/TaskList';
 import { useTaskManager } from './hooks/useTaskManager';
@@ -42,6 +43,10 @@ function Monitor() {
 }
 
 export default function App() {
+  if (new URLSearchParams(window.location.search).has('preview')) {
+    return <UIPreview />;
+  }
+
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
