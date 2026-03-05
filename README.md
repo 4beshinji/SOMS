@@ -16,16 +16,34 @@
               ┌────────────────┼────────────────┐
               │                │                │
         ┌─────┴─────┐   ┌─────┴─────┐   ┌─────┴─────┐
-        │  Office   │   │   Farm    │   │  Public   │
-        │  Hub      │   │   Hub     │   │  Facility │
-        │  (SOMS)◄──┤   │           │   │           │
+        │  Office   │   │   Farm    │   │   Home    │
+        │  Hub      │   │   Hub     │   │   Hub     │
+        │  (SOMS)   │   │ (auto_JA) │   │  (HEMS)   │
         └───────────┘   └───────────┘   └───────────┘
          Phase 0 実装     同一アーキテクチャ、異なるプロンプトとセンサー
 ```
 
-各 Core Hub は独立したローカルLLM+GPUを持ち、ネットワーク切断時も自律動作を継続する。システムプロンプト（行動原則）とセンサー構成の差し替えでオフィス・農場・店舗・公共施設に展開可能。
+各 Core Hub は独立したローカルLLM+GPUを持ち、ネットワーク切断時も自律動作を継続する。システムプロンプト（行動原則）とセンサー構成の差し替えでオフィス・農場・住宅に展開可能。
 
-## Phase 0 アーキテクチャ (SOMS)
+同一アーキテクチャから以下のドメイン特化システムが派生:
+
+- **[auto_JA](../auto_JA/)** — IoT農業・養殖管理（水耕栽培環境制御 + 養蜂モニタリング・分蜂検知）
+- **[HEMS](../hems/)** — 独居者向けパーソナルAI（AIキャラクターシステム + スマートホーム制御）
+
+## Features
+
+- **自律環境制御** — センサー → LLM → デバイス制御の30秒認知サイクル（ReAct 5イテレーション、3層安全機構）
+- **物理タスク委託** — APIで操作不能な作業を人間にクレジット報酬で委託、ダッシュボードで受諾・完了
+- **コンピュータビジョン** — YOLOv11 による在室検知、活動分析、転倒検知、MTMC多カメラ人物追跡
+- **クレジット経済** — 複式簿記台帳、デバイスXP・動的報酬乗数、デマレッジ2%/日、P2P送金、デバイス投資
+- **音声合成** — VOICEVOX による日本語タスク通知・応答（事前生成ストック方式）
+- **SensorSwarm** — ESP32 Hub+Leaf 2層センサーネットワーク（ESP-NOW / UART / I2C / BLE）
+- **SwitchBot連携** — クラウドAPI v1.1 経由で9種のデバイスをMQTT統合
+- **OAuth認証** — Slack / GitHub ログイン + JWT トークン（共有シークレット方式）
+- **空間管理** — フロアプラン可視化、デバイス配置編集、ライブ検出、ヒートマップ（Admin UI）
+- **モバイルウォレット** — PWA: 残高確認、QRスキャン、P2P送金、デバイス投資ポートフォリオ
+
+## アーキテクチャ
 
 ```
                 ┌──────────────────┐
@@ -64,8 +82,6 @@
 └──────────────┘  └──────────────┘
 ```
 
-### レイヤー構成
-
 | Layer | Directory | Description |
 |-------|-----------|-------------|
 | Central Intelligence | `services/brain/` | LLM-driven ReAct 認知ループ (Think→Act→Observe, 6ツール, 3層安全機構) |
@@ -80,6 +96,7 @@
 | Service | Port | Container |
 |---------|------|-----------|
 | Dashboard Frontend (nginx) | 80 | soms-frontend |
+| Admin Frontend | 8007 | soms-admin |
 | Dashboard Backend API | 8000 | soms-backend |
 | Mock LLM | 8001 | soms-mock-llm |
 | Voice Service | 8002 | soms-voice |
@@ -94,6 +111,12 @@
 
 ## Quick Start
 
+### 前提条件
+
+- Docker Engine 24+ および Docker Compose v2
+
+### 起動手順
+
 ```bash
 # 1. Clone and configure
 git clone <repository_url>
@@ -107,80 +130,66 @@ cp env.example .env
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed setup. See [CITY_SCALE_VISION.md](docs/CITY_SCALE_VISION.md) for urban-scale architecture.
+### 動作確認
 
-## Directory Structure
+```bash
+# Dashboard Backend API
+curl http://localhost:8000/health
 
-```
-├── docs/
-│   ├── CITY_SCALE_VISION.md   Urban AI architecture & roadmap
-│   ├── SYSTEM_OVERVIEW.md     Technical specification
-│   └── promo/                 Pitch decks, articles, design assets
-├── infra/             Docker Compose, Mosquitto, mock LLM, virtual edge/camera
-├── services/
-│   ├── brain/         LLM decision engine (ReAct loop, WorldModel, task scheduling)
-│   ├── dashboard/     Frontend (React 19 + Vite) + Backend (FastAPI + PostgreSQL)
-│   ├── perception/    YOLOv11 vision system (pluggable monitors, camera discovery)
-│   ├── voice/         VOICEVOX voice synthesis + LLM text generation
-│   ├── wallet/        Double-entry credit ledger + device XP + demurrage
-│   ├── wallet-app/    Mobile PWA (balance, QR scan, P2P transfer, history)
-│   ├── auth/          OAuth authentication (Slack + GitHub) + JWT token issuance
-│   └── switchbot/     SwitchBot Cloud Bridge (9 device types, MQTT integration)
-├── edge/
-│   ├── office/        Production MicroPython firmware (BME680, MH-Z19C)
-│   ├── swarm/         SensorSwarm Hub + Leaf firmware (ESP-NOW, UART, I2C, BLE)
-│   ├── lib/           Shared libraries (soms_mcp.py, swarm protocol)
-│   ├── test-edge/     PlatformIO C++ firmware (camera/sensor nodes)
-│   └── tools/         Diagnostic scripts
-├── config/            Perception monitors YAML config
-└── CLAUDE.md          Developer reference (architecture, APIs, conventions)
+# MQTT sensor data
+docker exec soms-mqtt mosquitto_sub -u soms -P soms_dev_mqtt -t 'office/#' -v
 ```
 
-## Tech Stack
-
-- **LLM**: Ollama + Qwen2.5:14b (ROCm, AMD GPU)
-- **Backend**: Python 3.11, FastAPI, SQLAlchemy (async), PostgreSQL 16 (asyncpg)
-- **Frontend**: React 19, TypeScript, Vite 7, Tailwind CSS 4, TanStack Query 5, Framer Motion
-- **Vision**: YOLOv11 (yolo11s.pt + yolo11s-pose.pt), OpenCV, PyTorch (ROCm)
-- **TTS**: VOICEVOX (Japanese, Speaker ID 47)
-- **Edge**: ESP32 MicroPython + SensorSwarm (Hub-Leaf, binary protocol) + PlatformIO C++
-- **Economy**: Double-entry ledger, demurrage 2%/day, 5% burn, device XP multiplier
-- **Auth**: OAuth (Slack + GitHub), JWT (HS256), shared secret across services
-- **IoT Bridge**: SwitchBot Cloud API v1.1 (HMAC-SHA256, 9 device types)
-- **Infra**: Docker Compose (14 services), Mosquitto MQTT, nginx
-
-Python + MQTT による純粋なイベント駆動アーキテクチャ。重量級ミドルウェア不使用。
+See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed setup.
 
 ## Testing
 
-**587 unit tests** across 7 services (no running services required):
+**746 unit tests** across 7 services (no running services required):
 
 ```bash
-# All unit tests (run per-service to avoid conftest collisions)
 for d in services/brain/tests services/auth/tests services/voice/tests \
   services/dashboard/backend/tests services/wallet/tests \
   services/switchbot/tests services/perception/tests; do
   .venv/bin/python -m pytest "$d" --tb=short
 done
-
-# Per service
-.venv/bin/python -m pytest services/brain/tests/          # 167 tests
-.venv/bin/python -m pytest services/auth/tests/           # 97 tests
-.venv/bin/python -m pytest services/voice/tests/          # 79 tests
-.venv/bin/python -m pytest services/dashboard/backend/tests/  # 71 tests
-.venv/bin/python -m pytest services/wallet/tests/         # 64 tests
-.venv/bin/python -m pytest services/switchbot/tests/      # 59 tests
-.venv/bin/python -m pytest services/perception/tests/     # 50 tests
 ```
 
-Integration tests (requires running services):
+| Service | Tests |
+|---------|-------|
+| Brain | 189 |
+| Dashboard Backend | 172 |
+| Auth | 97 |
+| Perception | 86 |
+| Voice | 79 |
+| Wallet | 64 |
+| SwitchBot | 59 |
 
-```bash
-python3 infra/tests/e2e/e2e_full_test.py                 # E2E (7 scenarios)
-python3 infra/tests/integration/integration_test_mock.py  # Mock LLM integration
-python3 infra/tests/integration/test_wallet_integration.py
-python3 infra/tests/integration/test_sensor_api.py
-```
+See `CLAUDE.md` for integration tests and per-service commands.
+
+## Tech Stack
+
+- **LLM**: Ollama + Qwen2.5:14b (ROCm, AMD GPU)
+- **Backend**: Python 3.11, FastAPI, SQLAlchemy (async), PostgreSQL 16
+- **Frontend**: React 19, TypeScript, Vite 7, Tailwind CSS 4
+- **Vision**: YOLOv11, OpenCV, PyTorch (ROCm)
+- **TTS**: VOICEVOX (Japanese)
+- **Edge**: ESP32 MicroPython + SensorSwarm + PlatformIO C++
+- **Infra**: Docker Compose (15 services), Mosquitto MQTT, nginx
+
+Python + MQTT による純粋なイベント駆動アーキテクチャ。重量級ミドルウェア不使用。
+
+## ドキュメント
+
+| ドキュメント | 内容 |
+|---|---|
+| [SYSTEM_OVERVIEW.md](docs/SYSTEM_OVERVIEW.md) | 技術仕様 |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | デプロイ手順 |
+| [CITY_SCALE_VISION.md](docs/CITY_SCALE_VISION.md) | 都市スケールアーキテクチャ構想 |
+| [CURRENCY_SYSTEM.md](docs/CURRENCY_SYSTEM.md) | クレジット経済の設計 |
+| [CONTRIBUTING.md](docs/CONTRIBUTING.md) | 開発参加ガイド |
+| [architecture/](docs/architecture/) | ADR・詳細設計 (12ドキュメント) |
+| [promo/](docs/promo/) | ピッチデッキ・記事・デザイン素材 |
+| [CLAUDE.md](CLAUDE.md) | 開発者リファレンス (API仕様, コード規約, テスト詳細) |
 
 ## License
 
