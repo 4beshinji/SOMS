@@ -8,6 +8,10 @@
 
 ```
 本文書 (CITY_SCALE_VISION.md)     ← 都市規模の構想・計画
+  ├── docs/architecture/adr-privacy-preserving-federation.md
+  │                                ← プライバシー保護型データ集約 (Phase 2)
+  ├── docs/architecture/adr-federation.md
+  │                                ← Federation Phase 1 基盤設計
   └── docs/SYSTEM_OVERVIEW.md     ← SOMS の技術的全体像
         └── CLAUDE.md             ← 開発者向けリファレンス
 ```
