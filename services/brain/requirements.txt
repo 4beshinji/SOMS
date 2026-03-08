@@ -2,16 +2,14 @@
 paho-mqtt>=2.0.0
 
 # Async
-asyncio==3.4.3
-
-aiohttp==3.9.1
+aiohttp==3.13.3
 
 # Database (Event Store)
 sqlalchemy[asyncio]>=2.0
 asyncpg>=0.29
 
 # Utilities
-python-dotenv==1.0.0
-pydantic==2.5.2
-loguru==0.7.2
+python-dotenv==1.2.2
+pydantic==2.12.5
+loguru==0.7.3
 pyyaml>=6.0
