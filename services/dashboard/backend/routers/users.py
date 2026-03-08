@@ -58,8 +58,10 @@ async def update_user(
     user_id: int,
     user_update: schemas.UserUpdate,
     db: AsyncSession = Depends(get_db),
-    _auth: AuthUser = Depends(require_auth),
+    auth_user: AuthUser = Depends(require_auth),
 ):
+    if auth_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Can only update your own profile")
     result = await db.execute(
         select(models.User).where(models.User.id == user_id)
     )

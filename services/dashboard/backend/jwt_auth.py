@@ -16,7 +16,7 @@ from fastapi import Depends, HTTPException, Header
 
 JWT_SECRET = os.getenv("JWT_SECRET", "soms_dev_jwt_secret_change_me")
 JWT_ALGORITHM = "HS256"
-INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "")
+INTERNAL_SERVICE_TOKEN: str | None = os.getenv("INTERNAL_SERVICE_TOKEN") or None
 
 
 @dataclass
@@ -59,7 +59,7 @@ async def require_service_auth(
     x_service_token: Optional[str] = Header(None, alias="X-Service-Token"),
 ) -> AuthUser:
     """Accept either valid JWT or internal service token."""
-    if x_service_token and INTERNAL_SERVICE_TOKEN and hmac.compare_digest(x_service_token, INTERNAL_SERVICE_TOKEN):
+    if x_service_token and INTERNAL_SERVICE_TOKEN is not None and hmac.compare_digest(x_service_token, INTERNAL_SERVICE_TOKEN):
         return AuthUser(id=0, username="_service", display_name="Internal Service")
     user = await get_current_user(authorization)
     if user is None:

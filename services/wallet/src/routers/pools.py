@@ -66,6 +66,7 @@ async def api_create_pool(
 @admin_router.get("", response_model=List[PoolListResponse])
 async def api_list_pools_admin(
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     """Admin lists all pools."""
     result = await db.execute(
@@ -90,6 +91,7 @@ async def api_list_pools_admin(
 async def api_get_pool_admin(
     pool_id: int,
     db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
 ):
     """Admin gets pool details with contributions."""
     pool, contributions = await get_pool_with_contributions(db, pool_id)

@@ -58,9 +58,16 @@ def _migrate_add_columns(conn):
         ("users", "region_id", "VARCHAR(32)", "'local'"),
         ("users", "global_user_id", "VARCHAR(200)", None),
     ]
+    # Allowlisted identifiers — only these table/column names are permitted
+    _ALLOWED_TABLES = {m[0] for m in migrations}
+    _ALLOWED_COLUMNS = {m[1] for m in migrations}
+
     for table, col_name, col_type, default in migrations:
+        if table not in _ALLOWED_TABLES or col_name not in _ALLOWED_COLUMNS:
+            continue
         if table in table_columns and col_name not in table_columns[table]:
             default_clause = f" DEFAULT {default}" if default else ""
+            # Safe: table/col_name/col_type are from hardcoded allowlist above
             conn.execute(text(
                 f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}{default_clause}"
             ))
@@ -73,9 +80,10 @@ async def startup():
     # JWT secret validation
     jwt_secret = os.getenv("JWT_SECRET", "")
     if jwt_secret in _KNOWN_WEAK_SECRETS:
-        if os.getenv("SOMS_ENV", "production") != "development":
-            raise RuntimeError("JWT_SECRET must be set to a strong, unique value")
-        logger.warning("WEAK JWT_SECRET — acceptable only in development mode")
+        if os.getenv("SOMS_ENV") == "development":
+            logger.warning("WEAK JWT_SECRET — acceptable only in development mode")
+        else:
+            raise RuntimeError("JWT_SECRET must be set to a strong, unique value (set SOMS_ENV=development to bypass)")
 
     async with engine.begin() as conn:
         # Create all tables

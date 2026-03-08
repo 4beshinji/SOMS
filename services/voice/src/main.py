@@ -1,10 +1,22 @@
 from contextlib import asynccontextmanager
 import asyncio
-from fastapi import FastAPI, HTTPException
+import hmac
+import os
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from pathlib import Path
 import uuid
 from loguru import logger
+
+INTERNAL_SERVICE_TOKEN: str | None = os.getenv("INTERNAL_SERVICE_TOKEN") or None
+
+
+def _verify_service_token(token: str | None) -> None:
+    """Verify internal service token for admin operations."""
+    if INTERNAL_SERVICE_TOKEN is None:
+        return  # No token configured — allow (dev mode)
+    if not token or not hmac.compare_digest(token, INTERNAL_SERVICE_TOKEN):
+        raise HTTPException(status_code=403, detail="Invalid service token")
 
 from models import TaskAnnounceRequest, SynthesizeRequest, VoiceResponse, DualVoiceResponse
 from voicevox_client import VoicevoxClient
@@ -345,8 +357,9 @@ async def get_rejection_status():
 
 
 @app.post("/api/voice/rejection/clear")
-async def clear_rejection_stock():
+async def clear_rejection_stock(x_service_token: str = Header(None, alias="X-Service-Token")):
     """Clear all pre-generated rejection stock and force regeneration."""
+    _verify_service_token(x_service_token)
     await rejection_stock.clear_all()
     return {"status": "cleared", "stock_count": rejection_stock.count}
 
@@ -397,8 +410,9 @@ async def get_acceptance_status():
 
 
 @app.post("/api/voice/acceptance/clear")
-async def clear_acceptance_stock():
+async def clear_acceptance_stock(x_service_token: str = Header(None, alias="X-Service-Token")):
     """Clear all pre-generated acceptance stock and force regeneration."""
+    _verify_service_token(x_service_token)
     await acceptance_stock.clear_all()
     return {"status": "cleared", "stock_count": acceptance_stock.count}
 
@@ -415,8 +429,9 @@ async def get_currency_unit_status():
 
 
 @app.post("/api/voice/currency-units/clear")
-async def clear_currency_unit_stock():
+async def clear_currency_unit_stock(x_service_token: str = Header(None, alias="X-Service-Token")):
     """Clear all pre-generated currency unit stock and force regeneration."""
+    _verify_service_token(x_service_token)
     await currency_unit_stock.clear_all()
     return {"status": "cleared", "stock_count": currency_unit_stock.count}
 

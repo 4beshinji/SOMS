@@ -34,9 +34,10 @@ async def lifespan(app: FastAPI):
     # JWT secret validation
     jwt_secret = os.getenv("JWT_SECRET", "")
     if jwt_secret in _KNOWN_WEAK_SECRETS:
-        if os.getenv("SOMS_ENV", "production") != "development":
-            raise RuntimeError("JWT_SECRET must be set to a strong, unique value")
-        logger.warning("WEAK JWT_SECRET — acceptable only in development mode")
+        if os.getenv("SOMS_ENV") == "development":
+            logger.warning("WEAK JWT_SECRET — acceptable only in development mode")
+        else:
+            raise RuntimeError("JWT_SECRET must be set to a strong, unique value (set SOMS_ENV=development to bypass)")
 
     # Create tables in wallet schema
     async with engine.begin() as conn:

@@ -18,9 +18,10 @@ _KNOWN_WEAK_SECRETS = {"soms_dev_jwt_secret_change_me", "changeme", "secret", ""
 async def lifespan(app: FastAPI):
     from config import settings
     if settings.JWT_SECRET in _KNOWN_WEAK_SECRETS:
-        if os.getenv("SOMS_ENV", "production") != "development":
-            raise RuntimeError("JWT_SECRET must be set to a strong, unique value")
-        logger.warning("WEAK JWT_SECRET — acceptable only in development mode")
+        if os.getenv("SOMS_ENV") == "development":
+            logger.warning("WEAK JWT_SECRET — acceptable only in development mode")
+        else:
+            raise RuntimeError("JWT_SECRET must be set to a strong, unique value (set SOMS_ENV=development to bypass)")
     async with engine.begin() as conn:
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS auth"))
         await conn.run_sync(Base.metadata.create_all)
