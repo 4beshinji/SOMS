@@ -192,6 +192,8 @@ class WorldModel:
             self._update_safety(zone, payload, channel)
         elif device_type == "task_report":
             self._handle_task_report(zone, payload, device_id)
+        elif device_type == "anomaly":
+            self._update_anomaly(zone, payload, channel)
         elif device_type in ["hvac", "light", "coffee_machine"]:
             self._update_device(zone, device_type, device_id, payload)
         
@@ -417,6 +419,28 @@ class WorldModel:
                 "Fall detected in %s: confidence=%.2f duration=%.1fs",
                 zone.zone_id, conf, duration,
             )
+
+    def _update_anomaly(self, zone: ZoneState, payload: dict, channel: str):
+        """Handle anomaly detection events from the anomaly service."""
+        event = Event(
+            timestamp=time.time(),
+            event_type="anomaly_detected",
+            severity=payload.get("severity", "warning"),
+            data={
+                "channel": channel,
+                "score": payload.get("score"),
+                "predicted": payload.get("predicted"),
+                "actual": payload.get("actual"),
+                "source": payload.get("source", "batch"),
+            }
+        )
+        self._add_event(zone, event)
+        logger.warning(
+            "Anomaly detected in %s [%s]: score=%.1f predicted=%.1f actual=%.1f (%s)",
+            zone.zone_id, channel,
+            payload.get("score", 0), payload.get("predicted", 0),
+            payload.get("actual", 0), payload.get("severity", "warning"),
+        )
 
     def _accumulate_heatmap(self, zone: ZoneState, current_time: float):
         """Map pixel-space person positions to grid cells for heatmap."""

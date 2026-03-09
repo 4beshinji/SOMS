@@ -328,6 +328,62 @@ services:
       retries: 3
       start_period: 15s
 
+  # --- WiFi Pose Service ---
+  wifi-pose:
+    build: ../services/wifi-pose
+    container_name: soms-wifi-pose
+    restart: unless-stopped
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_USER=${MQTT_USER:-soms}
+      - MQTT_PASS=${MQTT_PASS:-soms_dev_mqtt}
+    volumes:
+      - ../services/wifi-pose/src:/app
+      - ../services/wifi-pose/config:/app/config
+    networks:
+      - soms-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('mosquitto',1883),5); s.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # --- Anomaly Detection ---
+  anomaly:
+    build: ../services/anomaly
+    container_name: soms-anomaly
+    restart: always
+    ports:
+      - "127.0.0.1:${SOMS_PORT_ANOMALY:-8008}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-soms}:${POSTGRES_PASSWORD:-soms_dev_password}@postgres:5432/soms
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_USER=${MQTT_USER:-soms}
+      - MQTT_PASS=${MQTT_PASS:-soms_dev_mqtt}
+    volumes:
+      - ../services/anomaly/src:/app
+      - ../config:/app/config:ro
+      - soms_anomaly_models:/app/model_store
+    networks:
+      - soms-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
   # --- Perception Node ---
   # Uses host networking for direct access to RTSP cameras and GPU devices
   # on the local network. Cannot use soms-net bridge (no `networks:` key).
@@ -389,6 +445,7 @@ volumes:
   soms_mqtt_log:
   soms_pg_data:
   soms_audio_data:
+  soms_anomaly_models:
   ollama_models:
 
 

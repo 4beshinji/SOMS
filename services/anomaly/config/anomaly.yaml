@@ -1,0 +1,30 @@
+# Anomaly detection service configuration
+# These values override defaults in config.py
+
+# Model architecture: auto | mamba | transformer
+# "auto" tries mamba first, falls back to transformer
+model_arch: auto
+
+# Input window: 168 hours (1 week of hourly data)
+window_size: 168
+
+# Prediction horizon: 6 hours ahead
+horizon: 6
+
+# Batch inference interval (seconds)
+inference_interval: 600
+
+# Realtime detection from MQTT raw readings
+realtime_enabled: true
+realtime_buffer_min: 60
+
+# Anomaly score thresholds (in standard deviations)
+warning_threshold: 3.0
+critical_threshold: 5.0
+
+# Retraining schedule
+retrain_day: 6      # Sunday (0=Monday)
+retrain_hour_utc: 3
+
+# Minimum days of data required for training
+min_data_days: 30

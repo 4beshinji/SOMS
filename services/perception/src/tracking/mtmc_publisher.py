@@ -4,6 +4,10 @@ MTMC Publisher — periodically publishes global tracking state to MQTT.
 Publishes:
   - office/tracking/persons: All tracked persons across all cameras
   - office/{zone}/tracking: Per-zone person summaries
+
+When VADMonitor is attached, each person entry includes:
+  - crime_coefficient: float (0-300)
+  - threat_level: str ("clear"|"latent"|"warning"|"critical")
 """
 from __future__ import annotations
 
@@ -14,6 +18,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from tracking.cross_camera_tracker import CrossCameraTracker
+    from vad.vad_monitor import VADMonitor
 
 from state_publisher import StatePublisher
 
@@ -27,11 +32,13 @@ class MTMCPublisher:
         self,
         tracker: CrossCameraTracker,
         publish_interval_sec: float = 0.5,
+        vad_monitor: VADMonitor | None = None,
     ):
         self._tracker = tracker
         self._interval = publish_interval_sec
         self._publisher = StatePublisher.get_instance()
         self._running = True
+        self._vad = vad_monitor
 
     async def run(self):
         """Main loop: publish global tracks at fixed interval (2Hz default)."""
@@ -55,12 +62,13 @@ class MTMCPublisher:
         # Build persons list
         persons = []
         for track in tracks:
-            persons.append({
+            person = {
                 "global_id": track.global_id,
                 "floor_x_m": track.floor_position[0],
                 "floor_y_m": track.floor_position[1],
                 "zone": track.zone_id,
                 "cameras": track.camera_ids,
+                "sources": track.source_ids,
                 "confidence": max(
                     (
                         t.detections[-1].confidence
@@ -70,7 +78,19 @@ class MTMCPublisher:
                     default=0.0,
                 ),
                 "duration_sec": track.duration_sec,
-            })
+            }
+
+            # Attach crime coefficient from VADMonitor
+            if self._vad is not None:
+                breakdown = self._vad.get_breakdown(track.global_id)
+                if breakdown:
+                    person["crime_coefficient"] = breakdown["crime_coefficient"]
+                    person["threat_level"] = breakdown["severity"]
+                else:
+                    person["crime_coefficient"] = 0.0
+                    person["threat_level"] = "clear"
+
+            persons.append(person)
 
         # Global topic
         global_payload = {
