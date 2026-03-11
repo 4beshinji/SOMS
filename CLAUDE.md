@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**SOMS (Symbiotic Office Management System)** — an autonomous, event-driven office management system combining an LLM "brain" with IoT edge devices, computer vision, and a credit-based economy for human-AI collaboration. The LLM makes real-time decisions about the office environment (lighting, HVAC, task delegation) using sensor data and camera feeds.
+**SOMS (Symbiotic Observation & Management System)** — a self-expanding distributed AI network that covers physical spaces with sensors and local LLM intelligence. Each CoreHub (GPU + LLM + sensors) autonomously manages its environment, auto-discovers new sensors, and issues economic incentives (credits, device XP) that drive organic network growth. The system interprets sensor data and camera feeds in real-time, delegates physical tasks to humans with credit rewards, and federates across multiple hubs into a city-scale intelligence layer. All raw data stays local (50,000:1 compression); no cloud dependency.
 
 ## Python Environment
 

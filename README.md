@@ -1,196 +1,246 @@
-# SOMS — 都市をAI化するアーキテクチャの実証
+<p align="center">
+  <br />
+  <img src="docs/promo/soms-logo-placeholder.svg" width="80" alt="SOMS" />
+  <br />
+</p>
 
-**Symbiotic Office Management System**
+<h1 align="center">SOMS</h1>
 
-分散型ローカルLLMによる自律的空間管理。1つのオフィスから都市全体へスケールする Core Hub アーキテクチャの Phase 0 実装。
+<p align="center">
+  <strong>Self-expanding distributed AI that turns physical spaces into intelligent organisms.</strong>
+</p>
 
-センサーデータとカメラ映像をもとにローカルLLMがリアルタイムで自律判断し、APIで操作できない物理タスクは人間に経済的インセンティブで委託する。全処理がGPUサーバー1台で完結し、生データは一切クラウドに送信しない (50,000:1 のデータ圧縮)。
+<p align="center">
+  <a href="docs/CITY_SCALE_VISION.md">Vision</a> &middot;
+  <a href="docs/DEPLOYMENT.md">Deploy</a> &middot;
+  <a href="docs/CONTRIBUTING.md">Contribute</a> &middot;
+  <a href="docs/CURRENCY_SYSTEM.md">Economy</a> &middot;
+  <a href="docs/SYSTEM_OVERVIEW.md">Tech Spec</a>
+</p>
 
-## Core Hub ビジョン
+<p align="center">
+  <img src="https://img.shields.io/badge/tests-746_passed-brightgreen?style=flat-square" alt="tests" />
+  <img src="https://img.shields.io/badge/services-15-blue?style=flat-square" alt="services" />
+  <img src="https://img.shields.io/badge/cloud_dependency-zero-black?style=flat-square" alt="cloud" />
+  <img src="https://img.shields.io/badge/license-see_LICENSE-lightgrey?style=flat-square" alt="license" />
+</p>
 
-```
-                      ┌──────────────────┐
-                      │   City Data Hub  │ 集約統計のみ受信 (~1MB/Hub/日)
-                      └────────┬─────────┘
-                               │
-              ┌────────────────┼────────────────┐
-              │                │                │
-        ┌─────┴─────┐   ┌─────┴─────┐   ┌─────┴─────┐
-        │  Office   │   │   Farm    │   │   Home    │
-        │  Hub      │   │   Hub     │   │   Hub     │
-        │  (SOMS)   │   │ (auto_JA) │   │  (HEMS)   │
-        └───────────┘   └───────────┘   └───────────┘
-         Phase 0 実装     同一アーキテクチャ、異なるプロンプトとセンサー
-```
+---
 
-各 Core Hub は独立したローカルLLM+GPUを持ち、ネットワーク切断時も自律動作を継続する。システムプロンプト（行動原則）とセンサー構成の差し替えでオフィス・農場・住宅に展開可能。
+> **Your GPU + your sensors = one CoreHub (autonomous intelligence node).**
+>
+> CoreHubs auto-discover nearby sensors, interpret data with a local LLM,
+> delegate physical tasks to humans with credit rewards,
+> and accumulate XP on devices that drives further expansion.
+>
+> The system grows itself.
 
-同一アーキテクチャから以下のドメイン特化システムが派生:
+---
 
-- **[auto_JA](../auto_JA/)** — IoT農業・養殖管理（水耕栽培環境制御 + 養蜂モニタリング・分蜂検知）
-- **[HEMS](../hems/)** — 独居者向けパーソナルAI（AIキャラクターシステム + スマートホーム制御）
+## Why
 
-## Features
+Every "smart city" platform sends your data to someone else's cloud and charges you to read it back. SOMS inverts that:
 
-- **自律環境制御** — センサー → LLM → デバイス制御の30秒認知サイクル（ReAct 5イテレーション、3層安全機構）
-- **物理タスク委託** — APIで操作不能な作業を人間にクレジット報酬で委託、ダッシュボードで受諾・完了
-- **コンピュータビジョン** — YOLOv11 による在室検知、活動分析、転倒検知、MTMC多カメラ人物追跡
-- **クレジット経済** — 複式簿記台帳、デバイスXP・動的報酬乗数、デマレッジ2%/日、P2P送金、デバイス投資
-- **音声合成** — VOICEVOX による日本語タスク通知・応答（事前生成ストック方式）
-- **SensorSwarm** — ESP32 Hub+Leaf 2層センサーネットワーク（ESP-NOW / UART / I2C / BLE）
-- **SwitchBot連携** — クラウドAPI v1.1 経由で9種のデバイスをMQTT統合
-- **OAuth認証** — Slack / GitHub ログイン + JWT トークン（共有シークレット方式）
-- **空間管理** — フロアプラン可視化、デバイス配置編集、ライブ検出、ヒートマップ（Admin UI）
-- **モバイルウォレット** — PWA: 残高確認、QRスキャン、P2P送金、デバイス投資ポートフォリオ
+| Traditional | SOMS |
+|-------------|------|
+| Data leaves your building | Raw data **never** leaves the node (50,000:1 compression) |
+| Cloud LLM, single point of failure | Local LLM per hub, runs offline indefinitely |
+| Vendor lock-in, API fees | Open source, deploy anywhere, zero cloud cost |
+| Static sensor grid | **Self-expanding** via economic incentives |
 
-## アーキテクチャ
+## Get Involved
 
-```
-                ┌──────────────────┐
-                │   Ollama / LLM   │
-                │  (qwen2.5:14b)   │
-                └────────┬─────────┘
-                         │ OpenAI API
-                ┌────────┴─────────┐
-                │   Brain Service   │
-                │  ReAct Loop (5x)  │
-                │  WorldModel       │
-                │  TaskScheduling   │
-                └──┬───┬───┬───┬───┘
-                   │   │   │   │
-        ┌──────────┘   │   │   └──────────┐
-        ▼              ▼   ▼              ▼
-┌──────────────┐ ┌─────────────┐ ┌──────────────┐
-│ MQTT Broker  │ │  Dashboard  │ │Voice Service │
-│ (Mosquitto)  │ │  Backend    │ │  + VOICEVOX  │
-└──┬───┬───────┘ │  (FastAPI)  │ └──────────────┘
-   │   │         └──────┬──────┘
-   │   │                │
-   │   │         ┌──────┴──────┐
-   │   │         │  Dashboard  │
-   │   │         │  Frontend   │◄── nginx ──► Wallet
-   │   │         │  (React 19) │              Service
-   │   │         └─────────────┘
-   │   │
-   │   └─────────────────┐
-   ▼                     ▼
-┌──────────────┐  ┌──────────────┐
-│ Edge Devices │  │  Perception  │
-│ SensorSwarm  │  │  YOLOv11     │
-│ Hub + Leaf   │  │  Monitors    │
-│ MCP/JSON-RPC │  │  (ROCm GPU)  │
-└──────────────┘  └──────────────┘
+No permission required. Pick any entry point:
+
+| | What you do | What you get |
+|-|-------------|-------------|
+| **Deploy a CoreHub** | Run Docker + GPU | Full autonomous AI node for your space |
+| **Add sensors** | Plug in ESP32 (~$3) | Device XP accumulation, reward multiplier (up to 3.0x) |
+| **Do tasks** | Complete physical tasks the LLM detects | Credit rewards (500 - 5,000 per task) |
+| **Provide GPU** | Contribute compute to an existing hub | Infrastructure rewards (5,000/hr) |
+| **Write code** | Open a PR | Deploys to every node |
+
+## Quick Start
+
+```bash
+git clone <repository_url> && cd Office_as_AI_ToyBox
+cp env.example .env
+
+# Simulation mode  — no GPU, no hardware, just Docker
+./infra/scripts/start_virtual_edge.sh
+
+# Production  — AMD ROCm GPU + real sensors
+docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-| Layer | Directory | Description |
-|-------|-----------|-------------|
-| Central Intelligence | `services/brain/` | LLM-driven ReAct 認知ループ (Think→Act→Observe, 6ツール, 3層安全機構) |
-| Perception | `services/perception/` | YOLOv11 — 在室検知, ホワイトボード, 活動分析, MTMC人物追跡 |
-| Communication | MQTT (Mosquitto) | MCP over MQTT — JSON-RPC 2.0 でエッジデバイスを直接制御 |
-| Edge | `edge/` | SensorSwarm Hub-Leaf 2層ネットワーク (ESP-NOW/UART/I2C/BLE) |
-| Human Interface | `services/dashboard/`, `services/voice/` | キオスクダッシュボード + VOICEVOX 音声合成 + モバイルウォレットPWA |
-| Economy | `services/wallet/` | 複式簿記クレジット台帳 (デバイスXP, デマレッジ2%/日, 焼却5%) |
+```bash
+# Verify
+curl http://localhost:8000/health
+docker exec soms-mqtt mosquitto_sub -u soms -P soms_dev_mqtt -t 'office/#' -v
+```
+
+> See **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** for full setup instructions.
+
+## How It Grows
+
+```
+  ┌──── more sensors ◄────────────────────────────────────────┐
+  │                                                            │
+  ▼                                                            │
+  LLM sees more  ──►  better decisions  ──►  better tasks     │
+                                                │              │
+                                                ▼              │
+                                         task completed        │
+                                                │              │
+                                    ┌───────────┴──────────┐   │
+                                    ▼                      ▼   │
+                              credits paid           device XP │
+                              to humans              goes up   │
+                                    │                      │   │
+                                    ▼                      ▼   │
+                              humans add             multiplier│
+                              more sensors           increases─┘
+```
+
+**Auto-discovery** — CoreHubs actively scan for new devices (TCP probe + YOLO verification) and integrate anything that speaks MQTT `{"value": X}`.
+
+## Architecture
+
+```
+              ┌──────────────────────┐
+              │    City Data Hub     │  aggregated stats only (~1 MB/hub/day)
+              └──────────┬───────────┘
+                         │
+          ┌──────────────┼──────────────┐
+          │              │              │
+    ┌─────┴──────┐ ┌────┴─────┐ ┌─────┴──────┐
+    │  CoreHub A │ │ CoreHub B│ │  CoreHub C │    ← anyone can run one
+    │  LLM+GPU   │ │ LLM+GPU  │ │  LLM+GPU   │
+    └─────┬──────┘ └────┬─────┘ └─────┬──────┘
+          │              │              │
+    ┌──┬──┤        ┌──┬──┤        ┌──┬──┤
+    S  S  C        S  C  S        S  S  S         ← anyone can add these
+```
+
+### Inside a CoreHub
+
+| Layer | What it does | Implementation |
+|-------|-------------|----------------|
+| **AI Core** | ReAct cognitive loop — Think / Act / Observe every 30s | `services/brain/` |
+| **Perception** | YOLOv11 — occupancy, activity, fall detection, multi-camera tracking | `services/perception/` |
+| **Economy** | Double-entry credit ledger, device XP, 2%/day demurrage, staking | `services/wallet/` |
+| **Edge** | SensorSwarm mesh (ESP-NOW/UART/I2C/BLE) + SwitchBot bridge | `edge/` |
+| **Comms** | MQTT message bus — MCP over JSON-RPC 2.0 | Mosquitto |
+| **Interface** | Dashboard + VOICEVOX voice + mobile wallet PWA | `services/dashboard/`, `services/voice/` |
+
+## Adding a Sensor
+
+No registration. No approval. Just publish:
+
+```bash
+mosquitto_pub -h <hub_ip> -u soms -P soms_dev_mqtt \
+  -t 'office/my_zone/sensor/my_device/temperature' \
+  -m '{"value": 23.5}'
+```
+
+The WorldModel picks it up instantly. The LLM starts using it. XP starts accumulating.
+
+For mesh networks without WiFi, use **SensorSwarm** — ESP32 Hub aggregates Leaf nodes over ESP-NOW / UART / I2C / BLE.
+
+## Credit Economy
+
+Incentives that make the network expand itself:
+
+```
+System Wallet (infinite mint)
+  ├── task reward (500 - 5,000)  ──►  human wallet
+  ├── infra reward (5,000/hr)    ──►  GPU / hub / sensor operator
+  └── device XP                  ──►  multiplier up to 3.0x
+                                        │
+                        demurrage 2%/day ◄┘  use it or lose it
+```
+
+| Mechanism | Effect |
+|-----------|--------|
+| **Task rewards** | Humans get paid for physical tasks the LLM can't do |
+| **Device XP** | Sensors earn XP over time — higher XP = higher reward multiplier |
+| **Demurrage** | Held credits decay 2%/day — forces circulation |
+| **Device staking** | Users invest credits in sensors — earn dividends |
+| **P2P transfers** | Send credits to anyone — 5% burn fee |
+
+## Domain Adaptation
+
+Same software, different sensors and system prompt:
+
+| Domain | Sensors | Example tasks |
+|--------|---------|---------------|
+| Urban environment | Weather, air quality, cameras | Alerts, inspections |
+| Office | Temp, CO2, cameras | Ventilation, cleaning, supplies |
+| Agriculture | pH, EC, water temp, light | Nutrient adjustment, harvest |
+| Retail | Foot traffic cameras, climate | Restocking, display changes |
+| Residential | Environment, security cameras | Elder care, energy saving |
+
+Related projects: **[auto_JA](../auto_JA/)** (IoT agriculture) &middot; **[HEMS](../hems/)** (personal AI + smart home)
 
 ## Services
 
 | Service | Port | Container |
 |---------|------|-----------|
-| Dashboard Frontend (nginx) | 80 | soms-frontend |
-| Admin Frontend | 8007 | soms-admin |
-| Dashboard Backend API | 8000 | soms-backend |
-| Mock LLM | 8001 | soms-mock-llm |
-| Voice Service | 8002 | soms-voice |
+| Dashboard Frontend | 80 | soms-frontend |
+| Dashboard Backend | 8000 | soms-backend |
 | Wallet Service | 127.0.0.1:8003 | soms-wallet |
-| Wallet App (PWA) | 8004 (HTTPS: 8443) | soms-wallet-app |
-| SwitchBot Bridge | 8005 | soms-switchbot |
+| Wallet App (PWA) | 8004 | soms-wallet-app |
 | Auth Service | 127.0.0.1:8006 | soms-auth |
-| PostgreSQL | 127.0.0.1:5432 | soms-postgres |
-| VOICEVOX Engine | 50021 | soms-voicevox |
+| Voice + VOICEVOX | 8002 / 50021 | soms-voice / soms-voicevox |
+| SwitchBot Bridge | 8005 | soms-switchbot |
 | Ollama (LLM) | 11434 | soms-ollama |
+| Mock LLM | 8001 | soms-mock-llm |
 | MQTT Broker | 1883 | soms-mqtt |
-
-## Quick Start
-
-### 前提条件
-
-- Docker Engine 24+ および Docker Compose v2
-
-### 起動手順
-
-```bash
-# 1. Clone and configure
-git clone <repository_url>
-cd Office_as_AI_ToyBox
-cp env.example .env
-
-# 2. Full simulation (no GPU/hardware required)
-./infra/scripts/start_virtual_edge.sh
-
-# 3. Production (AMD ROCm GPU + real hardware)
-docker compose -f infra/docker-compose.yml up -d --build
-```
-
-### 動作確認
-
-```bash
-# Dashboard Backend API
-curl http://localhost:8000/health
-
-# MQTT sensor data
-docker exec soms-mqtt mosquitto_sub -u soms -P soms_dev_mqtt -t 'office/#' -v
-```
-
-See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed setup.
+| PostgreSQL | 127.0.0.1:5432 | soms-postgres |
 
 ## Testing
 
-**746 unit tests** across 7 services (no running services required):
+**746 unit tests** across 7 services — no running containers required:
 
 ```bash
-for d in services/brain/tests services/auth/tests services/voice/tests \
-  services/dashboard/backend/tests services/wallet/tests \
-  services/switchbot/tests services/perception/tests; do
+for d in services/{brain,auth,voice,dashboard/backend,wallet,switchbot,perception}/tests; do
   .venv/bin/python -m pytest "$d" --tb=short
 done
 ```
 
-| Service | Tests |
-|---------|-------|
-| Brain | 189 |
-| Dashboard Backend | 172 |
-| Auth | 97 |
-| Perception | 86 |
-| Voice | 79 |
-| Wallet | 64 |
-| SwitchBot | 59 |
-
-See `CLAUDE.md` for integration tests and per-service commands.
+| Service | Tests | | Service | Tests |
+|---------|-------|-|---------|-------|
+| Brain | 189 | | Voice | 79 |
+| Dashboard | 172 | | Wallet | 64 |
+| Auth | 97 | | SwitchBot | 59 |
+| Perception | 86 | | | |
 
 ## Tech Stack
 
-- **LLM**: Ollama + Qwen2.5:14b (ROCm, AMD GPU)
-- **Backend**: Python 3.11, FastAPI, SQLAlchemy (async), PostgreSQL 16
-- **Frontend**: React 19, TypeScript, Vite 7, Tailwind CSS 4
-- **Vision**: YOLOv11, OpenCV, PyTorch (ROCm)
-- **TTS**: VOICEVOX (Japanese)
-- **Edge**: ESP32 MicroPython + SensorSwarm + PlatformIO C++
-- **Infra**: Docker Compose (15 services), Mosquitto MQTT, nginx
+| | |
+|-|-|
+| **LLM** | Ollama + Qwen 2.5 (ROCm / AMD GPU) |
+| **Backend** | Python 3.11, FastAPI, SQLAlchemy async, PostgreSQL 16 |
+| **Frontend** | React 19, TypeScript, Vite 7, Tailwind CSS 4 |
+| **Vision** | YOLOv11, OpenCV, PyTorch (ROCm) |
+| **TTS** | VOICEVOX (Japanese speech synthesis) |
+| **Edge** | ESP32 MicroPython, SensorSwarm, PlatformIO C++ |
+| **Infra** | Docker Compose (15 services), Mosquitto MQTT, nginx |
 
-Python + MQTT による純粋なイベント駆動アーキテクチャ。重量級ミドルウェア不使用。
+Pure event-driven architecture on Python + MQTT. No heavyweight middleware.
 
-## ドキュメント
+## Docs
 
-| ドキュメント | 内容 |
-|---|---|
-| [SYSTEM_OVERVIEW.md](docs/SYSTEM_OVERVIEW.md) | 技術仕様 |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | デプロイ手順 |
-| [CITY_SCALE_VISION.md](docs/CITY_SCALE_VISION.md) | 都市スケールアーキテクチャ構想 |
-| [CURRENCY_SYSTEM.md](docs/CURRENCY_SYSTEM.md) | クレジット経済の設計 |
-| [CONTRIBUTING.md](docs/CONTRIBUTING.md) | 開発参加ガイド |
-| [architecture/](docs/architecture/) | ADR・詳細設計 (12ドキュメント) |
-| [promo/](docs/promo/) | ピッチデッキ・記事・デザイン素材 |
-| [CLAUDE.md](CLAUDE.md) | 開発者リファレンス (API仕様, コード規約, テスト詳細) |
+| | |
+|-|-|
+| **[CITY_SCALE_VISION.md](docs/CITY_SCALE_VISION.md)** | Architecture vision, data sovereignty, self-expansion mechanics |
+| **[SYSTEM_OVERVIEW.md](docs/SYSTEM_OVERVIEW.md)** | Full technical specification |
+| **[CURRENCY_SYSTEM.md](docs/CURRENCY_SYSTEM.md)** | Credit economy deep-dive |
+| **[CONTRIBUTING.md](docs/CONTRIBUTING.md)** | How to participate — code, GPU, sensors |
+| **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** | Step-by-step deployment guide |
+| **[architecture/](docs/architecture/)** | ADRs & detailed design (12 documents) |
+| **[CLAUDE.md](CLAUDE.md)** | Developer reference — APIs, conventions, tests |
 
 ## License
 
-See LICENSE file.
+See [LICENSE](LICENSE) file.
