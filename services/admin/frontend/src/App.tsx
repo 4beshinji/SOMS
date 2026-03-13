@@ -5,6 +5,7 @@ import { lazy, Suspense } from 'react';
 
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
 const FloorPlanPage = lazy(() => import('./pages/FloorPlanPage'));
+const InventoryPage = lazy(() => import('./pages/InventoryPage'));
 
 function LoginRedirect() {
   // Redirect to auth login
@@ -67,6 +68,18 @@ function Layout() {
           >
             Floor Plan
           </NavLink>
+          <NavLink
+            to="/inventory"
+            className={({ isActive }) =>
+              `block px-4 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[var(--primary-50)] text-[var(--primary-700)] border-r-2 border-[var(--primary-500)]'
+                  : 'text-[var(--gray-700)] hover:bg-[var(--gray-100)]'
+              }`
+            }
+          >
+            Inventory
+          </NavLink>
         </div>
         <div className="p-4 border-t border-[var(--gray-200)]">
           <p className="text-xs text-[var(--gray-500)] mb-2">{user?.display_name || user?.username}</p>
@@ -91,6 +104,7 @@ function Layout() {
           <Routes>
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/floor-plan" element={<FloorPlanPage />} />
+            <Route path="/inventory" element={<InventoryPage />} />
             <Route path="*" element={<Navigate to="/analytics" replace />} />
           </Routes>
         </Suspense>

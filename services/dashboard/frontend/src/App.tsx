@@ -3,6 +3,7 @@ import { useAuth } from '@soms/auth';
 import UIPreview from './UIPreview';
 import MonitorHeader from './components/MonitorHeader';
 import TaskList from './components/TaskList';
+import ShoppingPanel from './components/ShoppingPanel';
 import { useTaskManager } from './hooks/useTaskManager';
 import LoginPage from './pages/LoginPage';
 
@@ -29,15 +30,20 @@ function Monitor() {
         isAudioEnabled={isAudioEnabled}
         onToggleAudio={() => setIsAudioEnabled(!isAudioEnabled)}
       />
-      <TaskList
-        tasks={visibleTasks}
-        loading={loading}
-        acceptedTaskIds={acceptedTaskIds}
-        zoneMultipliers={zoneMultipliers}
-        onAccept={handleAccept}
-        onComplete={handleComplete}
-        onIgnore={handleIgnore}
-      />
+      <div className="max-w-7xl mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+        <TaskList
+          tasks={visibleTasks}
+          loading={loading}
+          acceptedTaskIds={acceptedTaskIds}
+          zoneMultipliers={zoneMultipliers}
+          onAccept={handleAccept}
+          onComplete={handleComplete}
+          onIgnore={handleIgnore}
+        />
+        <aside>
+          <ShoppingPanel />
+        </aside>
+      </div>
     </div>
   );
 }

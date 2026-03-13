@@ -317,8 +317,12 @@ class WorldModel:
         elif channel == "barcode" and self.inventory_tracker:
             barcode_value = str(fused_value) if fused_value else ""
             if barcode_value:
+                # Resolve barcode to known item metadata before registering
+                known = self.inventory_tracker.lookup_barcode(barcode_value)
                 inv_event = self.inventory_tracker.handle_barcode_scan(
                     device_id, "weight", barcode_value,
+                    item_name=known["item_name"] if known else None,
+                    unit_weight_g=known["unit_weight_g"] if known else None,
                 )
                 if inv_event:
                     event = Event(
@@ -330,6 +334,9 @@ class WorldModel:
                             "barcode": barcode_value,
                             "quantity": inv_event.quantity,
                             "device_id": device_id,
+                            "category": inv_event.category,
+                            "store": inv_event.store,
+                            "price": inv_event.price,
                         },
                     )
                     self._add_event(zone, event)

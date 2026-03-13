@@ -339,6 +339,24 @@ class InventoryTracker:
         """Check if a device_id:channel combination is a tracked shelf sensor."""
         return self._key(device_id, channel) in self._shelves
 
+    def lookup_barcode(self, barcode: str) -> Optional[Dict[str, Any]]:
+        """Look up a barcode in registered shelf configs.
+
+        Returns item metadata if a matching barcode is found, None otherwise.
+        """
+        for shelf in self._shelves.values():
+            if shelf.barcode and shelf.barcode == barcode:
+                return {
+                    "item_name": shelf.item_name,
+                    "unit_weight_g": shelf.unit_weight_g,
+                    "category": shelf.category,
+                    "store": shelf.store,
+                    "price": shelf.price,
+                    "min_threshold": shelf.min_threshold,
+                    "reorder_quantity": shelf.reorder_quantity,
+                }
+        return None
+
     def handle_barcode_scan(
         self,
         device_id: str,
@@ -378,6 +396,14 @@ class InventoryTracker:
         if state.mode == "single":
             state.mode = "multi"
 
+        # Resolve item metadata from DB/YAML if not provided
+        if item_name is None or unit_weight_g is None:
+            known = self.lookup_barcode(barcode)
+            if known:
+                item_name = item_name or known["item_name"]
+                unit_weight_g = unit_weight_g if unit_weight_g is not None else known["unit_weight_g"]
+                logger.info("Barcode %s resolved to: %s (%.1fg)", barcode, item_name, unit_weight_g)
+
         name = item_name or f"barcode:{barcode}"
         weight = unit_weight_g or 0.0
 
@@ -404,13 +430,19 @@ class InventoryTracker:
                     price=item.price,
                 )
 
-        # New item
+        # New item — enrich with lookup data if available
+        known = self.lookup_barcode(barcode) or {}
         new_item = CompartmentItem(
             barcode=barcode,
             item_name=name,
             unit_weight_g=weight,
             quantity=1,
             total_weight_g=weight,
+            min_threshold=known.get("min_threshold", 1),
+            reorder_quantity=known.get("reorder_quantity", 1),
+            category=known.get("category", ""),
+            store=known.get("store"),
+            price=known.get("price"),
             last_scan_time=time.time(),
         )
         state.items.append(new_item)
@@ -422,10 +454,12 @@ class InventoryTracker:
             device_id=device_id,
             channel=channel,
             item_name=name,
-            category="",
+            category=new_item.category,
             quantity=1,
-            min_threshold=1,
-            reorder_quantity=1,
+            min_threshold=new_item.min_threshold,
+            reorder_quantity=new_item.reorder_quantity,
+            store=new_item.store,
+            price=new_item.price,
         )
 
     def _estimate_consumed_item(

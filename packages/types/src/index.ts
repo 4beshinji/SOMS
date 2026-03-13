@@ -246,6 +246,104 @@ export interface HeatmapData {
 
 export type FloorPlanLayer = 'zones' | 'devices' | 'cameras' | 'heatmap' | 'persons' | 'objects';
 
+// ── Shopping / Inventory Types ──────────────────────────────────────
+
+export interface ShoppingItem {
+  id: number;
+  name: string;
+  category?: string | null;
+  quantity: number;
+  unit?: string | null;
+  store?: string | null;
+  price?: number | null;
+  is_purchased: boolean;
+  is_recurring: boolean;
+  recurrence_days?: number | null;
+  last_purchased_at?: string | null;
+  next_purchase_at?: string | null;
+  notes?: string | null;
+  priority: number;
+  created_at?: string | null;
+  purchased_at?: string | null;
+  created_by: string;
+  share_token?: string | null;
+}
+
+export interface ShoppingItemCreate {
+  name: string;
+  category?: string;
+  quantity?: number;
+  unit?: string;
+  store?: string;
+  price?: number;
+  is_recurring?: boolean;
+  recurrence_days?: number;
+  notes?: string;
+  priority?: number;
+  created_by?: string;
+}
+
+export interface ShoppingStats {
+  total_items: number;
+  purchased_items: number;
+  pending_items: number;
+  total_spent_this_month: number;
+  category_breakdown: Record<string, number>;
+}
+
+export interface ShoppingShareResponse {
+  share_url: string;
+  token: string;
+  items: ShoppingItem[];
+}
+
+export interface InventoryItem {
+  id: number;
+  device_id: string;
+  channel: string;
+  zone: string;
+  item_name: string;
+  category?: string | null;
+  unit_weight_g: number;
+  tare_weight_g: number;
+  min_threshold: number;
+  reorder_quantity: number;
+  store?: string | null;
+  price?: number | null;
+  barcode?: string | null;
+  is_active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface InventoryItemCreate {
+  device_id: string;
+  channel?: string;
+  zone: string;
+  item_name: string;
+  category?: string;
+  unit_weight_g: number;
+  tare_weight_g?: number;
+  min_threshold?: number;
+  reorder_quantity?: number;
+  store?: string;
+  price?: number;
+  barcode?: string;
+}
+
+export interface InventoryItemUpdate {
+  item_name?: string;
+  category?: string;
+  unit_weight_g?: number;
+  tare_weight_g?: number;
+  min_threshold?: number;
+  reorder_quantity?: number;
+  store?: string;
+  price?: number;
+  barcode?: string;
+  is_active?: boolean;
+}
+
 // ── Device Position API Types ────────────────────────────────────────
 
 export interface DevicePositionResponse {
