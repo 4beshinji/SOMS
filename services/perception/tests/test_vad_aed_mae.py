@@ -10,10 +10,6 @@ from vad.aed_mae import AEDMAEDetector
 
 
 class TestRunningStats:
-    def test_initial_state(self):
-        detector = AEDMAEDetector()
-        assert detector._running_stats["count"] == 0
-
     def test_welford_update(self):
         detector = AEDMAEDetector()
         # Simulate stats updates
@@ -35,10 +31,3 @@ class TestAEDMAEDetector:
         frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
         result = detector.score_frame(frame)
         assert result is None  # No model → None
-
-    def test_detector_creation(self):
-        detector = AEDMAEDetector(img_size=32)
-        assert detector._img_size == 32
-        assert detector._n_augments == 4
-        # Model is None due to mocked torch
-        assert detector._model is None

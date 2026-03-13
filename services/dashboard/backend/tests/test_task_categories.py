@@ -1,16 +1,5 @@
 """Unit tests for task category classification and Stage 1.5 duplicate detection."""
-import sys
-from pathlib import Path
-
 import pytest
-
-# Ensure backend is importable
-_BACKEND_DIR = str(Path(__file__).resolve().parent.parent)
-_ROUTERS_DIR = str(Path(__file__).resolve().parent.parent / "routers")
-if _BACKEND_DIR not in sys.path:
-    sys.path.insert(0, _BACKEND_DIR)
-if _ROUTERS_DIR not in sys.path:
-    sys.path.insert(0, _ROUTERS_DIR)
 
 from routers.tasks import _classify_task, _TASK_CATEGORIES
 

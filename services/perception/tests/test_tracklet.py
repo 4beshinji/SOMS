@@ -5,62 +5,11 @@ import pytest
 from conftest import make_embedding, make_tracked_person
 
 
-# ── TrackedPerson ────────────────────────────────────────────────
-
-
-class TestTrackedPerson:
-    """Tests for the TrackedPerson dataclass."""
-
-    def test_create_tracked_person(self):
-        """TrackedPerson stores all fields correctly."""
-        emb = make_embedding(seed=42)
-        p = make_tracked_person(
-            track_id=5,
-            camera_id="cam_a",
-            bbox_px=[10.0, 20.0, 30.0, 40.0],
-            foot_px=[20.0, 40.0],
-            foot_floor=[1.0, 2.0],
-            confidence=0.85,
-            reid_embedding=emb,
-            timestamp=999.0,
-        )
-        assert p.track_id == 5
-        assert p.camera_id == "cam_a"
-        assert p.bbox_px == [10.0, 20.0, 30.0, 40.0]
-        assert p.foot_px == [20.0, 40.0]
-        assert p.foot_floor == [1.0, 2.0]
-        assert p.confidence == 0.85
-        assert np.array_equal(p.reid_embedding, emb)
-        assert p.timestamp == 999.0
-
-    def test_default_values(self):
-        """make_tracked_person helper fills sensible defaults."""
-        p = make_tracked_person()
-        assert p.track_id == 1
-        assert p.camera_id == "cam_01"
-        assert p.confidence == 0.9
-        assert p.reid_embedding.shape == (512,)
-        # Embedding should be L2-normalized
-        assert abs(np.linalg.norm(p.reid_embedding) - 1.0) < 1e-5
-
-
 # ── Tracklet ─────────────────────────────────────────────────────
 
 
 class TestTracklet:
     """Tests for the Tracklet dataclass and its methods."""
-
-    def test_create_empty_tracklet(self):
-        """A new Tracklet has empty detections and no global_id."""
-        from tracking.tracklet import Tracklet
-
-        t = Tracklet(camera_id="cam_01", local_track_id=10)
-        assert t.camera_id == "cam_01"
-        assert t.local_track_id == 10
-        assert t.global_id is None
-        assert len(t.detections) == 0
-        assert t.last_seen == 0.0
-        assert t.avg_embedding is None
 
     def test_latest_floor_position_empty(self):
         """latest_floor_position returns None when no detections exist."""
@@ -165,39 +114,12 @@ class TestTracklet:
 class TestGlobalTrack:
     """Tests for the GlobalTrack dataclass and its methods."""
 
-    def test_create_global_track_defaults(self):
-        """GlobalTrack has sensible default values."""
-        from tracking.tracklet import GlobalTrack
-
-        g = GlobalTrack(global_id=1)
-        assert g.global_id == 1
-        assert g.tracklets == {}
-        assert g.last_seen == 0.0
-        assert g.floor_position == [0.0, 0.0]
-        assert g.zone_id == ""
-        assert g.first_seen == 0.0
-        assert g.avg_embedding is None
-
-    def test_duration_sec_no_times(self):
-        """duration_sec returns 0.0 when first_seen or last_seen is 0."""
-        from tracking.tracklet import GlobalTrack
-
-        g = GlobalTrack(global_id=1)
-        assert g.duration_sec == 0.0
-
     def test_duration_sec_with_times(self):
         """duration_sec returns the difference between last_seen and first_seen."""
         from tracking.tracklet import GlobalTrack
 
         g = GlobalTrack(global_id=1, first_seen=100.0, last_seen=250.0)
         assert g.duration_sec == 150.0
-
-    def test_camera_ids_empty(self):
-        """camera_ids returns empty list when no tracklets."""
-        from tracking.tracklet import GlobalTrack
-
-        g = GlobalTrack(global_id=1)
-        assert g.camera_ids == []
 
     def test_camera_ids_with_tracklets(self):
         """camera_ids returns list of camera IDs from tracklets."""

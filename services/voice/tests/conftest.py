@@ -119,3 +119,72 @@ def tmp_acceptance_dir(tmp_path):
 def tmp_currency_path(tmp_path):
     """Create a temporary path for currency unit stock file."""
     return tmp_path / "currency_units.json"
+
+
+# ── Shared stock factory helpers ──────────────────────────────────
+
+
+def make_rejection_stock(mock_speech_gen, mock_voice_client, tmp_dir):
+    """Build a RejectionStock whose paths point at tmp_dir."""
+    with patch("rejection_stock.STOCK_DIR", tmp_dir), \
+         patch("rejection_stock.MANIFEST_PATH", tmp_dir / "manifest.json"):
+        from rejection_stock import RejectionStock
+        return RejectionStock(mock_speech_gen, mock_voice_client)
+
+
+def make_acceptance_stock(mock_speech_gen, mock_voice_client, tmp_dir):
+    """Build an AcceptanceStock whose paths point at tmp_dir."""
+    with patch("acceptance_stock.STOCK_DIR", tmp_dir), \
+         patch("acceptance_stock.MANIFEST_PATH", tmp_dir / "manifest.json"):
+        from acceptance_stock import AcceptanceStock
+        return AcceptanceStock(mock_speech_gen, mock_voice_client)
+
+
+def make_currency_stock(mock_speech_gen, tmp_path):
+    """Build a CurrencyUnitStock whose file path points at tmp_path."""
+    with patch("currency_unit_stock.STOCK_PATH", tmp_path):
+        from currency_unit_stock import CurrencyUnitStock
+        return CurrencyUnitStock(mock_speech_gen)
+
+
+class StockSpec:
+    """Metadata for a stock type, used by parametrized shared tests."""
+
+    def __init__(self, name, max_stock, refill_threshold, entries_attr):
+        self.name = name
+        self.max_stock = max_stock
+        self.refill_threshold = refill_threshold
+        self.entries_attr = entries_attr
+
+    def make_fake_entries(self, count):
+        """Create fake entries appropriate for the stock type."""
+        if self.entries_attr == "_units":
+            return [f"unit_{i}" for i in range(count)]
+        return [{"id": str(i), "text": f"t{i}", "audio_file": f"f{i}.mp3"} for i in range(count)]
+
+
+REJECTION_SPEC = StockSpec("rejection", max_stock=100, refill_threshold=80, entries_attr="_entries")
+ACCEPTANCE_SPEC = StockSpec("acceptance", max_stock=50, refill_threshold=20, entries_attr="_entries")
+CURRENCY_SPEC = StockSpec("currency", max_stock=50, refill_threshold=30, entries_attr="_units")
+
+
+@pytest.fixture(params=["rejection", "acceptance", "currency"])
+def stock_with_spec(request, mock_speech_gen, mock_voice_client, tmp_path):
+    """
+    Parametrized fixture yielding (stock_instance, StockSpec) for each stock type.
+    Runs each test 3 times — once per stock type.
+    """
+    if request.param == "rejection":
+        tmp_dir = tmp_path / "rejections"
+        tmp_dir.mkdir()
+        stock = make_rejection_stock(mock_speech_gen, mock_voice_client, tmp_dir)
+        return stock, REJECTION_SPEC
+    elif request.param == "acceptance":
+        tmp_dir = tmp_path / "acceptances"
+        tmp_dir.mkdir()
+        stock = make_acceptance_stock(mock_speech_gen, mock_voice_client, tmp_dir)
+        return stock, ACCEPTANCE_SPEC
+    else:
+        currency_path = tmp_path / "currency_units.json"
+        stock = make_currency_stock(mock_speech_gen, currency_path)
+        return stock, CURRENCY_SPEC

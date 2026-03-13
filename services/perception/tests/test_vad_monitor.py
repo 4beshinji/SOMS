@@ -28,24 +28,6 @@ class TestBBoxIoU:
         assert iou == 0.0
 
 
-class TestVADMonitorInit:
-    def test_creates_without_tracker(self):
-        monitor = VADMonitor(cross_camera_tracker=None, model_dir="/tmp/vad_test")
-        assert monitor._tracker is None
-        assert monitor._stg_nf is not None
-        assert monitor._aed_mae is not None
-        assert monitor._attr_vad is not None
-
-    def test_get_empty_coefficients(self):
-        monitor = VADMonitor(cross_camera_tracker=None, model_dir="/tmp/vad_test")
-        coeffs = monitor.get_crime_coefficients()
-        assert coeffs == {}
-
-    def test_get_all_breakdowns_empty(self):
-        monitor = VADMonitor(cross_camera_tracker=None, model_dir="/tmp/vad_test")
-        assert monitor.get_all_breakdowns() == []
-
-
 class TestVADMonitorProcessing:
     def test_process_frame_no_persons(self):
         monitor = VADMonitor(cross_camera_tracker=None, model_dir="/tmp/vad_test")
@@ -70,7 +52,7 @@ class TestVADMonitorProcessing:
         monitor.process_frame(frame, persons, detections, "zone_01", timestamp=1000.0)
         # Should have created a profile (using fallback_idx=0 as global_id)
         coeffs = monitor.get_crime_coefficients()
-        assert len(coeffs) >= 0  # May be 0 if STG-NF buffer not full yet
+        assert isinstance(coeffs, dict)
 
     def test_evict_person(self):
         monitor = VADMonitor(cross_camera_tracker=None, model_dir="/tmp/vad_test")

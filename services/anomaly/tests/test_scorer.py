@@ -27,9 +27,6 @@ class TestSeverityClassification:
         assert scorer._classify_severity(5.0) == "critical"
         assert scorer._classify_severity(10.0) == "critical"
 
-    def test_exact_boundary(self, scorer):
-        assert scorer._classify_severity(3.0) == "warning"
-        assert scorer._classify_severity(5.0) == "critical"
 
 
 class TestScoreComputation:

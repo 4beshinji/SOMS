@@ -83,12 +83,6 @@ class TestValidationGate:
         assert result["success"] is False
         assert "Unknown tool" in result["error"]
 
-    @pytest.mark.asyncio
-    async def test_sanitizer_unknown_tool_rejected(self):
-        executor = _make_executor()
-        # Sanitizer itself rejects unknown tools
-        result = await executor.execute("hack_the_planet", {})
-        assert result["success"] is False
 
 
 # ── create_task ─────────────────────────────────────────────────

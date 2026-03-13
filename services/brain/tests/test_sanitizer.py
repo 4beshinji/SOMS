@@ -66,26 +66,17 @@ class TestCreateTask:
         assert ok is True
         assert reason == "OK"
 
-    def test_bounty_at_maximum_passes(self, sanitizer):
-        ok, _ = sanitizer.validate_tool_call("create_task", {"bounty": 5000})
-        assert ok is True
-
-    def test_bounty_exceeds_maximum_rejected(self, sanitizer):
-        ok, reason = sanitizer.validate_tool_call("create_task", {"bounty": 5001})
-        assert ok is False
-        assert "5000" in reason
-
-    def test_bounty_way_over_limit(self, sanitizer):
-        ok, reason = sanitizer.validate_tool_call("create_task", {"bounty": 999999})
-        assert ok is False
-
-    def test_bounty_zero_passes(self, sanitizer):
-        ok, _ = sanitizer.validate_tool_call("create_task", {"bounty": 0})
-        assert ok is True
-
-    def test_bounty_float_over_limit(self, sanitizer):
-        ok, reason = sanitizer.validate_tool_call("create_task", {"bounty": 5000.01})
-        assert ok is False
+    @pytest.mark.parametrize("bounty, expected_ok", [
+        (5000, True),
+        (5001, False),
+        (0, True),
+        (5000.01, False),
+    ])
+    def test_bounty_validation(self, sanitizer, bounty, expected_ok):
+        ok, reason = sanitizer.validate_tool_call("create_task", {"bounty": bounty})
+        assert ok is expected_ok
+        if not expected_ok:
+            assert "5000" in reason
 
     def test_urgency_valid_range(self, sanitizer):
         for urgency in range(5):
@@ -218,63 +209,35 @@ class TestDeviceCommand:
         })
         assert ok is True
 
-    def test_temperature_in_range_passes(self, sanitizer):
-        ok, _ = sanitizer.validate_tool_call("send_device_command", {
-            "agent_id": "light_01", "tool_name": "set_temperature",
-            "arguments": '{"temperature": 24}',
-        })
-        assert ok is True
-
-    def test_temperature_too_low_rejected(self, sanitizer):
+    @pytest.mark.parametrize("temp, expected_ok", [
+        (24, True),
+        (10, False),
+        (35, False),
+        (18, True),
+        (28, True),
+    ])
+    def test_temperature_boundaries(self, sanitizer, temp, expected_ok):
         ok, reason = sanitizer.validate_tool_call("send_device_command", {
             "agent_id": "light_01", "tool_name": "set_temperature",
-            "arguments": '{"temperature": 10}',
+            "arguments": f'{{"temperature": {temp}}}',
         })
-        assert ok is False
-        assert "out of safe range" in reason
+        assert ok is expected_ok
+        if not expected_ok:
+            assert "out of safe range" in reason
 
-    def test_temperature_too_high_rejected(self, sanitizer):
-        ok, reason = sanitizer.validate_tool_call("send_device_command", {
-            "agent_id": "light_01", "tool_name": "set_temperature",
-            "arguments": '{"temperature": 35}',
-        })
-        assert ok is False
-
-    def test_temperature_at_min_boundary(self, sanitizer):
-        ok, _ = sanitizer.validate_tool_call("send_device_command", {
-            "agent_id": "light_01", "tool_name": "set_temperature",
-            "arguments": '{"temperature": 18}',
-        })
-        assert ok is True
-
-    def test_temperature_at_max_boundary(self, sanitizer):
-        ok, _ = sanitizer.validate_tool_call("send_device_command", {
-            "agent_id": "light_01", "tool_name": "set_temperature",
-            "arguments": '{"temperature": 28}',
-        })
-        assert ok is True
-
-    def test_pump_duration_in_range_passes(self, sanitizer):
-        ok, _ = sanitizer.validate_tool_call("send_device_command", {
-            "agent_id": "pump_01", "tool_name": "run_pump",
-            "arguments": '{"duration": 30}',
-        })
-        assert ok is True
-
-    def test_pump_duration_too_long_rejected(self, sanitizer):
+    @pytest.mark.parametrize("duration, expected_ok", [
+        (30, True),
+        (120, False),
+        (60, True),
+    ])
+    def test_pump_duration_validation(self, sanitizer, duration, expected_ok):
         ok, reason = sanitizer.validate_tool_call("send_device_command", {
             "agent_id": "pump_01", "tool_name": "run_pump",
-            "arguments": '{"duration": 120}',
+            "arguments": f'{{"duration": {duration}}}',
         })
-        assert ok is False
-        assert "exceeds maximum" in reason
-
-    def test_pump_duration_at_max_passes(self, sanitizer):
-        ok, _ = sanitizer.validate_tool_call("send_device_command", {
-            "agent_id": "pump_01", "tool_name": "run_pump",
-            "arguments": '{"duration": 60}',
-        })
-        assert ok is True
+        assert ok is expected_ok
+        if not expected_ok:
+            assert "exceeds maximum" in reason
 
     def test_arguments_as_dict(self, sanitizer):
         """Arguments can be passed as a dict instead of JSON string."""

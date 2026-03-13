@@ -64,20 +64,20 @@ pnpm run lint     # ESLint
 
 ### Testing
 
-Unit tests (pytest, no running services required — **844 tests total**):
+Unit tests (pytest, no running services required — **936 tests total**):
 ```bash
 # All unit tests (run per-service to avoid conftest collisions)
 for d in services/brain/tests services/auth/tests services/voice/tests services/dashboard/backend/tests services/wallet/tests services/switchbot/tests services/perception/tests services/anomaly/tests; do echo "=== $d ===" && .venv/bin/python -m pytest "$d" -v --tb=short; done
 
 # Per service
-.venv/bin/python -m pytest services/brain/tests/              # Brain: 189 tests (queue, sanitizer, sensor fusion, tools, executor, dashboard client)
-.venv/bin/python -m pytest services/auth/tests/               # Auth: 97 tests (OAuth, JWT, middleware)
-.venv/bin/python -m pytest services/voice/tests/              # Voice: 79 tests (API endpoints, rejection/acceptance/currency stock)
-.venv/bin/python -m pytest services/dashboard/backend/tests/  # Dashboard: 172 tests (JWT auth, protected endpoints, task/sensor/device/voice CRUD)
-.venv/bin/python -m pytest services/wallet/tests/             # Wallet: 64 tests (JWT auth, financial endpoints)
+.venv/bin/python -m pytest services/brain/tests/              # Brain: 255 tests (queue, sanitizer, sensor fusion, tools, executor, dashboard client, VLM, WiFi heatmap)
+.venv/bin/python -m pytest services/auth/tests/               # Auth: 81 tests (OAuth, JWT, token routers)
+.venv/bin/python -m pytest services/voice/tests/              # Voice: 80 tests (API endpoints, stock shared interface, rejection/acceptance/currency stock)
+.venv/bin/python -m pytest services/dashboard/backend/tests/  # Dashboard: 197 tests (JWT auth, protected endpoints, task/sensor/device/voice/shopping/inventory CRUD)
+.venv/bin/python -m pytest services/wallet/tests/             # Wallet: 58 tests (JWT auth, financial endpoints)
 .venv/bin/python -m pytest services/switchbot/tests/          # SwitchBot: 59 tests (config, device manager, API)
-.venv/bin/python -m pytest services/perception/tests/         # Perception: 151 tests (ArUco, ReID, tracklet, fall detection, VAD, crime coefficient)
-.venv/bin/python -m pytest services/anomaly/tests/            # Anomaly: 49 tests (preprocessor, scorer, trainer, MQTT)
+.venv/bin/python -m pytest services/perception/tests/         # Perception: 161 tests (ArUco, ReID, tracklet, fall detection, VAD, VLM, WiFi tracking)
+.venv/bin/python -m pytest services/anomaly/tests/            # Anomaly: 45 tests (preprocessor, scorer, trainer, MQTT client)
 ```
 
 Integration tests (standalone scripts, requires running services):
@@ -501,7 +501,7 @@ When working as one of multiple concurrent Claude Code workers, read these docum
 Key variables in `.env` (see `env.example`):
 
 - `LLM_API_URL` — `http://mock-llm:8000/v1` (dev) or `http://ollama:11434/v1` (Docker内部) or `http://host.docker.internal:11434/v1` (ホストOllama)
-- `LLM_MODEL` — Model name for Ollama (e.g. `qwen2.5:14b`)
+- `LLM_MODEL` — Model name for Ollama (e.g. `qwen3.5:14b`)
 - `MQTT_BROKER` / `MQTT_PORT` — Broker address (default: `mosquitto:1883`)
 - `MQTT_USER` / `MQTT_PASS` — MQTT credentials (default: `soms` / `soms_dev_mqtt`)
 - `DATABASE_URL` — `postgresql+asyncpg://user:pass@postgres:5432/soms` (Docker)

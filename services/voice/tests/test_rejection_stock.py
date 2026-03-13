@@ -1,63 +1,15 @@
-"""Unit tests for rejection_stock.py — RejectionStock class and idle_generation_loop."""
+"""Unit tests for rejection_stock.py — RejectionStock-specific behavior.
+
+Shared interface tests (count, needs_refill, is_full, is_idle, request_tracking,
+generate_one_when_full) live in test_stock_shared.py.
+"""
 import asyncio
 import json
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-
-# ── RejectionStock: properties ──────────────────────────────────
-
-
-class TestRejectionStockProperties:
-    """Test basic property behaviour of RejectionStock."""
-
-    def _make_stock(self, mock_speech_gen, mock_voice_client, tmp_stock_dir):
-        """Helper: build a RejectionStock whose paths point at tmp_stock_dir."""
-        with patch("rejection_stock.STOCK_DIR", tmp_stock_dir), \
-             patch("rejection_stock.MANIFEST_PATH", tmp_stock_dir / "manifest.json"):
-            from rejection_stock import RejectionStock
-            return RejectionStock(mock_speech_gen, mock_voice_client)
-
-    def test_count_empty(self, mock_speech_gen, mock_voice_client, tmp_stock_dir):
-        stock = self._make_stock(mock_speech_gen, mock_voice_client, tmp_stock_dir)
-        assert stock.count == 0
-
-    def test_needs_refill_when_empty(self, mock_speech_gen, mock_voice_client, tmp_stock_dir):
-        stock = self._make_stock(mock_speech_gen, mock_voice_client, tmp_stock_dir)
-        assert stock.needs_refill is True
-
-    def test_is_full_when_empty(self, mock_speech_gen, mock_voice_client, tmp_stock_dir):
-        stock = self._make_stock(mock_speech_gen, mock_voice_client, tmp_stock_dir)
-        assert stock.is_full is False
-
-    def test_is_idle_initially(self, mock_speech_gen, mock_voice_client, tmp_stock_dir):
-        stock = self._make_stock(mock_speech_gen, mock_voice_client, tmp_stock_dir)
-        assert stock.is_idle is True
-
-    def test_request_tracking(self, mock_speech_gen, mock_voice_client, tmp_stock_dir):
-        stock = self._make_stock(mock_speech_gen, mock_voice_client, tmp_stock_dir)
-        stock.request_started()
-        assert stock.is_idle is False
-        stock.request_finished()
-        assert stock.is_idle is True
-
-    def test_request_finished_clamps_to_zero(self, mock_speech_gen, mock_voice_client, tmp_stock_dir):
-        stock = self._make_stock(mock_speech_gen, mock_voice_client, tmp_stock_dir)
-        stock.request_finished()  # no prior start
-        assert stock._active_requests == 0
-
-    def test_needs_refill_threshold(self, mock_speech_gen, mock_voice_client, tmp_stock_dir):
-        """needs_refill should be False when stock >= REFILL_THRESHOLD (80)."""
-        stock = self._make_stock(mock_speech_gen, mock_voice_client, tmp_stock_dir)
-        stock._entries = [{"id": str(i), "text": f"t{i}", "audio_file": f"f{i}.mp3"} for i in range(80)]
-        assert stock.needs_refill is False
-
-    def test_is_full_at_max(self, mock_speech_gen, mock_voice_client, tmp_stock_dir):
-        stock = self._make_stock(mock_speech_gen, mock_voice_client, tmp_stock_dir)
-        stock._entries = [{"id": str(i)} for i in range(100)]
-        assert stock.is_full is True
+from conftest import make_rejection_stock
 
 
 # ── RejectionStock: init / manifest persistence ─────────────────
@@ -119,10 +71,7 @@ class TestRejectionStockGetRandom:
 
     @pytest.mark.asyncio
     async def test_get_random_returns_none_when_empty(self, mock_speech_gen, mock_voice_client, tmp_stock_dir):
-        with patch("rejection_stock.STOCK_DIR", tmp_stock_dir), \
-             patch("rejection_stock.MANIFEST_PATH", tmp_stock_dir / "manifest.json"):
-            from rejection_stock import RejectionStock
-            stock = RejectionStock(mock_speech_gen, mock_voice_client)
+        stock = make_rejection_stock(mock_speech_gen, mock_voice_client, tmp_stock_dir)
         result = await stock.get_random()
         assert result is None
 
@@ -205,17 +154,6 @@ class TestRejectionStockGenerateOne:
         assert result is True
         assert stock.count == 1
         assert stock._entries[0]["text"] == "AI overlord disapproves."
-
-    @pytest.mark.asyncio
-    async def test_generate_one_returns_false_when_full(self, mock_speech_gen, mock_voice_client, tmp_stock_dir):
-        manifest = tmp_stock_dir / "manifest.json"
-        with patch("rejection_stock.STOCK_DIR", tmp_stock_dir), \
-             patch("rejection_stock.MANIFEST_PATH", manifest):
-            from rejection_stock import RejectionStock
-            stock = RejectionStock(mock_speech_gen, mock_voice_client)
-            stock._entries = [{"id": str(i)} for i in range(100)]
-            result = await stock.generate_one()
-        assert result is False
 
     @pytest.mark.asyncio
     async def test_generate_one_returns_false_on_llm_error(self, mock_speech_gen, mock_voice_client, tmp_stock_dir):

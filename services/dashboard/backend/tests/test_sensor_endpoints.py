@@ -5,19 +5,8 @@ Tests GET /sensors/latest, /sensors/time-series, /sensors/zones,
 
 Uses dependency injection override to mock the SensorDataRepository.
 """
-import os
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import AsyncMock
-
-# Ensure dashboard/backend is importable
-_BACKEND_DIR = str(Path(__file__).resolve().parent.parent)
-if _BACKEND_DIR not in sys.path:
-    sys.path.insert(0, _BACKEND_DIR)
-
-os.environ.setdefault("JWT_SECRET", "test_jwt_secret_dashboard_32b!!")
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/test")
 
 import pytest
 from fastapi import FastAPI

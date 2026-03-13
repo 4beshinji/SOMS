@@ -2,6 +2,7 @@
 
 Tests the auth guard behavior on p2p-transfer, stakes/buy, and stakes/return.
 Uses mocked DB and service dependencies to isolate the auth logic.
+Parametrized over endpoint configs to avoid copy-paste patterns.
 """
 import os
 import sys
@@ -98,116 +99,6 @@ def _p2p_patches(wallet, txn_id):
     )
 
 
-# ── P2P Transfer Auth Tests ────────────────────────────────────
-
-
-class TestP2PTransferAuth:
-    """Auth guard on POST /transactions/p2p-transfer."""
-
-    def _create_app(self, db_mock):
-        app = FastAPI()
-        app.include_router(transactions_router)
-        app.dependency_overrides[get_db] = lambda: db_mock
-        return app
-
-    def _run_p2p(self, client, from_user_id=1, to_user_id=2, amount=100, headers=None):
-        return client.post(
-            "/transactions/p2p-transfer",
-            json={"from_user_id": from_user_id, "to_user_id": to_user_id, "amount": amount},
-            headers=headers,
-        )
-
-    def test_unauthenticated_request_returns_401(self):
-        """No JWT → 401 (require_auth rejects unauthenticated requests)."""
-        wallet = _make_wallet(user_id=1, balance=10000)
-        txn_id = uuid4()
-        db = _mock_db_with_entries([_make_ledger_entry(txn_id)])
-
-        patches = _p2p_patches(wallet, txn_id)
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
-            app = self._create_app(db)
-            client = TestClient(app)
-            resp = self._run_p2p(client)
-            assert resp.status_code == 401
-
-    def test_authenticated_matching_user_allowed(self):
-        """JWT user_id == from_user_id → no 403."""
-        wallet = _make_wallet(user_id=5, balance=10000)
-        txn_id = uuid4()
-        db = _mock_db_with_entries([_make_ledger_entry(txn_id, wallet_id=5)])
-
-        patches = _p2p_patches(wallet, txn_id)
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
-            app = self._create_app(db)
-            client = TestClient(app)
-            resp = self._run_p2p(client, from_user_id=5, headers=_auth_header(sub=5))
-            assert resp.status_code != 403
-
-    def test_authenticated_different_user_returns_403(self):
-        """JWT user_id != from_user_id → 403 Forbidden."""
-        db = AsyncMock()
-        app = self._create_app(db)
-        client = TestClient(app)
-
-        resp = self._run_p2p(client, from_user_id=1, headers=_auth_header(sub=99))
-        assert resp.status_code == 403
-        assert "Cannot transfer from another user" in resp.json()["detail"]
-
-    def test_expired_token_returns_401(self):
-        """Expired JWT → 401 (require_auth rejects expired tokens)."""
-        wallet = _make_wallet(user_id=1, balance=10000)
-        txn_id = uuid4()
-        db = _mock_db_with_entries([_make_ledger_entry(txn_id)])
-
-        patches = _p2p_patches(wallet, txn_id)
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
-            app = self._create_app(db)
-            client = TestClient(app)
-            headers = {"Authorization": f"Bearer {_make_token(sub=99, exp_delta_sec=-60)}"}
-            resp = self._run_p2p(client, headers=headers)
-            assert resp.status_code == 401
-
-    def test_invalid_token_returns_401(self):
-        """Malformed JWT → 401."""
-        wallet = _make_wallet(user_id=1, balance=10000)
-        txn_id = uuid4()
-        db = _mock_db_with_entries([_make_ledger_entry(txn_id)])
-
-        patches = _p2p_patches(wallet, txn_id)
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
-            app = self._create_app(db)
-            client = TestClient(app)
-            resp = self._run_p2p(client, headers={"Authorization": "Bearer invalid.jwt.token"})
-            assert resp.status_code == 401
-
-    def test_403_detail_message(self):
-        """Verify the exact error message for user mismatch."""
-        db = AsyncMock()
-        app = self._create_app(db)
-        client = TestClient(app)
-
-        resp = self._run_p2p(client, from_user_id=10, headers=_auth_header(sub=30))
-        assert resp.status_code == 403
-        assert resp.json()["detail"] == "Cannot transfer from another user's wallet"
-
-    def test_self_transfer_with_auth_allowed(self):
-        """Authenticated user transferring from their own wallet is allowed."""
-        wallet = _make_wallet(user_id=42, balance=10000)
-        txn_id = uuid4()
-        db = _mock_db_with_entries([_make_ledger_entry(txn_id, wallet_id=42)])
-
-        patches = _p2p_patches(wallet, txn_id)
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
-            app = self._create_app(db)
-            client = TestClient(app)
-            resp = self._run_p2p(client, from_user_id=42, to_user_id=99,
-                                 amount=50, headers=_auth_header(sub=42))
-            assert resp.status_code != 403
-
-
-# ── Stakes Buy Auth Tests ──────────────────────────────────────
-
-
 def _make_stake_mock(device_id="dev1", user_id=5, shares=10):
     stake = MagicMock()
     stake.id = 1
@@ -235,215 +126,214 @@ def _stakes_db(device):
     return db
 
 
-class TestStakesBuyAuth:
-    """Auth guard on POST /devices/{device_id}/stakes/buy."""
+# ── Endpoint config for parametrization ──────────────────────────
 
-    def _create_app(self, db_mock):
-        app = FastAPI()
-        app.include_router(stakes_router)
-        app.dependency_overrides[get_db] = lambda: db_mock
-        return app
 
-    def test_unauthenticated_request_returns_401(self):
-        """No JWT → 401 (require_auth rejects unauthenticated requests)."""
-        db = _stakes_db(_make_device_mock())
-        with patch("routers.stakes.buy_shares", return_value=_make_stake_mock()):
-            app = self._create_app(db)
+def _create_app(db_mock, routers):
+    """Create a FastAPI app with given routers and DB override."""
+    app = FastAPI()
+    for router in routers:
+        app.include_router(router)
+    app.dependency_overrides[get_db] = lambda: db_mock
+    return app
+
+
+# Each tuple: (path, method, body_template, user_id_field, routers, 403_message,
+#               setup_for_success_fn)
+# body_template uses user_id=USER_ID as placeholder; setup_for_success_fn
+# returns (db, patches_context_managers) needed for authenticated success.
+
+def _p2p_success_setup(user_id):
+    """Setup mocks for a successful p2p-transfer."""
+    wallet = _make_wallet(user_id=user_id, balance=10000)
+    txn_id = uuid4()
+    db = _mock_db_with_entries([_make_ledger_entry(txn_id, wallet_id=user_id)])
+    patches = _p2p_patches(wallet, txn_id)
+    return db, list(patches)
+
+
+def _stakes_buy_success_setup(user_id):
+    """Setup mocks for a successful stakes/buy."""
+    db = _stakes_db(_make_device_mock())
+    patches = [patch("routers.stakes.buy_shares",
+                     return_value=_make_stake_mock(user_id=user_id))]
+    return db, patches
+
+
+def _stakes_return_success_setup(user_id):
+    """Setup mocks for a successful stakes/return."""
+    db = AsyncMock()
+    patches = [patch("routers.stakes.return_shares", return_value=None)]
+    return db, patches
+
+
+ENDPOINTS = [
+    pytest.param(
+        "/transactions/p2p-transfer",
+        {"from_user_id": None, "to_user_id": 2, "amount": 100},
+        "from_user_id",
+        [transactions_router],
+        "Cannot transfer from another user's wallet",
+        _p2p_success_setup,
+        id="p2p-transfer",
+    ),
+    pytest.param(
+        "/devices/dev1/stakes/buy",
+        {"user_id": None, "shares": 10},
+        "user_id",
+        [stakes_router],
+        "Cannot buy shares for another user",
+        _stakes_buy_success_setup,
+        id="stakes-buy",
+    ),
+    pytest.param(
+        "/devices/dev1/stakes/return",
+        {"user_id": None, "shares": 10},
+        "user_id",
+        [stakes_router],
+        "Cannot return shares for another user",
+        _stakes_return_success_setup,
+        id="stakes-return",
+    ),
+]
+
+
+def _make_body(template, user_id_field, user_id):
+    """Fill in the user_id placeholder in the body template."""
+    body = dict(template)
+    body[user_id_field] = user_id
+    return body
+
+
+# ── Parametrized Auth Tests ──────────────────────────────────────
+
+
+class TestEndpointAuth:
+    """Auth guard behavior across all protected wallet endpoints."""
+
+    @pytest.mark.parametrize(
+        "path, body_template, user_id_field, routers, forbidden_msg, setup_fn",
+        ENDPOINTS,
+    )
+    def test_unauthenticated_request_returns_401(
+        self, path, body_template, user_id_field, routers, forbidden_msg, setup_fn,
+    ):
+        """No JWT -> 401."""
+        db, patches = setup_fn(user_id=5)
+        body = _make_body(body_template, user_id_field, 5)
+
+        with _enter_patches(patches):
+            app = _create_app(db, routers)
             client = TestClient(app)
-            resp = client.post("/devices/dev1/stakes/buy", json={"user_id": 5, "shares": 10})
+            resp = client.post(path, json=body)
             assert resp.status_code == 401
 
-    def test_authenticated_matching_user_allowed(self):
-        """JWT user_id == body.user_id → no 403."""
-        db = _stakes_db(_make_device_mock())
-        with patch("routers.stakes.buy_shares", return_value=_make_stake_mock()):
-            app = self._create_app(db)
+    @pytest.mark.parametrize(
+        "path, body_template, user_id_field, routers, forbidden_msg, setup_fn",
+        ENDPOINTS,
+    )
+    def test_authenticated_matching_user_allowed(
+        self, path, body_template, user_id_field, routers, forbidden_msg, setup_fn,
+    ):
+        """JWT user_id == body user_id -> no 403."""
+        db, patches = setup_fn(user_id=5)
+        body = _make_body(body_template, user_id_field, 5)
+
+        with _enter_patches(patches):
+            app = _create_app(db, routers)
             client = TestClient(app)
-            resp = client.post("/devices/dev1/stakes/buy",
-                               json={"user_id": 5, "shares": 10},
-                               headers=_auth_header(sub=5))
+            resp = client.post(path, json=body, headers=_auth_header(sub=5))
             assert resp.status_code != 403
 
-    def test_authenticated_different_user_returns_403(self):
-        """JWT user_id != body.user_id → 403."""
+    @pytest.mark.parametrize(
+        "path, body_template, user_id_field, routers, forbidden_msg, setup_fn",
+        ENDPOINTS,
+    )
+    def test_authenticated_different_user_returns_403(
+        self, path, body_template, user_id_field, routers, forbidden_msg, setup_fn,
+    ):
+        """JWT user_id != body user_id -> 403 Forbidden."""
         db = AsyncMock()
-        app = self._create_app(db)
+        body = _make_body(body_template, user_id_field, 1)
+        app = _create_app(db, routers)
         client = TestClient(app)
-        resp = client.post("/devices/dev1/stakes/buy",
-                           json={"user_id": 5, "shares": 10},
-                           headers=_auth_header(sub=99))
+
+        resp = client.post(path, json=body, headers=_auth_header(sub=99))
         assert resp.status_code == 403
-        assert "Cannot buy shares for another user" in resp.json()["detail"]
+        assert resp.json()["detail"] == forbidden_msg
 
-    def test_expired_token_returns_401(self):
-        """Expired JWT → 401 (require_auth rejects expired tokens)."""
-        db = _stakes_db(_make_device_mock())
-        with patch("routers.stakes.buy_shares", return_value=_make_stake_mock()):
-            app = self._create_app(db)
+    @pytest.mark.parametrize(
+        "path, body_template, user_id_field, routers, forbidden_msg, setup_fn",
+        ENDPOINTS,
+    )
+    def test_expired_token_returns_401(
+        self, path, body_template, user_id_field, routers, forbidden_msg, setup_fn,
+    ):
+        """Expired JWT -> 401."""
+        db, patches = setup_fn(user_id=5)
+        body = _make_body(body_template, user_id_field, 5)
+
+        with _enter_patches(patches):
+            app = _create_app(db, routers)
             client = TestClient(app)
-            resp = client.post("/devices/dev1/stakes/buy",
-                               json={"user_id": 5, "shares": 10},
-                               headers={"Authorization": f"Bearer {_make_token(sub=99, exp_delta_sec=-60)}"})
+            headers = {"Authorization": f"Bearer {_make_token(sub=99, exp_delta_sec=-60)}"}
+            resp = client.post(path, json=body, headers=headers)
             assert resp.status_code == 401
 
-    def test_403_exact_message(self):
-        db = AsyncMock()
-        app = self._create_app(db)
-        client = TestClient(app)
-        resp = client.post("/devices/dev1/stakes/buy",
-                           json={"user_id": 1, "shares": 5},
-                           headers=_auth_header(sub=2))
-        assert resp.json()["detail"] == "Cannot buy shares for another user"
+
+# ── Endpoint-specific edge cases ─────────────────────────────────
 
 
-# ── Stakes Return Auth Tests ───────────────────────────────────
+class TestP2PTransferEdgeCases:
+    """Edge cases specific to p2p-transfer auth."""
 
-
-class TestStakesReturnAuth:
-    """Auth guard on POST /devices/{device_id}/stakes/return."""
-
-    def _create_app(self, db_mock):
-        app = FastAPI()
-        app.include_router(stakes_router)
-        app.dependency_overrides[get_db] = lambda: db_mock
-        return app
-
-    def test_unauthenticated_request_returns_401(self):
-        """No JWT → 401 (require_auth rejects unauthenticated requests)."""
-        db = AsyncMock()
-        with patch("routers.stakes.return_shares", return_value=None):
-            app = self._create_app(db)
-            client = TestClient(app)
-            resp = client.post("/devices/dev1/stakes/return",
-                               json={"user_id": 5, "shares": 10})
-            assert resp.status_code == 401
-
-    def test_authenticated_matching_user_allowed(self):
-        """JWT user_id == body.user_id → no 403."""
-        db = AsyncMock()
-        with patch("routers.stakes.return_shares", return_value=None):
-            app = self._create_app(db)
-            client = TestClient(app)
-            resp = client.post("/devices/dev1/stakes/return",
-                               json={"user_id": 5, "shares": 10},
-                               headers=_auth_header(sub=5))
-            assert resp.status_code != 403
-
-    def test_authenticated_different_user_returns_403(self):
-        """JWT user_id != body.user_id → 403."""
-        db = AsyncMock()
-        app = self._create_app(db)
-        client = TestClient(app)
-        resp = client.post("/devices/dev1/stakes/return",
-                           json={"user_id": 5, "shares": 10},
-                           headers=_auth_header(sub=99))
-        assert resp.status_code == 403
-        assert "Cannot return shares for another user" in resp.json()["detail"]
-
-    def test_expired_token_returns_401(self):
-        """Expired JWT → 401 (require_auth rejects expired tokens)."""
-        db = AsyncMock()
-        with patch("routers.stakes.return_shares", return_value=None):
-            app = self._create_app(db)
-            client = TestClient(app)
-            resp = client.post("/devices/dev1/stakes/return",
-                               json={"user_id": 5, "shares": 10},
-                               headers={"Authorization": f"Bearer {_make_token(sub=99, exp_delta_sec=-60)}"})
-            assert resp.status_code == 401
-
-    def test_wrong_secret_returns_401(self):
-        """Token signed with wrong secret → 401."""
-        db = AsyncMock()
-        with patch("routers.stakes.return_shares", return_value=None):
-            app = self._create_app(db)
-            client = TestClient(app)
-            resp = client.post("/devices/dev1/stakes/return",
-                               json={"user_id": 5, "shares": 10},
-                               headers={"Authorization": f"Bearer {_make_token(sub=99, secret='wrong_secret_32bytes_longgggg!!')}"})
-            assert resp.status_code == 401
-
-    def test_403_exact_message(self):
-        db = AsyncMock()
-        app = self._create_app(db)
-        client = TestClient(app)
-        resp = client.post("/devices/dev1/stakes/return",
-                           json={"user_id": 1, "shares": 5},
-                           headers=_auth_header(sub=2))
-        assert resp.json()["detail"] == "Cannot return shares for another user"
-
-
-# ── Cross-Endpoint Consistency ─────────────────────────────────
-
-
-class TestAuthConsistency:
-    """Verify all three wallet endpoints enforce auth the same way."""
-
-    def test_all_endpoints_reject_mismatched_user(self):
-        """All three auth-protected endpoints should return 403 for user mismatch."""
-        db = AsyncMock()
-        app = FastAPI()
-        app.include_router(transactions_router)
-        app.include_router(stakes_router)
-        app.dependency_overrides[get_db] = lambda: db
-
-        client = TestClient(app)
-        headers = _auth_header(sub=999)
-
-        resp1 = client.post("/transactions/p2p-transfer",
-                            json={"from_user_id": 1, "to_user_id": 2, "amount": 100},
-                            headers=headers)
-        assert resp1.status_code == 403
-
-        resp2 = client.post("/devices/dev1/stakes/buy",
-                            json={"user_id": 1, "shares": 5},
-                            headers=headers)
-        assert resp2.status_code == 403
-
-        resp3 = client.post("/devices/dev1/stakes/return",
-                            json={"user_id": 1, "shares": 5},
-                            headers=headers)
-        assert resp3.status_code == 403
-
-    def test_all_endpoints_allow_matching_user(self):
-        """All three auth-protected endpoints should pass for matching user."""
-        wallet = _make_wallet(user_id=7, balance=10000)
+    def test_invalid_token_returns_401(self):
+        """Malformed JWT -> 401."""
+        wallet = _make_wallet(user_id=1, balance=10000)
         txn_id = uuid4()
-        device = _make_device_mock()
-        stake = _make_stake_mock(user_id=7)
-        entry = _make_ledger_entry(txn_id, wallet_id=7)
-
-        db = AsyncMock()
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = [entry]
-        mock_scalars.first.return_value = device
-        mock_result.scalars.return_value = mock_scalars
-        db.execute = AsyncMock(return_value=mock_result)
-
-        app = FastAPI()
-        app.include_router(transactions_router)
-        app.include_router(stakes_router)
-        app.dependency_overrides[get_db] = lambda: db
-
-        client = TestClient(app)
-        headers = _auth_header(sub=7)
+        db = _mock_db_with_entries([_make_ledger_entry(txn_id)])
 
         patches = _p2p_patches(wallet, txn_id)
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], \
-             patch("routers.stakes.buy_shares", return_value=stake), \
-             patch("routers.stakes.return_shares", return_value=None):
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+            app = _create_app(db, [transactions_router])
+            client = TestClient(app)
+            resp = client.post(
+                "/transactions/p2p-transfer",
+                json={"from_user_id": 1, "to_user_id": 2, "amount": 100},
+                headers={"Authorization": "Bearer invalid.jwt.token"},
+            )
+            assert resp.status_code == 401
 
-            resp1 = client.post("/transactions/p2p-transfer",
-                                json={"from_user_id": 7, "to_user_id": 2, "amount": 100},
-                                headers=headers)
-            assert resp1.status_code != 403
 
-            resp2 = client.post("/devices/dev1/stakes/buy",
-                                json={"user_id": 7, "shares": 5},
-                                headers=headers)
-            assert resp2.status_code != 403
+class TestStakesReturnEdgeCases:
+    """Edge cases specific to stakes/return auth."""
 
-            resp3 = client.post("/devices/dev1/stakes/return",
-                                json={"user_id": 7, "shares": 5},
-                                headers=headers)
-            assert resp3.status_code != 403
+    def test_wrong_secret_returns_401(self):
+        """Token signed with wrong secret -> 401."""
+        db = AsyncMock()
+        with patch("routers.stakes.return_shares", return_value=None):
+            app = _create_app(db, [stakes_router])
+            client = TestClient(app)
+            resp = client.post(
+                "/devices/dev1/stakes/return",
+                json={"user_id": 5, "shares": 10},
+                headers={"Authorization": f"Bearer {_make_token(sub=99, secret='wrong_secret_32bytes_longgggg!!')}"},
+            )
+            assert resp.status_code == 401
+
+
+# ── Patch helper ─────────────────────────────────────────────────
+
+
+import contextlib
+
+
+@contextlib.contextmanager
+def _enter_patches(patches):
+    """Enter a list of patch context managers."""
+    if not patches:
+        yield
+        return
+    with patches[0]:
+        with _enter_patches(patches[1:]):
+            yield

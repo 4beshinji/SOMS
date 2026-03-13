@@ -22,18 +22,6 @@ def fusion():
 class TestHalfLife:
     """Half-life configuration per sensor type."""
 
-    def test_temperature_half_life(self, fusion):
-        assert fusion._get_half_life("temperature") == 120
-
-    def test_co2_half_life(self, fusion):
-        assert fusion._get_half_life("co2") == 60
-
-    def test_occupancy_half_life(self, fusion):
-        assert fusion._get_half_life("occupancy") == 30
-
-    def test_pir_half_life(self, fusion):
-        assert fusion._get_half_life("pir") == 10
-
     def test_unknown_sensor_gets_default(self, fusion):
         assert fusion._get_half_life("vibration") == fusion.HALF_LIFE["default"]
 
@@ -47,17 +35,10 @@ class TestReliability:
     def test_default_reliability(self, fusion):
         assert fusion.sensor_reliability["default"] == 0.5
 
-    def test_set_reliability(self, fusion):
-        fusion.set_reliability("sensor_a", 0.9)
-        assert fusion.sensor_reliability["sensor_a"] == 0.9
-
-    def test_set_reliability_zero(self, fusion):
-        fusion.set_reliability("sensor_a", 0.0)
-        assert fusion.sensor_reliability["sensor_a"] == 0.0
-
-    def test_set_reliability_one(self, fusion):
-        fusion.set_reliability("sensor_a", 1.0)
-        assert fusion.sensor_reliability["sensor_a"] == 1.0
+    @pytest.mark.parametrize("value", [0.9, 0.0, 1.0])
+    def test_set_reliability(self, fusion, value):
+        fusion.set_reliability("sensor_a", value)
+        assert fusion.sensor_reliability["sensor_a"] == value
 
     def test_set_reliability_below_zero_raises(self, fusion):
         with pytest.raises(ValueError, match="between 0.0 and 1.0"):
@@ -124,9 +105,6 @@ class TestFuseTemperature:
         temp_result = fusion.fuse_temperature(readings, sensor_type="humidity")
         generic_result = fusion.fuse_generic(readings, sensor_type="humidity")
         assert temp_result == generic_result
-
-    def test_fuse_generic_empty_returns_none(self, fusion):
-        assert fusion.fuse_generic([]) is None
 
     def test_zero_total_weight_returns_none(self, fusion):
         """All sensors with 0 reliability -> total weight 0 -> None."""

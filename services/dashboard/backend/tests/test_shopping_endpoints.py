@@ -1,23 +1,13 @@
 """Unit tests for dashboard shopping router endpoints."""
-import os
-import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
-
-_BACKEND_DIR = str(Path(__file__).resolve().parent.parent)
-if _BACKEND_DIR not in sys.path:
-    sys.path.insert(0, _BACKEND_DIR)
-
-os.environ.setdefault("JWT_SECRET", "test_jwt_secret_dashboard_32b!!")
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost:5432/test")
-os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test_service_token_for_unit_tests")
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from database import get_db
+from conftest import MockResult, make_mock_db
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -68,79 +58,22 @@ def _make_shopping_item(
     return item
 
 
-class MockScalars:
-    def __init__(self, items=None):
-        self._items = list(items) if items else []
-
-    def first(self):
-        return self._items[0] if self._items else None
-
-    def all(self):
-        return self._items
-
-
-class MockResult:
-    def __init__(self, items=None, scalar_val=None):
-        self._items = list(items) if items else []
-        self._scalar_val = scalar_val
-
-    def scalars(self):
-        return MockScalars(self._items)
-
-    def scalar(self):
-        if self._scalar_val is not None:
-            return self._scalar_val
-        return self._items[0] if self._items else None
-
-    def all(self):
-        return self._items
-
-
-def _make_mock_db(execute_side_effects=None):
-    db = AsyncMock()
-    if execute_side_effects is not None:
-        db.execute.side_effect = execute_side_effects
-    else:
-        db.execute.return_value = MockResult([])
-
-    # Track objects passed to db.add so refresh can work on them
-    _added = []
-
-    def _sync_add(obj):
-        _added.append(obj)
-
-    db.add = _sync_add
-
-    async def _refresh(obj):
-        if not hasattr(obj, "id") or obj.id is None:
-            obj.id = 1
-        if not hasattr(obj, "created_at") or obj.created_at is None:
-            obj.created_at = datetime.now(timezone.utc)
-        # Simulate SQLAlchemy column defaults for ShoppingItem
-        defaults = {
-            "is_purchased": False,
-            "is_recurring": False,
-            "quantity": 1,
-            "priority": 1,
-            "purchased_at": None,
-            "share_token": None,
-            "last_purchased_at": None,
-            "created_by": "user",
-            "notes": None,
-            "unit": None,
-            "store": None,
-            "price": None,
-            "category": None,
-            "recurrence_days": None,
-        }
-        for attr, default in defaults.items():
-            if getattr(obj, attr, None) is None:
-                setattr(obj, attr, default)
-
-    db.refresh = _refresh
-    # Expose _added for assertions
-    db._added = _added
-    return db
+_SHOPPING_REFRESH_DEFAULTS = {
+    "is_purchased": False,
+    "is_recurring": False,
+    "quantity": 1,
+    "priority": 1,
+    "purchased_at": None,
+    "share_token": None,
+    "last_purchased_at": None,
+    "created_by": "user",
+    "notes": None,
+    "unit": None,
+    "store": None,
+    "price": None,
+    "category": None,
+    "recurrence_days": None,
+}
 
 
 def _create_app():
@@ -156,7 +89,8 @@ def _create_app():
 
 class TestListItems:
     def test_list_empty(self):
-        db = _make_mock_db([MockResult([])])
+        db = make_mock_db([MockResult([])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -166,7 +100,8 @@ class TestListItems:
 
     def test_list_items(self):
         items = [_make_shopping_item(id=1, name="牛乳"), _make_shopping_item(id=2, name="卵")]
-        db = _make_mock_db([MockResult(items)])
+        db = make_mock_db([MockResult(items)], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -181,7 +116,8 @@ class TestAddItem:
     @patch("routers.shopping._publish_shopping_event")
     def test_add_new_item(self, mock_publish):
         # First execute: check for duplicates (none found)
-        db = _make_mock_db([MockResult([])])
+        db = make_mock_db([MockResult([])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -193,7 +129,8 @@ class TestAddItem:
     @patch("routers.shopping._publish_shopping_event")
     def test_add_duplicate_merges_quantity(self, mock_publish):
         existing = _make_shopping_item(id=5, name="牛乳", quantity=1)
-        db = _make_mock_db([MockResult([existing])])
+        db = make_mock_db([MockResult([existing])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -205,7 +142,8 @@ class TestAddItem:
     @patch("routers.shopping._publish_shopping_event")
     def test_add_duplicate_upgrades_priority(self, mock_publish):
         existing = _make_shopping_item(id=5, name="牛乳", priority=0)
-        db = _make_mock_db([MockResult([existing])])
+        db = make_mock_db([MockResult([existing])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -215,7 +153,8 @@ class TestAddItem:
 
     @patch("routers.shopping._publish_shopping_event")
     def test_add_recurring_sets_next_purchase(self, mock_publish):
-        db = _make_mock_db([MockResult([])])
+        db = make_mock_db([MockResult([])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -233,7 +172,8 @@ class TestAddItem:
 class TestUpdateItem:
     def test_update_existing(self):
         item = _make_shopping_item(id=3, name="パン")
-        db = _make_mock_db([MockResult([item])])
+        db = make_mock_db([MockResult([item])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -243,7 +183,8 @@ class TestUpdateItem:
         assert item.priority == 2
 
     def test_update_not_found(self):
-        db = _make_mock_db([MockResult([])])
+        db = make_mock_db([MockResult([])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -255,7 +196,8 @@ class TestPurchaseItem:
     @patch("routers.shopping._publish_shopping_event")
     def test_purchase_marks_complete(self, mock_publish):
         item = _make_shopping_item(id=1, name="牛乳", price=200)
-        db = _make_mock_db([MockResult([item])])
+        db = make_mock_db([MockResult([item])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -271,7 +213,8 @@ class TestPurchaseItem:
         item = _make_shopping_item(
             id=1, name="牛乳", is_recurring=True, recurrence_days=7,
         )
-        db = _make_mock_db([MockResult([item])])
+        db = make_mock_db([MockResult([item])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -281,7 +224,8 @@ class TestPurchaseItem:
         assert len(db._added) == 2
 
     def test_purchase_not_found(self):
-        db = _make_mock_db([MockResult([])])
+        db = make_mock_db([MockResult([])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -292,7 +236,8 @@ class TestPurchaseItem:
 class TestDeleteItem:
     def test_delete_existing(self):
         item = _make_shopping_item(id=1)
-        db = _make_mock_db([MockResult([item])])
+        db = make_mock_db([MockResult([item])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -302,7 +247,8 @@ class TestDeleteItem:
         db.delete.assert_called_once()
 
     def test_delete_not_found(self):
-        db = _make_mock_db([MockResult([])])
+        db = make_mock_db([MockResult([])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -312,12 +258,12 @@ class TestDeleteItem:
 
 class TestStats:
     def test_get_stats(self):
-        db = _make_mock_db([
+        db = make_mock_db([
             MockResult(scalar_val=10),    # total
             MockResult(scalar_val=3),     # purchased
             MockResult(scalar_val=2500),  # monthly spent
             MockResult([("食品", 4), ("日用品", 3)]),  # category breakdown
-        ])
+        ], track_added=True, refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -333,7 +279,8 @@ class TestStats:
 
 class TestCategories:
     def test_list_categories(self):
-        db = _make_mock_db([MockResult([("食品",), ("日用品",)])])
+        db = make_mock_db([MockResult([("食品",), ("日用品",)])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -344,7 +291,8 @@ class TestCategories:
 
 class TestStores:
     def test_list_stores(self):
-        db = _make_mock_db([MockResult([("コンビニ",), ("スーパー",)])])
+        db = make_mock_db([MockResult([("コンビニ",), ("スーパー",)])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -364,7 +312,8 @@ class TestHistory:
             quantity = 1
             purchased_at = datetime.now(timezone.utc)
 
-        db = _make_mock_db([MockResult([FakeHistory()])])
+        db = make_mock_db([MockResult([FakeHistory()])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -378,7 +327,8 @@ class TestHistory:
 class TestShareLink:
     def test_share_all_pending(self):
         items = [_make_shopping_item(id=1), _make_shopping_item(id=2)]
-        db = _make_mock_db([MockResult(items)])
+        db = make_mock_db([MockResult(items)], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -390,7 +340,8 @@ class TestShareLink:
         assert len(data["items"]) == 2
 
     def test_share_no_pending(self):
-        db = _make_mock_db([MockResult([])])
+        db = make_mock_db([MockResult([])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -402,7 +353,8 @@ class TestSharedList:
     def test_shared_list_valid_token(self):
         token_item = _make_shopping_item(id=1, share_token="abc123")
         all_pending = [_make_shopping_item(id=1), _make_shopping_item(id=2)]
-        db = _make_mock_db([MockResult([token_item]), MockResult(all_pending)])
+        db = make_mock_db([MockResult([token_item]), MockResult(all_pending)],
+                          track_added=True, refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -411,7 +363,8 @@ class TestSharedList:
         assert len(resp.json()) == 2
 
     def test_shared_list_invalid_token(self):
-        db = _make_mock_db([MockResult([])])
+        db = make_mock_db([MockResult([])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -422,7 +375,8 @@ class TestSharedList:
 class TestRecurring:
     def test_list_recurring(self):
         item = _make_shopping_item(id=1, is_recurring=True, recurrence_days=7)
-        db = _make_mock_db([MockResult([item])])
+        db = make_mock_db([MockResult([item])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)
@@ -437,7 +391,8 @@ class TestDueItems:
             id=1, is_recurring=True, recurrence_days=7,
             next_purchase_at=datetime.now(timezone.utc) - timedelta(days=1),
         )
-        db = _make_mock_db([MockResult([item])])
+        db = make_mock_db([MockResult([item])], track_added=True,
+                          refresh_defaults=_SHOPPING_REFRESH_DEFAULTS)
         app = _create_app()
         app.dependency_overrides[get_db] = lambda: db
         client = TestClient(app)

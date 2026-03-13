@@ -82,13 +82,6 @@ class TestSTGNFDetector:
         detector.evict(1)
         assert 1 not in detector._buffers
 
-    def test_multiple_persons(self):
-        detector = STGNFDetector(seq_len=3)
-        from collections import deque
-        detector._buffers[1] = deque(maxlen=3)
-        detector._buffers[2] = deque(maxlen=3)
-        assert len(detector._buffers) == 2
-
     def test_update_returns_none_without_model(self):
         """With mocked torch, model is None → update returns None."""
         detector = STGNFDetector(seq_len=3)
