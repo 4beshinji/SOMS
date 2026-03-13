@@ -108,3 +108,33 @@ def make_tracked_person(
         reid_embedding=reid_embedding,
         timestamp=timestamp,
     )
+
+
+def make_wifi_tracked_person(
+    track_id: int = 1,
+    node_id: str = "wifi_01",
+    foot_floor: list[float] | None = None,
+    confidence: float = 0.5,
+    timestamp: float = 1000.0,
+):
+    """Create a WiFi-sourced TrackedPerson for testing.
+
+    WiFi detections have zero-vector embeddings, empty bboxes,
+    and source_type='wifi'.
+    """
+    from tracking.tracklet import TrackedPerson
+
+    if foot_floor is None:
+        foot_floor = [5.0, 5.0]
+
+    return TrackedPerson(
+        track_id=track_id,
+        camera_id=node_id,
+        bbox_px=[0.0, 0.0, 0.0, 0.0],
+        foot_px=[0.0, 0.0],
+        foot_floor=foot_floor,
+        confidence=confidence,
+        reid_embedding=np.zeros(512, dtype=np.float32),
+        timestamp=timestamp,
+        source_type="wifi",
+    )

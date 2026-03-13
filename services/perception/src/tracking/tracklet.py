@@ -25,6 +25,7 @@ class TrackedPerson:
     confidence: float
     reid_embedding: np.ndarray  # 512-dim L2-normalized
     timestamp: float
+    source_type: str = "camera"  # "camera" | "wifi"
 
 
 @dataclass

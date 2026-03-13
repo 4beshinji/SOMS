@@ -47,6 +47,9 @@ class CrossCameraTracker:
         temporal_gate_s: float = 30.0,
         tracklet_timeout_s: float = 60.0,
         global_track_timeout_s: float = 300.0,
+        wifi_spatial_weight: float = 0.7,
+        wifi_temporal_weight: float = 0.3,
+        wifi_spatial_gate_m: float = 8.0,
     ):
         self._zone_polygons = zone_polygons
         self._reid_weight = reid_weight
@@ -57,6 +60,9 @@ class CrossCameraTracker:
         self._temporal_gate = temporal_gate_s
         self._tracklet_timeout = tracklet_timeout_s
         self._global_timeout = global_track_timeout_s
+        self._wifi_spatial_weight = wifi_spatial_weight
+        self._wifi_temporal_weight = wifi_temporal_weight
+        self._wifi_spatial_gate = wifi_spatial_gate_m
 
         # Active tracklets: (camera_id, local_track_id) -> Tracklet
         self._tracklets: dict[tuple[str, int], Tracklet] = {}
@@ -160,21 +166,32 @@ class CrossCameraTracker:
                 if not reidentified:
                     self._create_global_track(tracklet, now)
 
+    def _is_wifi_tracklet(self, tracklet: Tracklet) -> bool:
+        """Check if a tracklet originates from a WiFi source."""
+        if not tracklet.detections:
+            return False
+        return tracklet.detections[-1].source_type == "wifi"
+
     def _compute_cost(
         self, tracklet: Tracklet, gtrack: GlobalTrack, now: float
     ) -> Optional[float]:
         """
         Compute association cost between a tracklet and global track.
         Lower is better. Returns None if gated out.
+
+        WiFi tracklets use wider spatial gate and skip ReID (zero embeddings).
         """
+        is_wifi = self._is_wifi_tracklet(tracklet)
+        spatial_gate = self._wifi_spatial_gate if is_wifi else self._spatial_gate
+
         # Spatial gate
         t_pos = tracklet.latest_floor_position
         g_pos = gtrack.floor_position
         if t_pos and g_pos and t_pos != [0.0, 0.0] and g_pos != [0.0, 0.0]:
             dist = floor_distance(t_pos, g_pos)
-            if dist > self._spatial_gate:
+            if dist > spatial_gate:
                 return None
-            spatial_score = 1.0 - min(dist / self._spatial_gate, 1.0)
+            spatial_score = 1.0 - min(dist / spatial_gate, 1.0)
         else:
             spatial_score = 0.5  # Unknown position — neutral
 
@@ -184,19 +201,25 @@ class CrossCameraTracker:
             return None
         temporal_score = 1.0 - min(time_diff / self._temporal_gate, 1.0)
 
-        # ReID similarity
-        if tracklet.avg_embedding is not None and gtrack.avg_embedding is not None:
-            reid_score = float(np.dot(tracklet.avg_embedding, gtrack.avg_embedding))
-            reid_score = max(0.0, reid_score)  # Clamp negative
+        if is_wifi:
+            # WiFi: no ReID (zero embeddings), spatial+temporal only
+            score = (
+                self._wifi_spatial_weight * spatial_score
+                + self._wifi_temporal_weight * temporal_score
+            )
         else:
-            reid_score = 0.0
+            # Camera: full ReID + spatial + temporal
+            if tracklet.avg_embedding is not None and gtrack.avg_embedding is not None:
+                reid_score = float(np.dot(tracklet.avg_embedding, gtrack.avg_embedding))
+                reid_score = max(0.0, reid_score)  # Clamp negative
+            else:
+                reid_score = 0.0
 
-        # Weighted combination (higher = better match)
-        score = (
-            self._reid_weight * reid_score
-            + self._spatial_weight * spatial_score
-            + self._temporal_weight * temporal_score
-        )
+            score = (
+                self._reid_weight * reid_score
+                + self._spatial_weight * spatial_score
+                + self._temporal_weight * temporal_score
+            )
 
         # Return cost (lower = better for linear_sum_assignment)
         return 1.0 - score

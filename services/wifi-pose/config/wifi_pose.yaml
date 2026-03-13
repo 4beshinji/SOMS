@@ -1,0 +1,32 @@
+mqtt:
+  broker: localhost
+  port: 1883
+
+# WiFi CSI node definitions
+nodes:
+  wifi_node_01:
+    zone: office
+    position: [17.5, 4.0]
+    coverage_radius_m: 8.0
+
+# CSI processing settings
+csi:
+  subcarrier_count: 52
+  hampel_window: 5
+  hampel_threshold: 3.0
+  spectrogram_window_sec: 1.0
+
+# Pose estimation model
+model:
+  type: mock  # "cnn" | "mock"
+  path: null
+  input_shape: [1, 52, 100]  # [batch, subcarriers, time_steps]
+
+# Calibration settings
+calibration:
+  enabled: true
+  min_pairs: 20
+  cache_path: /app/config/wifi_calibration_cache.json
+  sliding_window_size: 200
+  yolo_match_distance_m: 3.0
+  yolo_match_time_s: 2.0
