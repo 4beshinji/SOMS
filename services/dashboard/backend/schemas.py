@@ -121,3 +121,126 @@ class User(UserBase):
 
     class Config:
         from_attributes = True
+
+
+# Shopping / Inventory Schemas
+class ShoppingItemCreate(BaseModel):
+    name: str
+    category: Optional[str] = None
+    quantity: int = 1
+    unit: Optional[str] = None
+    store: Optional[str] = None
+    price: Optional[int] = None
+    is_recurring: bool = False
+    recurrence_days: Optional[int] = None
+    notes: Optional[str] = None
+    priority: int = 1
+    created_by: str = "user"
+
+class ShoppingItemUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    quantity: Optional[int] = None
+    unit: Optional[str] = None
+    store: Optional[str] = None
+    price: Optional[int] = None
+    is_recurring: Optional[bool] = None
+    recurrence_days: Optional[int] = None
+    notes: Optional[str] = None
+    priority: Optional[int] = None
+
+class ShoppingItem(BaseModel):
+    id: int
+    name: str
+    category: Optional[str] = None
+    quantity: int = 1
+    unit: Optional[str] = None
+    store: Optional[str] = None
+    price: Optional[int] = None
+    is_purchased: bool = False
+    is_recurring: bool = False
+    recurrence_days: Optional[int] = None
+    last_purchased_at: Optional[datetime] = None
+    next_purchase_at: Optional[datetime] = None
+    notes: Optional[str] = None
+    priority: int = 1
+    created_at: Optional[datetime] = None
+    purchased_at: Optional[datetime] = None
+    created_by: str = "user"
+    share_token: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class PurchaseHistory(BaseModel):
+    id: int
+    item_name: str
+    category: Optional[str] = None
+    store: Optional[str] = None
+    price: Optional[int] = None
+    quantity: int = 1
+    purchased_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class ShoppingStats(BaseModel):
+    total_items: int
+    purchased_items: int
+    pending_items: int
+    total_spent_this_month: int
+    category_breakdown: dict
+
+class ShoppingShareResponse(BaseModel):
+    share_url: str
+    token: str
+    items: List[ShoppingItem]
+
+
+# Inventory Item Schemas (shelf sensor → item mapping)
+class InventoryItemCreate(BaseModel):
+    device_id: str
+    channel: str = "weight"
+    zone: str
+    item_name: str
+    category: Optional[str] = None
+    unit_weight_g: float
+    tare_weight_g: float = 0.0
+    min_threshold: int = 2
+    reorder_quantity: int = 1
+    store: Optional[str] = None
+    price: Optional[int] = None
+    barcode: Optional[str] = None
+
+class InventoryItemUpdate(BaseModel):
+    item_name: Optional[str] = None
+    category: Optional[str] = None
+    unit_weight_g: Optional[float] = None
+    tare_weight_g: Optional[float] = None
+    min_threshold: Optional[int] = None
+    reorder_quantity: Optional[int] = None
+    store: Optional[str] = None
+    price: Optional[int] = None
+    barcode: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class InventoryItemResponse(BaseModel):
+    id: int
+    device_id: str
+    channel: str
+    zone: str
+    item_name: str
+    category: Optional[str] = None
+    unit_weight_g: float
+    tare_weight_g: float
+    min_threshold: int
+    reorder_quantity: int
+    store: Optional[str] = None
+    price: Optional[int] = None
+    barcode: Optional[str] = None
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

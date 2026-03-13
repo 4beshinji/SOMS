@@ -7,6 +7,7 @@ import json
 import random
 import paho.mqtt.client as mqtt
 from device import VirtualDevice
+from shelf_sensor import VirtualShelfSensor
 from swarm_transport import VirtualTransport
 from swarm_hub import VirtualSwarmHub
 from swarm_leaf import TempHumidityLeaf, PIRLeaf, DoorSensorLeaf
@@ -101,6 +102,16 @@ def main():
     devices.append(SensorNode(client))
     devices.append(HydroNode(client))
     devices.append(AquaNode(client))
+
+    # Shelf sensor (inventory tracking)
+    devices.append(VirtualShelfSensor(
+        client,
+        device_id="shelf_01",
+        zone="kitchen",
+        initial_weight_g=650.0,   # 3 bags of coffee + tare
+        tare_weight_g=50.0,
+        consumption_rate_g=5.0,   # ~5g per tick
+    ))
 
     # --- SensorSwarm ---
     swarm_transport = VirtualTransport(name="swarm_main")

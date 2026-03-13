@@ -209,6 +209,78 @@ class DashboardClient:
             logger.warning("Could not fetch spatial config from backend: {}", e)
             return None
 
+    async def add_shopping_item(
+        self,
+        name: str,
+        category: str = None,
+        quantity: int = 1,
+        store: str = None,
+        price: float = None,
+        notes: str = None,
+    ) -> dict | None:
+        """Add an item to the shopping list via the Shopping API.
+
+        The Shopping API handles duplicate prevention (merges quantity if
+        the same item name already exists unpurchased).
+        """
+        url = f"{self.api_url}/shopping/"
+        payload = {
+            "name": name,
+            "quantity": quantity,
+            "priority": 2,
+            "created_by": "brain",
+        }
+        if category:
+            payload["category"] = category
+        if store:
+            payload["store"] = store
+        if price is not None:
+            payload["price"] = price
+        if notes:
+            payload["notes"] = notes
+
+        try:
+            async with self._get_session() as session:
+                async with session.post(
+                    url, json=payload, headers=self._service_headers()
+                ) as response:
+                    if response.status in (200, 201):
+                        data = await response.json()
+                        logger.info(f"Shopping item added: {name} x{quantity}")
+                        return data
+                    else:
+                        logger.error(
+                            f"Failed to add shopping item: {response.status} "
+                            f"{await response.text()}"
+                        )
+                        return None
+        except Exception as e:
+            logger.error(f"Error adding shopping item: {e}")
+            return None
+
+    async def get_inventory_items(self) -> list[dict]:
+        """Fetch active inventory items from the Inventory API.
+
+        Returns a list of inventory item dicts, or empty list on failure.
+        Used by InventoryTracker to load shelf→item mappings from DB.
+        """
+        url = f"{self.api_url}/inventory/?active_only=true"
+        try:
+            async with self._get_session() as session:
+                async with session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        items = await response.json()
+                        logger.info(f"Fetched {len(items)} inventory items from API")
+                        return items
+                    else:
+                        logger.warning(f"Failed to fetch inventory items: {response.status}")
+                        return []
+        except Exception as e:
+            logger.warning(f"Error fetching inventory items: {e}")
+            return []
+
     async def get_task_stats(self) -> dict:
         """Fetch task statistics from dashboard."""
         url = f"{self.api_url}/tasks/stats"

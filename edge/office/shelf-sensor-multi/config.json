@@ -1,0 +1,25 @@
+{
+  "device_id": "shelf_multi_01",
+  "zone": "kitchen",
+  "report_interval": 30,
+  "sensors": [
+    {
+      "type": "hx711",
+      "bus": "gpio",
+      "dout_pin": 4,
+      "sck_pin": 5,
+      "scale": 420.0,
+      "tare": true,
+      "tare_readings": 10,
+      "calibration_file": "/calibration.json"
+    },
+    {
+      "type": "gm65",
+      "bus": "uart",
+      "uart_id": 2,
+      "tx_pin": 17,
+      "rx_pin": 16,
+      "baudrate": 9600
+    }
+  ]
+}

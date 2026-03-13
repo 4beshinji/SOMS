@@ -135,6 +135,85 @@ TOOLS = [
                 "required": []
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_inventory",
+            "description": "在庫状況を確認する。棚センサの重量データに基づく現在の在庫一覧を返す。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "zone": {
+                        "type": "string",
+                        "description": "ゾーンID（省略時: 全ゾーン）"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calibrate_shelf",
+            "description": "棚センサのキャリブレーションを実行する。2ステップ: step='tare'（空の棚でゼロ点設定）→ step='set_known_weight'（既知重量を載せてスケール設定）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "string",
+                        "description": "棚センサのデバイスID（例: shelf_01）"
+                    },
+                    "step": {
+                        "type": "string",
+                        "description": "キャリブレーションステップ: 'tare'（ゼロ点設定）または 'set_known_weight'（既知重量設定）"
+                    },
+                    "known_weight_g": {
+                        "type": "number",
+                        "description": "既知重量（グラム）。step='set_known_weight' の場合に必須"
+                    }
+                },
+                "required": ["device_id", "step"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_shopping_item",
+            "description": "買い物リストに商品を追加する。在庫不足検知時に使用。重複チェックは自動で行われる。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "商品名（例: コーヒー豆）"
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "カテゴリ（例: 飲料、事務用品）"
+                    },
+                    "quantity": {
+                        "type": "integer",
+                        "description": "購入数量"
+                    },
+                    "store": {
+                        "type": "string",
+                        "description": "購入店舗（任意）"
+                    },
+                    "price": {
+                        "type": "number",
+                        "description": "参考価格（任意）"
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "備考（任意）"
+                    }
+                },
+                "required": ["name", "quantity"]
+            }
+        }
     }
 ]
 

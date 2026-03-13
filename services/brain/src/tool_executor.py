@@ -9,7 +9,7 @@ from loguru import logger
 
 
 class ToolExecutor:
-    def __init__(self, sanitizer, mcp_bridge, dashboard_client, world_model, task_queue, session: aiohttp.ClientSession = None, device_registry=None):
+    def __init__(self, sanitizer, mcp_bridge, dashboard_client, world_model, task_queue, session: aiohttp.ClientSession = None, device_registry=None, inventory_tracker=None, calibration_manager=None):
         self.sanitizer = sanitizer
         self.mcp = mcp_bridge
         self.dashboard = dashboard_client
@@ -17,6 +17,8 @@ class ToolExecutor:
         self.task_queue = task_queue
         self._session = session
         self.device_registry = device_registry
+        self.inventory_tracker = inventory_tracker
+        self.calibration_manager = calibration_manager
         self.voice_url = os.getenv("VOICE_SERVICE_URL", "http://voice-service:8000")
         self.dashboard_api_url = os.getenv("DASHBOARD_API_URL", "http://backend:8000")
         self._service_token = os.getenv("INTERNAL_SERVICE_TOKEN", "")
@@ -51,6 +53,12 @@ class ToolExecutor:
                 return await self._handle_get_active_tasks()
             elif tool_name == "get_device_status":
                 return await self._handle_get_device_status(arguments)
+            elif tool_name == "check_inventory":
+                return await self._handle_check_inventory(arguments)
+            elif tool_name == "add_shopping_item":
+                return await self._handle_add_shopping_item(arguments)
+            elif tool_name == "calibrate_shelf":
+                return await self._handle_calibrate_shelf(arguments)
             else:
                 return {"success": False, "error": f"Unknown tool: {tool_name}"}
         except Exception as e:
@@ -276,3 +284,81 @@ class ToolExecutor:
         zone_id = args.get("zone_id")
         tree = self.device_registry.get_device_tree(zone_id=zone_id)
         return {"success": True, "result": tree}
+
+    async def _handle_check_inventory(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Get inventory status from InventoryTracker."""
+        if not self.inventory_tracker:
+            return {"success": False, "error": "InventoryTracker が初期化されていません"}
+
+        zone = args.get("zone")
+        items = self.inventory_tracker.get_inventory_status(zone)
+        if not items:
+            return {"success": True, "result": "在庫追跡対象の棚はありません"}
+
+        lines = []
+        for item in items:
+            status_icon = "⚠️" if item["status"] == "low" else "✅"
+            lines.append(
+                f"{status_icon} {item['item_name']} [{item['zone']}]: "
+                f"残量{item['quantity']}個 (閾値: {item['min_threshold']})"
+            )
+        return {"success": True, "result": "\n".join(lines)}
+
+    async def _handle_add_shopping_item(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Add item to shopping list via Dashboard API."""
+        result = await self.dashboard.add_shopping_item(
+            name=args.get("name", ""),
+            category=args.get("category"),
+            quantity=args.get("quantity", 1),
+            store=args.get("store"),
+            price=args.get("price"),
+            notes=args.get("notes"),
+        )
+        if result:
+            return {
+                "success": True,
+                "result": f"買い物リストに追加: {args.get('name')} x{args.get('quantity', 1)}",
+            }
+        return {"success": False, "error": "買い物リストへの追加に失敗しました"}
+
+    async def _handle_calibrate_shelf(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute shelf sensor calibration via CalibrationManager + MCP."""
+        if not self.calibration_manager:
+            return {"success": False, "error": "CalibrationManager が初期化されていません"}
+
+        device_id = args.get("device_id", "")
+        step = args.get("step", "")
+
+        # Validate step ordering
+        is_valid, reason = self.calibration_manager.validate_step(device_id, step)
+        if not is_valid:
+            return {"success": False, "error": reason}
+
+        if step == "tare":
+            # Start/restart session and send tare command via MCP
+            self.calibration_manager.start_or_get(device_id)
+            result = await self.mcp.call_tool(device_id, "tare", {})
+            if isinstance(result, dict) and result.get("status") == "ok":
+                self.calibration_manager.record_tare_done(device_id, result)
+                return {
+                    "success": True,
+                    "result": f"棚センサ {device_id} のゼロ点設定完了。次に既知重量を載せて step='set_known_weight' を実行してください。",
+                }
+            return {"success": False, "error": f"Tare失敗: {result}"}
+
+        elif step == "set_known_weight":
+            known_weight_g = args.get("known_weight_g")
+            if not known_weight_g or known_weight_g <= 0:
+                return {"success": False, "error": "known_weight_g は正の数を指定してください"}
+            result = await self.mcp.call_tool(
+                device_id, "calibrate", {"known_weight_g": known_weight_g}
+            )
+            if isinstance(result, dict) and result.get("status") == "ok":
+                self.calibration_manager.record_calibrate_done(device_id, result)
+                self.calibration_manager.finish(device_id)
+                scale = result.get("scale", "?")
+                return {
+                    "success": True,
+                    "result": f"棚センサ {device_id} のキャリブレーション完了 (scale={scale})",
+                }
+            return {"success": False, "error": f"キャリブレーション失敗: {result}"}

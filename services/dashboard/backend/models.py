@@ -89,6 +89,59 @@ class CameraPosition(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+class ShoppingItem(Base):
+    __tablename__ = "shopping_items"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    category = Column(String, nullable=True, index=True)
+    quantity = Column(Integer, default=1)
+    unit = Column(String, nullable=True)
+    store = Column(String, nullable=True)
+    price = Column(Integer, nullable=True)
+    is_purchased = Column(Boolean, default=False)
+    is_recurring = Column(Boolean, default=False)
+    recurrence_days = Column(Integer, nullable=True)
+    last_purchased_at = Column(DateTime(timezone=True), nullable=True)
+    next_purchase_at = Column(DateTime(timezone=True), nullable=True)
+    notes = Column(String, nullable=True)
+    priority = Column(Integer, default=1)  # 0=low, 1=normal, 2=high
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    purchased_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(String, default="user")
+    share_token = Column(String, nullable=True, unique=True)
+
+
+class PurchaseHistory(Base):
+    __tablename__ = "purchase_history"
+    id = Column(Integer, primary_key=True, index=True)
+    item_name = Column(String, index=True)
+    category = Column(String, nullable=True)
+    store = Column(String, nullable=True)
+    price = Column(Integer, nullable=True)
+    quantity = Column(Integer, default=1)
+    purchased_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class InventoryItem(Base):
+    __tablename__ = "inventory_items"
+    id = Column(Integer, primary_key=True, index=True)
+    device_id = Column(String, index=True)
+    channel = Column(String, default="weight")
+    zone = Column(String, index=True)
+    item_name = Column(String)
+    category = Column(String, nullable=True)
+    unit_weight_g = Column(Float)
+    tare_weight_g = Column(Float, default=0.0)
+    min_threshold = Column(Integer, default=2)
+    reorder_quantity = Column(Integer, default=1)
+    store = Column(String, nullable=True)
+    price = Column(Integer, nullable=True)
+    barcode = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)

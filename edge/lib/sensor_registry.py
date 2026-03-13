@@ -108,6 +108,32 @@ class SensorRegistry:
         pin = cfg.get("pin", self._pins["pir_pin"])
         return PIRSensor(pin)
 
+    def _init_gm65(self, cfg):
+        from drivers.gm65_driver import GM65
+        uart_id = cfg.get("uart_id", 2)
+        tx = cfg.get("tx_pin", self._pins.get("gm65_tx", 17))
+        rx = cfg.get("rx_pin", self._pins.get("gm65_rx", 16))
+        baudrate = cfg.get("baudrate", 9600)
+        return GM65(uart_id, tx_pin=tx, rx_pin=rx, baudrate=baudrate)
+
+    def _init_hx711(self, cfg):
+        from drivers.hx711_driver import HX711
+        dout = cfg.get("dout_pin", self._pins.get("hx711_dout", 4))
+        sck = cfg.get("sck_pin", self._pins.get("hx711_sck", 5))
+        gain = cfg.get("gain", HX711.GAIN_128)
+        sensor = HX711(dout, sck, gain=gain)
+        # Try loading saved calibration first
+        cal_path = cfg.get("calibration_file", "/calibration.json")
+        if sensor.load_calibration(cal_path):
+            print(f"HX711: calibration loaded from {cal_path}")
+        else:
+            # Fall back to config defaults
+            scale = cfg.get("scale", 1.0)
+            sensor.set_scale(scale)
+            if cfg.get("tare", True):
+                sensor.tare(readings=cfg.get("tare_readings", 10))
+        return sensor
+
     # ---- Public API ----
 
     _FACTORIES = {
@@ -119,6 +145,8 @@ class SensorRegistry:
         "dht22":   "_init_dht",
         "dht11":   "_init_dht",
         "pir":     "_init_pir",
+        "hx711":   "_init_hx711",
+        "gm65":    "_init_gm65",
     }
 
     def add_sensor(self, sensor_cfg):

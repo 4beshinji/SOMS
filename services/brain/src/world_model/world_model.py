@@ -32,6 +32,7 @@ class WorldModel:
         "high_co2": 600,     # 10 min — ventilation is faster
         "low_humidity": 1200, # 20 min
         "high_humidity": 1200,
+        "low_stock": 3600,   # 1 hour — shopping takes time
     }
 
     def __init__(self, spatial_config=None):
@@ -40,6 +41,9 @@ class WorldModel:
 
         # Optional event store writer (set by Brain after init)
         self.event_writer = None
+
+        # Optional inventory tracker (set by Brain after init)
+        self.inventory_tracker = None
 
         # Cache for LLM context (optimization)
         self._llm_context_cache: Optional[str] = None
@@ -288,6 +292,47 @@ class WorldModel:
                 )
                 self._add_event(zone, event)
             zone._prev_door_state = door_open
+        elif channel == "weight" and self.inventory_tracker:
+            inv_event = self.inventory_tracker.update_weight(
+                zone.zone_id, device_id, channel, fused_value,
+            )
+            if inv_event:
+                severity = "warning" if inv_event.event_type == "low_stock" else "info"
+                event = Event(
+                    timestamp=current_time,
+                    event_type=inv_event.event_type,
+                    severity=severity,
+                    data={
+                        "item_name": inv_event.item_name,
+                        "category": inv_event.category,
+                        "quantity": inv_event.quantity,
+                        "min_threshold": inv_event.min_threshold,
+                        "reorder_quantity": inv_event.reorder_quantity,
+                        "device_id": device_id,
+                        "store": inv_event.store,
+                        "price": inv_event.price,
+                    },
+                )
+                self._add_event(zone, event)
+        elif channel == "barcode" and self.inventory_tracker:
+            barcode_value = str(fused_value) if fused_value else ""
+            if barcode_value:
+                inv_event = self.inventory_tracker.handle_barcode_scan(
+                    device_id, "weight", barcode_value,
+                )
+                if inv_event:
+                    event = Event(
+                        timestamp=current_time,
+                        event_type=inv_event.event_type,
+                        severity="info",
+                        data={
+                            "item_name": inv_event.item_name,
+                            "barcode": barcode_value,
+                            "quantity": inv_event.quantity,
+                            "device_id": device_id,
+                        },
+                    )
+                    self._add_event(zone, event)
 
         # Update timestamp
         zone.environment.timestamps[channel] = current_time
@@ -717,6 +762,27 @@ class WorldModel:
             context_parts.append("### アラート（要対応）\n" + "\n".join(alerts))
         if suppressed:
             context_parts.append("### 対応中（タスク発行済み・新規タスク不要）\n" + "\n".join(suppressed))
+
+        # Inventory status section
+        if self.inventory_tracker:
+            inv_items = self.inventory_tracker.get_inventory_status()
+            low_items = [i for i in inv_items if i["status"] == "low"]
+            if low_items:
+                inv_lines = []
+                for item in low_items:
+                    suppressed_key = f"low_stock_{item['device_id']}"
+                    if self._is_suppressed(item["zone"], suppressed_key):
+                        inv_lines.append(
+                            f"🔄 [{item['zone']}] {item['item_name']}: "
+                            f"残量{item['quantity']}個（買い物リスト追加済み）"
+                        )
+                    else:
+                        inv_lines.append(
+                            f"⚠️ [{item['zone']}] {item['item_name']}: "
+                            f"残量{item['quantity']}個（閾値: {item['min_threshold']}）"
+                        )
+                if inv_lines:
+                    context_parts.append("### 在庫状況\n" + "\n".join(inv_lines))
 
         for zone_id, zone in sorted(self.zones.items()):
             summary = f"### {zone_id}\n"

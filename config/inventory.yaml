@@ -1,0 +1,40 @@
+# Inventory tracking configuration
+# Maps shelf sensors to consumable items for automatic stock monitoring.
+#
+# Each shelf entry ties a weight sensor (device_id + channel) to a specific item.
+# The system calculates quantity from: (current_weight - tare_weight_g) / unit_weight_g
+# and generates a low_stock event when quantity drops below min_threshold.
+
+shelves:
+  # Example: coffee beans on shelf_01
+  - device_id: shelf_01
+    channel: weight
+    zone: kitchen
+    item_name: コーヒー豆
+    category: 飲料
+    unit_weight_g: 200.0        # Weight per unit (1 bag = 200g)
+    tare_weight_g: 50.0         # Container/tray weight
+    min_threshold: 1            # Trigger low_stock when quantity < 1
+    reorder_quantity: 3         # Suggest buying this many
+    store: null
+    price: null
+    barcode: null               # Phase 2: JAN code for barcode-based registration
+
+  # Example: copy paper on shelf_02
+  - device_id: shelf_02
+    channel: weight
+    zone: main
+    item_name: コピー用紙 A4
+    category: 事務用品
+    unit_weight_g: 2500.0       # 1 ream ≈ 2.5kg
+    tare_weight_g: 100.0
+    min_threshold: 2
+    reorder_quantity: 5
+    store: null
+    price: null
+    barcode: null
+
+settings:
+  stable_reading_window: 3       # N consecutive readings within tolerance to accept
+  weight_tolerance_pct: 5.0      # % tolerance for stable reading detection
+  low_stock_cooldown_sec: 3600   # Seconds before re-emitting low_stock for same shelf

@@ -71,6 +71,9 @@ class TestGetters:
             "speak",
             "get_active_tasks",
             "get_device_status",
+            "check_inventory",
+            "add_shopping_item",
+            "calibrate_shelf",
         }
         assert expected == names
 

@@ -10,11 +10,15 @@ class Sanitizer:
             "set_temperature": {"min": 18, "max": 28},
             "pump_duration": {"max": 60},
         }
-        self.allowed_devices = ["light_01", "pump_01", "window_01"]
+        self.allowed_devices = ["light_01", "pump_01", "window_01", "shelf_01"]
 
         # Rate limiting for task creation
         self._task_creation_times: list[float] = []
         self._max_tasks_per_hour = 10
+
+        # Rate limiting for shopping item creation
+        self._shopping_creation_times: list[float] = []
+        self._max_shopping_per_hour = 20
 
         # Speak cooldown per zone (Layer 6)
         self._speak_history: dict[str, float] = {}  # zone -> last_speak_time
@@ -32,7 +36,11 @@ class Sanitizer:
             return self._validate_device_command(args)
         elif tool_name == "speak":
             return self._validate_speak(args)
-        elif tool_name in ("get_zone_status", "get_active_tasks", "get_device_status"):
+        elif tool_name == "add_shopping_item":
+            return self._validate_add_shopping_item(args)
+        elif tool_name == "calibrate_shelf":
+            return self._validate_calibrate_shelf(args)
+        elif tool_name in ("get_zone_status", "get_active_tasks", "get_device_status", "check_inventory"):
             return True, "Query tools are always allowed"
         else:
             logger.warning(f"REJECTED: Unknown tool {tool_name}")
@@ -88,6 +96,48 @@ class Sanitizer:
     def record_speak(self, zone: str = "general"):
         """Record a successful speak execution for cooldown tracking."""
         self._speak_history[zone] = time.time()
+
+    def _validate_add_shopping_item(self, args: Dict[str, Any]) -> Tuple[bool, str]:
+        """Validate add_shopping_item parameters."""
+        name = args.get("name", "")
+        if not name or not name.strip():
+            return False, "商品名が空です"
+
+        quantity = args.get("quantity", 1)
+        if isinstance(quantity, (int, float)) and (quantity < 1 or quantity > 100):
+            return False, f"数量 {quantity} は範囲外です（1-100）"
+
+        # Rate limiting
+        now = time.time()
+        self._shopping_creation_times = [
+            t for t in self._shopping_creation_times
+            if now - t < 3600
+        ]
+        if len(self._shopping_creation_times) >= self._max_shopping_per_hour:
+            return False, f"買い物リスト追加のレート制限: {self._max_shopping_per_hour}件/時間"
+
+        return True, "OK"
+
+    def record_shopping_item_added(self):
+        """Record a successful shopping item addition for rate limiting."""
+        self._shopping_creation_times.append(time.time())
+
+    def _validate_calibrate_shelf(self, args: Dict[str, Any]) -> Tuple[bool, str]:
+        """Validate calibrate_shelf parameters."""
+        device_id = args.get("device_id", "")
+        if not device_id:
+            return False, "device_id が指定されていません"
+
+        step = args.get("step", "")
+        if step not in ("tare", "set_known_weight"):
+            return False, f"不正なステップ: {step}。有効値: tare, set_known_weight"
+
+        if step == "set_known_weight":
+            known_weight_g = args.get("known_weight_g")
+            if known_weight_g is None or not isinstance(known_weight_g, (int, float)) or known_weight_g <= 0:
+                return False, "known_weight_g は正の数を指定してください"
+
+        return True, "OK"
 
     def _validate_device_command(self, args: Dict[str, Any]) -> Tuple[bool, str]:
         """Validate send_device_command parameters."""

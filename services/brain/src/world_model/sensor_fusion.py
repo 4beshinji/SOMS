@@ -16,6 +16,7 @@ class SensorFusion:
         "illuminance": 120,
         "occupancy": 30,
         "pir": 10,
+        "weight": 30,
         "default": 120
     }
 

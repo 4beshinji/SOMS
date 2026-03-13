@@ -21,6 +21,8 @@ from wallet_bridge import WalletBridge
 from event_store import init_db, EventWriter, HourlyAggregator
 from spatial_config import load_spatial_config
 from federation_config import load_federation_config, get_region_id
+from inventory_tracker import InventoryTracker
+from calibration_manager import CalibrationManager
 
 load_dotenv()
 
@@ -80,6 +82,9 @@ class Brain:
         # spatial config is loaded in run() after HTTP session is available.
         self.world_model = WorldModel()
         self.device_registry = DeviceRegistry()
+        self.inventory_tracker = InventoryTracker(config_path="config/inventory.yaml")
+        self.world_model.inventory_tracker = self.inventory_tracker
+        self.calibration_manager = CalibrationManager()
         self.event_writer: EventWriter | None = None
 
         # Load federation configuration
@@ -604,9 +609,19 @@ class Brain:
                 task_queue=self.task_queue,
                 session=session,
                 device_registry=self.device_registry,
+                inventory_tracker=self.inventory_tracker,
+                calibration_manager=self.calibration_manager,
             )
             self.wallet_bridge = WalletBridge(session, self.device_registry)
             logger.info("All components initialized with shared HTTP session")
+
+            # Load inventory items from API (supplements YAML config)
+            try:
+                api_items = await self.dashboard.get_inventory_items()
+                if api_items:
+                    self.inventory_tracker.load_from_api_data(api_items)
+            except Exception as e:
+                logger.warning(f"Failed to load inventory items from API: {e}")
 
             # Load spatial config: REST first (includes DB overrides), YAML fallback
             spatial_config = await self.dashboard.get_spatial_config()
