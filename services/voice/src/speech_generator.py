@@ -47,7 +47,7 @@ class SpeechGenerator:
     
     def __init__(self, llm_api_url: str = None, currency_stock=None):
         self.llm_api_url = llm_api_url or os.getenv("LLM_API_URL", "http://brain:8000/llm")
-        self.model = os.getenv("LLM_MODEL", "qwen2.5:14b")
+        self.model = os.getenv("LLM_MODEL", "qwen3.5:14b")
         self.currency_stock = currency_stock
         logger.info(f"SpeechGenerator initialized with LLM URL: {self.llm_api_url}, model: {self.model}")
     

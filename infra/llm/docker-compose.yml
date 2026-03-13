@@ -18,7 +18,7 @@ services:
     environment:
       - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
     # Command optimized for 32B model on consumer GPUs. Adjust --tensor-parallel-size if using multiple GPUs.
-    command: --model Qwen/Qwen2.5-32B-Instruct-AWQ --quantization awq --gpu-memory-utilization 0.95 --tensor-parallel-size 1
+    command: --model Qwen/Qwen3.5-32B-Instruct-AWQ --quantization awq --gpu-memory-utilization 0.95 --tensor-parallel-size 1
     networks:
       - soms-llm-net
 

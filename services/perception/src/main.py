@@ -258,6 +258,56 @@ async def main():
 
         logger.info("=== Tracking Pipeline Ready ===")
 
+    # --- VLM Analysis Pipeline ---
+    vlm_config = config.get("vlm", {})
+    if vlm_config.get("enabled", False):
+        logger.info("=== VLM Pipeline Starting ===")
+
+        from vlm.vlm_client import VLMClient
+        from vlm.vlm_analyzer import VLMAnalyzer
+        from vlm.periodic_service import VLMPeriodicService
+
+        vlm_api_url = os.environ.get("VLM_API_URL", vlm_config.get("api_url", "http://localhost:11434"))
+        vlm_model = os.environ.get("VLM_MODEL", vlm_config.get("model", "qwen3-vl:8b"))
+        vlm_api_style = vlm_config.get("api_style", "ollama")
+        vlm_timeout = vlm_config.get("timeout_sec", 30)
+
+        vlm_client = VLMClient(
+            api_url=vlm_api_url,
+            model=vlm_model,
+            timeout_sec=vlm_timeout,
+            api_style=vlm_api_style,
+        )
+        vlm_analyzer = VLMAnalyzer(
+            vlm_client=vlm_client,
+            publisher=publisher,
+            cooldowns=vlm_config.get("cooldowns"),
+        )
+
+        # Inject VLM analyzer into existing ActivityMonitors
+        for name, monitor in scheduler.monitors.items():
+            if isinstance(monitor, ActivityMonitor):
+                monitor._vlm_analyzer = vlm_analyzer
+                logger.info("VLM analyzer injected into %s", name)
+
+        # Periodic service
+        periodic_cfg = vlm_config.get("periodic", {})
+        if periodic_cfg.get("enabled", True):
+            zone_sources = {}
+            for name, monitor in scheduler.monitors.items():
+                if hasattr(monitor, 'zone_name') and hasattr(monitor, '_image_source') and monitor._image_source:
+                    zone_sources.setdefault(monitor.zone_name, monitor._image_source)
+            if zone_sources:
+                periodic = VLMPeriodicService(
+                    vlm_analyzer,
+                    zone_sources,
+                    interval_sec=periodic_cfg.get("interval_sec", 300),
+                )
+                scheduler.register_service("vlm_periodic", periodic)
+                logger.info("VLM periodic service registered with %d zones", len(zone_sources))
+
+        logger.info("=== VLM Pipeline Ready (model=%s, api=%s) ===", vlm_model, vlm_api_style)
+
     logger.info("=== Vision Service Ready ===")
 
     # Start monitoring

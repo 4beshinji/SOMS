@@ -45,6 +45,21 @@ mqtt:
   broker: localhost
   port: 1883
 
+vlm:
+  enabled: false
+  api_url: "http://localhost:11434"
+  model: "qwen3-vl:8b"
+  api_style: "ollama"
+  timeout_sec: 30
+  cooldowns:
+    scene: 300
+    occupancy_change: 60
+    fall_candidate: 30
+    unusual_activity: 300
+  periodic:
+    enabled: true
+    interval_sec: 300
+
 tracking:
   enabled: false  # torchreid not available in ROCm base image yet
   tracker: botsort.yaml

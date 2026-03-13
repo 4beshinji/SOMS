@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 LLM Load Test / Benchmark for SOMS Brain
-Tests ollama (qwen2.5:14b) on RX 9700 GPU via OpenAI-compatible API.
+Tests ollama (qwen3.5:14b) on RX 9700 GPU via OpenAI-compatible API.
 No external dependencies — uses only Python standard library.
 
 Usage:
@@ -339,7 +339,7 @@ def run_benchmark(url: str, model: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SOMS LLM Benchmark")
     parser.add_argument("--url", default="http://localhost:11434/v1", help="Ollama API URL")
-    parser.add_argument("--model", default="qwen2.5:14b", help="Model name")
+    parser.add_argument("--model", default="qwen3.5:14b", help="Model name")
     args = parser.parse_args()
 
     run_benchmark(args.url, args.model)

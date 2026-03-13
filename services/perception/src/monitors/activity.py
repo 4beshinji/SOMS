@@ -28,6 +28,7 @@ class ActivityMonitor(MonitorBase):
         zone_name: str = "default",
         image_source=None,
         fall_detection_config: dict = None,
+        vlm_analyzer=None,
     ):
         super().__init__(
             name=f"ActivityMonitor_{zone_name}",
@@ -59,8 +60,14 @@ class ActivityMonitor(MonitorBase):
         else:
             self.fall_detector = None
 
+        # VLM escalation (optional, injected externally)
+        self._vlm_analyzer = vlm_analyzer
+        self._prev_person_count = 0
+        self._last_frame = None
+
     async def analyze(self, image: np.ndarray):
         """Two-tier: detect → pose (only if persons found)."""
+        self._last_frame = image
         # Tier 1: cheap person detection
         detections = self.yolo.infer(image, conf_threshold=0.5)
         persons_det = self.yolo.filter_by_class(detections, "person")
@@ -154,6 +161,7 @@ class ActivityMonitor(MonitorBase):
             await self.publisher.publish(spatial_topic, spatial_payload)
 
         # --- Fall detection ---
+        fall_alerts = []
         if self.fall_detector and persons_pose:
             fall_alerts = self.fall_detector.update(
                 persons_pose,
@@ -175,3 +183,23 @@ class ActivityMonitor(MonitorBase):
                     f"[{self.name}] FALL DETECTED: conf={alert.confidence:.2f} "
                     f"duration={alert.duration_sec:.1f}s"
                 )
+
+        # --- VLM escalation ---
+        if self._vlm_analyzer and self._last_frame is not None:
+            import asyncio as _asyncio
+
+            # Occupancy change
+            if person_count != self._prev_person_count:
+                _asyncio.create_task(self._vlm_analyzer.request_analysis(
+                    self._last_frame, "occupancy_change", self.zone_name,
+                    {"person_count": person_count, "prev_count": self._prev_person_count},
+                ))
+
+            # Fall candidate
+            if fall_alerts:
+                _asyncio.create_task(self._vlm_analyzer.request_analysis(
+                    self._last_frame, "fall_candidate", self.zone_name,
+                    {"confidence": fall_alerts[0].confidence},
+                ))
+
+            self._prev_person_count = person_count

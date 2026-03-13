@@ -145,6 +145,10 @@ class Event(BaseModel):
             if note:
                 desc += f": {note}"
             return desc
+        elif self.event_type == "vlm_analysis":
+            atype = self.data.get("analysis_type", "")
+            content = self.data.get("content", "")
+            return f"VLM分析({atype}): {content[:100]}"
         return f"イベント: {self.event_type}"
 
 

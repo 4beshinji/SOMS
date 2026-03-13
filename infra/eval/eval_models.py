@@ -10,10 +10,10 @@ Usage:
     python3 infra/eval/eval_models.py
 
     # Specific models only
-    python3 infra/eval/eval_models.py --models qwen2.5:14b,qwen3:8b
+    python3 infra/eval/eval_models.py --models qwen3.5:14b,qwen3:8b
 
     # Single scenario dry-run
-    python3 infra/eval/eval_models.py --models qwen2.5:14b --scenarios B01 --runs 1
+    python3 infra/eval/eval_models.py --models qwen3.5:14b --scenarios B01 --runs 1
 
     # Skip model pulling (use already-loaded models)
     python3 infra/eval/eval_models.py --no-pull
@@ -43,14 +43,14 @@ JST = timezone(timedelta(hours=9))
 # ── Default models (size ascending, VRAM 16GB RX 9700 XT) ──
 
 DEFAULT_MODELS = [
-    "qwen2.5:7b",
+    "qwen3.5:7b",
     "gemma2:9b",
     "llama3.1:8b",
     "qwen3:8b",
     "phi3:14b",
-    "qwen2.5:14b",       # current production baseline
+    "qwen3.5:14b",       # current production baseline
     "command-r:35b",
-    "qwen2.5:32b",
+    "qwen3.5:32b",
 ]
 
 RUNS_PER_SCENARIO = 3

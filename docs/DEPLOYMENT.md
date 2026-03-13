@@ -51,7 +51,7 @@
 
 1.  **`.env` の編集**:
     -   `LLM_API_URL=http://ollama:11434/v1` (Docker内部通信)
-    -   `LLM_MODEL=qwen2.5:14b`
+    -   `LLM_MODEL=qwen3.5:14b`
     -   `RTSP_URL` を実際のカメラのIPアドレスに設定
     -   PostgreSQL認証情報を本番用に変更
 
@@ -69,7 +69,7 @@
     ```bash
     # Ollamaコンテナ起動後にモデルをダウンロード
     docker compose -f infra/docker-compose.yml up -d ollama
-    docker exec -it soms-ollama ollama pull qwen2.5:14b
+    docker exec -it soms-ollama ollama pull qwen3.5:14b
     ```
 
 4.  **全サービスの起動**:
@@ -87,7 +87,7 @@ ollama serve  # 0.0.0.0:11434 でリスン
 
 # .env を編集
 LLM_API_URL=http://host.docker.internal:11434/v1
-LLM_MODEL=qwen2.5:14b
+LLM_MODEL=qwen3.5:14b
 ```
 
 `docker-compose.yml` の `brain` / `voice-service` に `extra_hosts: host.docker.internal:host-gateway` が設定済みです。
@@ -133,7 +133,7 @@ docker logs -f soms-backend      # Dashboard API
 ## 6. トラブルシューティング
 
 -   **MQTT Connection Refused**: `docker ps` で `soms-mqtt` が起動しているか確認。
--   **LLM Out of Memory**: `rocm-smi` でVRAM使用量を確認。より小さいモデル (`qwen2.5:7b`) に切り替えるか、量子化レベルを下げてください。
+-   **LLM Out of Memory**: `rocm-smi` でVRAM使用量を確認。より小さいモデル (`qwen3.5:7b`) に切り替えるか、量子化レベルを下げてください。
 -   **Permission Denied**: ユーザーが `docker` および `video`/`render` グループに追加されているか確認: `sudo usermod -aG docker,video,render $USER`
 -   **iGPU クラッシュ**: `/dev/dri` 全体ではなく dGPU デバイスのみを `devices:` に指定してください。
 -   **PostgreSQL 接続エラー**: `docker logs soms-postgres` でログを確認。`.env` の `POSTGRES_USER`/`POSTGRES_PASSWORD` がdocker-compose.ymlの設定と一致しているか確認。

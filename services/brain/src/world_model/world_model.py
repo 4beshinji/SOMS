@@ -198,6 +198,11 @@ class WorldModel:
             self._handle_task_report(zone, payload, device_id)
         elif device_type == "anomaly":
             self._update_anomaly(zone, payload, channel)
+        elif device_type == "vlm":
+            # Topic: office/{zone}/vlm/{analysis_type} — analysis_type is in device_id slot
+            self._update_vlm(zone, payload, device_id or "unknown")
+        elif device_type == "wifi-pose":
+            self._update_wifi_pose(zone, payload, device_id)
         elif device_type in ["hvac", "light", "coffee_machine"]:
             self._update_device(zone, device_type, device_id, payload)
         
@@ -438,8 +443,9 @@ class WorldModel:
 
     def _update_tracking(self, zone: ZoneState, payload: dict):
         """Update cross-camera tracking data from MTMCPublisher."""
+        current_time = time.time()
         zone.tracking.person_count = payload.get("person_count", 0)
-        zone.tracking.last_update = time.time()
+        zone.tracking.last_update = current_time
         zone.tracking.persons = [
             TrackedPersonData(**p) for p in payload.get("persons", [])
         ]
@@ -449,6 +455,16 @@ class WorldModel:
             vision_count=zone.tracking.person_count,
             pir_active=zone.occupancy.pir_detected,
         )
+        # Accumulate heatmap from tracked persons' floor coordinates
+        floor_positions = [
+            (p.floor_x_m, p.floor_y_m)
+            for p in zone.tracking.persons
+            if p.floor_x_m != 0.0 or p.floor_y_m != 0.0
+        ]
+        if floor_positions:
+            self._accumulate_heatmap_from_floor_coords(
+                zone, floor_positions, current_time
+            )
 
     def _update_safety(self, zone: ZoneState, payload: dict, channel: str):
         """Handle safety events (e.g., fall detection)."""
@@ -494,6 +510,25 @@ class WorldModel:
             payload.get("actual", 0), payload.get("severity", "warning"),
         )
 
+    def _update_vlm(self, zone: ZoneState, payload: dict, analysis_type: str):
+        """Handle VLM analysis events from the perception service."""
+        event = Event(
+            timestamp=time.time(),
+            event_type="vlm_analysis",
+            severity="info",
+            data={
+                "analysis_type": analysis_type,
+                "trigger": payload.get("trigger", "unknown"),
+                "content": payload.get("content", "")[:200],
+            }
+        )
+        self._add_event(zone, event)
+        logger.info(
+            "VLM analysis in %s [%s]: %s",
+            zone.zone_id, analysis_type,
+            payload.get("content", "")[:80],
+        )
+
     def _accumulate_heatmap(self, zone: ZoneState, current_time: float):
         """Map pixel-space person positions to grid cells for heatmap."""
         # Reset heatmap every hour
@@ -518,6 +553,108 @@ class WorldModel:
             cx, cy = person.center_px
             grid_col = int(cx / img_w * cols)
             grid_row = int(cy / img_h * rows)
+            grid_col = max(0, min(grid_col, cols - 1))
+            grid_row = max(0, min(grid_row, rows - 1))
+            zone.spatial.heatmap_counts[grid_row][grid_col] += 1
+
+    def _update_wifi_pose(self, zone: ZoneState, payload: dict, node_id: str):
+        """Update WiFi CSI pose estimation data.
+
+        When Perception's WifiTrackingBridge is running, WiFi data reaches
+        the heatmap via _update_tracking (fused with camera).  In standalone
+        WiFi mode (no Perception), tracking is stale, so we accumulate here.
+        """
+        current_time = time.time()
+        persons = payload.get("persons", [])
+        if not persons:
+            return
+
+        # Only accumulate heatmap when tracking is stale (>30s) to avoid
+        # double-counting with fused tracking data.
+        if current_time - zone.tracking.last_update > 30:
+            floor_positions = [
+                (float(p["x"]), float(p["y"]))
+                for p in persons
+                if "x" in p and "y" in p
+            ]
+            if floor_positions:
+                self._accumulate_heatmap_from_floor_coords(
+                    zone, floor_positions, current_time
+                )
+
+                # Record to event store
+                if self.event_writer:
+                    try:
+                        self.event_writer.record_spatial_snapshot(
+                            zone=zone.zone_id,
+                            camera_id=f"wifi:{node_id}",
+                            data={
+                                "source": "wifi-csi",
+                                "node_id": node_id,
+                                "person_count": len(persons),
+                                "persons": [
+                                    {
+                                        "floor_position_m": [p["x"], p["y"]],
+                                        "confidence": p.get("confidence", 0.5),
+                                    }
+                                    for p in persons
+                                    if "x" in p and "y" in p
+                                ],
+                            },
+                        )
+                    except Exception:
+                        pass  # Non-blocking
+
+    def _accumulate_heatmap_from_floor_coords(
+        self,
+        zone: ZoneState,
+        floor_positions: list,
+        current_time: float,
+    ):
+        """Map floor-space positions (metres) to grid cells for heatmap.
+
+        Uses the zone polygon bounding box to normalise floor coordinates
+        into the heatmap grid.  Shared by _update_tracking (camera+WiFi
+        fused) and _update_wifi_pose (standalone WiFi).
+        """
+        # Reset heatmap every hour
+        if current_time - zone.spatial.heatmap_window_start >= 3600:
+            rows = zone.metadata.grid_rows or 10
+            cols = zone.metadata.grid_cols or 10
+            zone.spatial.heatmap_counts = [[0] * cols for _ in range(rows)]
+            zone.spatial.heatmap_window_start = current_time
+
+        if not zone.spatial.heatmap_counts:
+            return
+
+        # Need zone polygon to map floor coords to grid
+        polygon = zone.metadata.polygon
+        if not polygon:
+            return
+
+        xs = [p[0] for p in polygon]
+        ys = [p[1] for p in polygon]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+
+        width = max_x - min_x
+        height = max_y - min_y
+        if width <= 0 or height <= 0:
+            return
+
+        rows = len(zone.spatial.heatmap_counts)
+        cols = len(zone.spatial.heatmap_counts[0]) if rows > 0 else 0
+        if rows == 0 or cols == 0:
+            return
+
+        for x, y in floor_positions:
+            nx = (x - min_x) / width
+            ny = (y - min_y) / height
+            # Skip positions clearly outside the zone
+            if nx < -0.1 or nx > 1.1 or ny < -0.1 or ny > 1.1:
+                continue
+            grid_col = int(nx * cols)
+            grid_row = int(ny * rows)
             grid_col = max(0, min(grid_col, cols - 1))
             grid_row = max(0, min(grid_row, rows - 1))
             zone.spatial.heatmap_counts[grid_row][grid_col] += 1
@@ -868,6 +1005,12 @@ class WorldModel:
                         f"({tp.floor_x_m:.1f}m, {tp.floor_y_m:.1f}m) "
                         f"{dur_min}分滞在 cameras=[{cams}]\n"
                     )
+
+            # VLM scene analysis
+            recent_vlm = [e for e in zone.events if e.event_type == "vlm_analysis" and current_time - e.timestamp < 600]
+            if recent_vlm:
+                latest = recent_vlm[-1]
+                summary += f"- VLM分析: {latest.data.get('content', '')[:150]}\n"
 
             # Adjacent zone occupancy
             if zone.metadata.adjacent_zones:
