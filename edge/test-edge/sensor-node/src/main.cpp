@@ -17,16 +17,47 @@
 #include <Adafruit_BME680.h>
 
 // ==================== Configuration ====================
-const char* WIFI_SSID = "YOUR_WIFI_SSID";
-const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
+#if __has_include("generated_config.h")
+#include "generated_config.h"
+#endif
 
-const char* MQTT_SERVER = "192.168.128.161";
-const int MQTT_PORT = 1883;
-const char* DEVICE_ID = "sensor_node_01";
+#ifndef CFG_WIFI_SSID
+#define CFG_WIFI_SSID "YOUR_WIFI_SSID"
+#endif
+#ifndef CFG_WIFI_PASS
+#define CFG_WIFI_PASS "YOUR_WIFI_PASSWORD"
+#endif
+#ifndef CFG_MQTT_SERVER
+#define CFG_MQTT_SERVER "192.168.128.161"
+#endif
+#ifndef CFG_MQTT_PORT
+#define CFG_MQTT_PORT 1883
+#endif
+#ifndef CFG_MQTT_USER
+#define CFG_MQTT_USER ""
+#endif
+#ifndef CFG_MQTT_PASS
+#define CFG_MQTT_PASS ""
+#endif
+#ifndef CFG_DEVICE_ID
+#define CFG_DEVICE_ID "sensor_node_01"
+#endif
+#ifndef CFG_ZONE
+#define CFG_ZONE "main"
+#endif
 
-// MQTT topics (per-channel for WorldModel compatibility)
-const char* TOPIC_PREFIX = "office/meeting_room_a/sensor/sensor_node_01";
-const char* TOPIC_MCP_REQUEST = "mcp/sensor_node_01/request/call_tool";
+const char* WIFI_SSID = CFG_WIFI_SSID;
+const char* WIFI_PASS = CFG_WIFI_PASS;
+const char* MQTT_SERVER = CFG_MQTT_SERVER;
+const int MQTT_PORT = CFG_MQTT_PORT;
+const char* MQTT_USER = CFG_MQTT_USER;
+const char* MQTT_PASS_STR = CFG_MQTT_PASS;
+const char* DEVICE_ID = CFG_DEVICE_ID;
+const char* ZONE = CFG_ZONE;
+
+// MQTT topics (built dynamically in setup())
+char topicPrefix[128];
+char topicMcpRequest[128];
 
 // I2C pins (XIAO ESP32-S3)
 #define SDA_PIN 5
@@ -59,6 +90,10 @@ void setup() {
 
   Serial.println("\n=== Sensor Node Starting ===");
 
+  // Build MQTT topics dynamically
+  snprintf(topicPrefix, sizeof(topicPrefix), "office/%s/sensor/%s", ZONE, DEVICE_ID);
+  snprintf(topicMcpRequest, sizeof(topicMcpRequest), "mcp/%s/request/call_tool", DEVICE_ID);
+
   // I2C init
   Wire.begin(SDA_PIN, SCL_PIN);
 
@@ -78,6 +113,7 @@ void setup() {
   // WiFi
   Serial.print("Connecting to WiFi");
   WiFi.mode(WIFI_STA);
+  WiFi.setMinSecurity(WIFI_AUTH_WPA_PSK);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
@@ -100,9 +136,15 @@ void setup() {
   Serial.print("Connecting to MQTT...");
   attempts = 0;
   while (!mqtt.connected() && attempts < 5) {
-    if (mqtt.connect(DEVICE_ID)) {
-      mqtt.subscribe(TOPIC_MCP_REQUEST);
-      Serial.printf("\nMQTT connected, subscribed: %s\n", TOPIC_MCP_REQUEST);
+    bool connected;
+    if (strlen(MQTT_USER) > 0) {
+      connected = mqtt.connect(DEVICE_ID, MQTT_USER, MQTT_PASS_STR);
+    } else {
+      connected = mqtt.connect(DEVICE_ID);
+    }
+    if (connected) {
+      mqtt.subscribe(topicMcpRequest);
+      Serial.printf("\nMQTT connected, subscribed: %s\n", topicMcpRequest);
     } else {
       Serial.print(".");
       delay(2000);
@@ -122,8 +164,14 @@ void loop() {
   // MQTT reconnect
   if (!mqtt.connected()) {
     Serial.println("MQTT disconnected, reconnecting...");
-    if (mqtt.connect(DEVICE_ID)) {
-      mqtt.subscribe(TOPIC_MCP_REQUEST);
+    bool connected;
+    if (strlen(MQTT_USER) > 0) {
+      connected = mqtt.connect(DEVICE_ID, MQTT_USER, MQTT_PASS_STR);
+    } else {
+      connected = mqtt.connect(DEVICE_ID);
+    }
+    if (connected) {
+      mqtt.subscribe(topicMcpRequest);
       Serial.println("MQTT reconnected");
     } else {
       delay(2000);
@@ -157,7 +205,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
 
   // MCP tool call
-  if (strcmp(topic, TOPIC_MCP_REQUEST) == 0) {
+  if (strcmp(topic, topicMcpRequest) == 0) {
     handleToolCall(doc);
   }
 }
@@ -223,19 +271,19 @@ void readAndPublishSensors() {
   char topic[128];
   char payload[64];
 
-  snprintf(topic, sizeof(topic), "%s/temperature", TOPIC_PREFIX);
+  snprintf(topic, sizeof(topic), "%s/temperature", topicPrefix);
   snprintf(payload, sizeof(payload), "{\"value\":%.2f}", temperature);
   mqtt.publish(topic, payload);
 
-  snprintf(topic, sizeof(topic), "%s/humidity", TOPIC_PREFIX);
+  snprintf(topic, sizeof(topic), "%s/humidity", topicPrefix);
   snprintf(payload, sizeof(payload), "{\"value\":%.2f}", humidity);
   mqtt.publish(topic, payload);
 
-  snprintf(topic, sizeof(topic), "%s/pressure", TOPIC_PREFIX);
+  snprintf(topic, sizeof(topic), "%s/pressure", topicPrefix);
   snprintf(payload, sizeof(payload), "{\"value\":%.2f}", pressure);
   mqtt.publish(topic, payload);
 
-  snprintf(topic, sizeof(topic), "%s/gas", TOPIC_PREFIX);
+  snprintf(topic, sizeof(topic), "%s/gas", topicPrefix);
   snprintf(payload, sizeof(payload), "{\"value\":%.2f}", gas);
   mqtt.publish(topic, payload);
 }
@@ -243,7 +291,7 @@ void readAndPublishSensors() {
 // ==================== Status Publish ====================
 void publishStatus() {
   char topic[128];
-  snprintf(topic, sizeof(topic), "%s/heartbeat", TOPIC_PREFIX);
+  snprintf(topic, sizeof(topic), "%s/heartbeat", topicPrefix);
 
   JsonDocument doc;
   doc["device_id"] = DEVICE_ID;

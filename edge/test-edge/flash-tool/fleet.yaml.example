@@ -1,0 +1,31 @@
+# SOMS Fleet Configuration
+# Copy to fleet.yaml and customize.
+# Environment variables can be referenced with ${VAR_NAME}.
+
+defaults:
+  wifi_ssid: "Office_WiFi"
+  wifi_password: "${WIFI_PASSWORD}"
+  mqtt_server: "192.168.128.161"
+  mqtt_port: 1883
+  mqtt_user: "soms"
+  mqtt_pass: "soms_dev_mqtt"
+
+# Auto-assignment rules for unknown MAC addresses
+auto_assign:
+  camera:
+    id_prefix: "camera_node_"
+    zone: "main"
+  sensor:
+    id_prefix: "sensor_node_"
+    zone: "main"
+
+# Known devices (keyed by MAC address, uppercase colon-separated)
+devices:
+  # "AA:BB:CC:DD:EE:01":
+  #   device_id: "camera_node_01"
+  #   zone: "main"
+  #   type: "camera"
+  # "AA:BB:CC:DD:EE:02":
+  #   device_id: "sensor_node_01"
+  #   zone: "meeting_room_a"
+  #   type: "sensor"

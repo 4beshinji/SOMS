@@ -65,6 +65,11 @@ Thumbs.db
 # 3D Printing (generated)
 *.gcode
 
+# ESP32 / PlatformIO
+edge/test-edge/*/src/generated_config.h
+edge/test-edge/flash-tool/fleet.yaml
+.pio/
+
 # Project Specific
 /data/
 /models/

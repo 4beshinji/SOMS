@@ -17,15 +17,47 @@
 #include "esp_camera.h"
 
 // ==================== Configuration ====================
-const char* WIFI_SSID = "YOUR_WIFI_SSID";
-const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
-const char* MQTT_SERVER = "192.168.128.161";
-const int MQTT_PORT = 1883;
-const char* DEVICE_ID = "camera_node_01";
+#if __has_include("generated_config.h")
+#include "generated_config.h"
+#endif
 
-// MCP topic (JSON-RPC 2.0 standard)
-#define TOPIC_MCP_REQUEST "mcp/camera_node_01/request/call_tool"
-#define TOPIC_STATUS "office/camera/camera_node_01/status"
+#ifndef CFG_WIFI_SSID
+#define CFG_WIFI_SSID "YOUR_WIFI_SSID"
+#endif
+#ifndef CFG_WIFI_PASS
+#define CFG_WIFI_PASS "YOUR_WIFI_PASSWORD"
+#endif
+#ifndef CFG_MQTT_SERVER
+#define CFG_MQTT_SERVER "192.168.128.161"
+#endif
+#ifndef CFG_MQTT_PORT
+#define CFG_MQTT_PORT 1883
+#endif
+#ifndef CFG_MQTT_USER
+#define CFG_MQTT_USER ""
+#endif
+#ifndef CFG_MQTT_PASS
+#define CFG_MQTT_PASS ""
+#endif
+#ifndef CFG_DEVICE_ID
+#define CFG_DEVICE_ID "camera_node_01"
+#endif
+#ifndef CFG_ZONE
+#define CFG_ZONE "main"
+#endif
+
+const char* WIFI_SSID = CFG_WIFI_SSID;
+const char* WIFI_PASS = CFG_WIFI_PASS;
+const char* MQTT_SERVER = CFG_MQTT_SERVER;
+const int MQTT_PORT = CFG_MQTT_PORT;
+const char* MQTT_USER = CFG_MQTT_USER;
+const char* MQTT_PASS_STR = CFG_MQTT_PASS;
+const char* DEVICE_ID = CFG_DEVICE_ID;
+const char* ZONE = CFG_ZONE;
+
+// MQTT topics (built dynamically in setup())
+char topicMcpRequest[128];
+char topicStatus[128];
 
 // Camera pins (Freenove ESP32 WROVER v3.0)
 #define PWDN_GPIO_NUM     32
@@ -49,7 +81,7 @@ const char* DEVICE_ID = "camera_node_01";
 // ==================== Globals ====================
 WiFiClient wifiClient;
 PubSubClient mqtt(wifiClient);
-sensor_t* camera_sensor = nullptr;
+sensor_t* cam_sensor = nullptr;
 
 // ==================== Resolution Mapping ====================
 framesize_t parseResolution(const char* resStr) {
@@ -94,13 +126,14 @@ void setupCamera() {
     ESP.restart();
   }
 
-  camera_sensor = esp_camera_sensor_get();
+  cam_sensor = esp_camera_sensor_get();
   Serial.printf("Camera initialized (PSRAM: %s)\n", psramFound() ? "YES" : "NO");
 }
 
 // ==================== WiFi ====================
 void setupWiFi() {
   WiFi.mode(WIFI_STA);
+  WiFi.setMinSecurity(WIFI_AUTH_WPA_PSK);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   Serial.print("Connecting to WiFi");
@@ -124,13 +157,19 @@ void mqttCallback(char* topic, byte* payload, unsigned int length);
 void setupMQTT() {
   mqtt.setServer(MQTT_SERVER, MQTT_PORT);
   mqtt.setCallback(mqttCallback);
-  mqtt.setBufferSize(65536);
+  mqtt.setBufferSize(32768);
 
   Serial.print("Connecting to MQTT");
   while (!mqtt.connected()) {
-    if (mqtt.connect(DEVICE_ID)) {
-      mqtt.subscribe(TOPIC_MCP_REQUEST);
-      Serial.printf("\nMQTT connected, subscribed: %s\n", TOPIC_MCP_REQUEST);
+    bool connected;
+    if (strlen(MQTT_USER) > 0) {
+      connected = mqtt.connect(DEVICE_ID, MQTT_USER, MQTT_PASS_STR);
+    } else {
+      connected = mqtt.connect(DEVICE_ID);
+    }
+    if (connected) {
+      mqtt.subscribe(topicMcpRequest);
+      Serial.printf("\nMQTT connected, subscribed: %s\n", topicMcpRequest);
     } else {
       Serial.print(".");
       delay(2000);
@@ -148,8 +187,8 @@ void handleCaptureToolCall(const char* reqId, JsonObject args) {
 
   // Set resolution
   framesize_t framesize = parseResolution(resolution);
-  camera_sensor->set_framesize(camera_sensor, framesize);
-  camera_sensor->set_quality(camera_sensor, quality);
+  cam_sensor->set_framesize(cam_sensor, framesize);
+  cam_sensor->set_quality(cam_sensor, quality);
 
   // Capture
   camera_fb_t* fb = esp_camera_fb_get();
@@ -271,7 +310,7 @@ void publishStatus() {
 
   String output;
   serializeJson(doc, output);
-  mqtt.publish(TOPIC_STATUS, output.c_str());
+  mqtt.publish(topicStatus, output.c_str());
 }
 
 // ==================== Setup ====================
@@ -283,6 +322,10 @@ void setup() {
   digitalWrite(LED_PIN, LOW);
 
   Serial.println("\n=== Camera Node (MCP-compliant) ===");
+
+  // Build MQTT topics dynamically
+  snprintf(topicMcpRequest, sizeof(topicMcpRequest), "mcp/%s/request/call_tool", DEVICE_ID);
+  snprintf(topicStatus, sizeof(topicStatus), "office/%s/camera/%s/status", ZONE, DEVICE_ID);
 
   setupCamera();
   setupWiFi();
