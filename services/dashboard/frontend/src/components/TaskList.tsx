@@ -6,21 +6,25 @@ import TaskCard from './TaskCard';
 interface TaskListProps {
   tasks: Task[];
   loading: boolean;
+  hasMoreTasks?: boolean;
   acceptedTaskIds: Set<number>;
   zoneMultipliers: Record<string, ZoneMultiplierInfo>;
   onAccept: (taskId: number) => void;
   onComplete: (taskId: number, report?: TaskReport) => void;
   onIgnore: (taskId: number) => void;
+  onShowMore?: () => void;
 }
 
 export default function TaskList({
   tasks,
   loading,
+  hasMoreTasks,
   acceptedTaskIds,
   zoneMultipliers,
   onAccept,
   onComplete,
   onIgnore,
+  onShowMore,
 }: TaskListProps) {
   return (
     <main className="max-w-6xl mx-auto px-6 py-8">
@@ -73,6 +77,17 @@ export default function TaskList({
             ))}
           </AnimatePresence>
         </motion.div>
+      )}
+
+      {hasMoreTasks && (
+        <div className="text-center mt-6">
+          <button
+            onClick={onShowMore}
+            className="px-6 py-2 text-sm font-medium text-[var(--primary-500)] bg-[var(--primary-50)] border border-[var(--primary-200)] rounded-lg hover:bg-[var(--primary-100)] transition-colors"
+          >
+            もっと見る
+          </button>
+        </div>
       )}
     </main>
   );

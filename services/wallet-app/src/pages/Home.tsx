@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getWallet, getHistory, getSupply, type Wallet, type LedgerEntry, type SupplyStats } from '../api/wallet';
+import { useQuery } from '@tanstack/react-query';
+import { getWallet, getHistory, getSupply } from '../api/wallet';
 import BalanceCard from '../components/BalanceCard';
 import TransactionItem from '../components/TransactionItem';
 
@@ -10,57 +10,30 @@ interface HomeProps {
 
 export default function Home({ userId }: HomeProps) {
   const navigate = useNavigate();
-  const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [recent, setRecent] = useState<LedgerEntry[]>([]);
-  const [supply, setSupply] = useState<SupplyStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [w, h, s] = await Promise.all([
-        getWallet(userId),
-        getHistory(userId, 10),
-        getSupply(),
-      ]);
-      setWallet(w);
-      setRecent(h);
-      setSupply(s);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '読み込みに失敗しました');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const walletQuery = useQuery({
+    queryKey: ['wallet', userId],
+    queryFn: () => getWallet(userId),
+    refetchInterval: 15000,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
+  const historyQuery = useQuery({
+    queryKey: ['history', userId],
+    queryFn: () => getHistory(userId, 10),
+    refetchInterval: 15000,
+  });
 
-    async function load() {
-      try {
-        const [w, h, s] = await Promise.all([
-          getWallet(userId),
-          getHistory(userId, 10),
-          getSupply(),
-        ]);
-        if (cancelled) return;
-        setWallet(w);
-        setRecent(h);
-        setSupply(s);
-        setError(null);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : '読み込みに失敗しました');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
+  const supplyQuery = useQuery({
+    queryKey: ['supply'],
+    queryFn: getSupply,
+    refetchInterval: 15000,
+  });
 
-    load();
-    const interval = setInterval(load, 15000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [userId]);
+  const wallet = walletQuery.data ?? null;
+  const recent = historyQuery.data ?? [];
+  const supply = supplyQuery.data ?? null;
+  const loading = walletQuery.isLoading;
+  const error = walletQuery.error || historyQuery.error || supplyQuery.error;
 
   const recentRewards = recent.filter(
     e => e.transaction_type === 'TASK_REWARD' && e.entry_type === 'CREDIT'
@@ -84,9 +57,13 @@ export default function Home({ userId }: HomeProps) {
       {error && (
         <div className="bg-[var(--error-50)] border border-[var(--error-500)] rounded-xl p-4 text-center">
           <p className="text-sm font-medium text-[var(--error-700)]">接続エラー</p>
-          <p className="text-xs text-[var(--error-600)] mt-1">{error}</p>
+          <p className="text-xs text-[var(--error-600)] mt-1">{error instanceof Error ? error.message : '読み込みに失敗しました'}</p>
           <button
-            onClick={loadData}
+            onClick={() => {
+              walletQuery.refetch();
+              historyQuery.refetch();
+              supplyQuery.refetch();
+            }}
             className="mt-3 text-sm font-medium text-[var(--primary-500)] hover:underline cursor-pointer"
           >
             再試行

@@ -10,6 +10,7 @@ export default function DeviceDetail({ userId }: { userId: number }) {
   const navigate = useNavigate();
   const [data, setData] = useState<DeviceFundingResponse | null>(null);
   const [deviceType, setDeviceType] = useState<string>('');
+  const [utilityScore, setUtilityScore] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +45,10 @@ export default function DeviceDetail({ userId }: { userId: number }) {
         if (cancelled) return;
         setData(funding);
         const dev = devices.find(d => d.device_id === deviceId);
-        if (dev) setDeviceType(dev.device_type);
+        if (dev) {
+          setDeviceType(dev.device_type);
+          setUtilityScore(dev.utility_score);
+        }
         setError(null);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : '読み込みに失敗しました');
@@ -119,7 +123,7 @@ export default function DeviceDetail({ userId }: { userId: number }) {
         </div>
       ) : data && (
         <>
-          <div className="bg-white rounded-xl p-4 space-y-2 elevation-1">
+          <div className="bg-white rounded-xl p-4 space-y-3 elevation-1">
             <div className="flex items-center gap-2">
               {deviceType && <DeviceTypeBadge type={deviceType} />}
               <span className="text-sm text-[var(--gray-500)]">
@@ -128,6 +132,23 @@ export default function DeviceDetail({ userId }: { userId: number }) {
             </div>
             <div className="text-sm text-[var(--gray-500)]">
               推定報酬: <span className="text-[var(--gold-dark)] font-medium">{(data.estimated_reward_per_hour / 1000).toFixed(3)} SOMS/時</span>
+            </div>
+            {/* Utility Score Gauge */}
+            <div>
+              <div className="flex items-center justify-between text-xs text-[var(--gray-500)] mb-1">
+                <span>ユーティリティスコア</span>
+                <span className="font-medium text-[var(--gray-700)]">{utilityScore.toFixed(1)}</span>
+              </div>
+              <div className="w-full h-2.5 bg-[var(--gray-100)] rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    utilityScore >= 80 ? 'bg-[var(--success-500)]'
+                    : utilityScore >= 50 ? 'bg-[var(--warning-500)]'
+                    : 'bg-[var(--error-500)]'
+                  }`}
+                  style={{ width: `${Math.min(100, utilityScore)}%` }}
+                />
+              </div>
             </div>
           </div>
 

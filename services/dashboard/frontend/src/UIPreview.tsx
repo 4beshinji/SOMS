@@ -2,7 +2,7 @@
  * Dev-only UI preview page — accessible at http://localhost:5173/?preview
  * Shows all @soms/ui components with the updated design tokens.
  */
-import { Card, Button, Badge, Spinner } from '@soms/ui';
+import { Button, Badge, Spinner } from '@soms/ui';
 import { MapPin, Coins, Zap, AlertTriangle } from 'lucide-react';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

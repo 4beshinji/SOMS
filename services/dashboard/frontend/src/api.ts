@@ -1,12 +1,14 @@
 import type {
   Task, TaskReport, SystemStats, SupplyStats, ZoneMultiplierInfo,
   ShoppingItem, ShoppingItemCreate, ShoppingStats, ShoppingShareResponse,
+  PurchaseHistory,
 } from '@soms/types';
 import { authFetch } from '@soms/auth';
 
 export type {
   Task, TaskReport, SystemStats, SupplyStats, ZoneMultiplierInfo,
   ShoppingItem, ShoppingItemCreate, ShoppingStats, ShoppingShareResponse,
+  PurchaseHistory,
 };
 
 export const fetchTasks = async (): Promise<Task[]> => {
@@ -109,5 +111,17 @@ export const deleteShoppingItem = async (id: number): Promise<void> => {
 export const createShoppingShareLink = async (): Promise<ShoppingShareResponse> => {
   const res = await authFetch('/api/shopping/0/share', { method: 'POST' });
   if (!res.ok) throw new Error('Failed to create share link');
+  return res.json();
+};
+
+export const fetchShoppingHistory = async (days: number = 30): Promise<PurchaseHistory[]> => {
+  const res = await authFetch(`/api/shopping/history?days=${days}`);
+  if (!res.ok) throw new Error('Failed to fetch shopping history');
+  return res.json();
+};
+
+export const fetchShoppingDue = async (): Promise<ShoppingItem[]> => {
+  const res = await authFetch('/api/shopping/due');
+  if (!res.ok) throw new Error('Failed to fetch due items');
   return res.json();
 };

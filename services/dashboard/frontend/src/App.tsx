@@ -10,6 +10,7 @@ import LoginPage from './pages/LoginPage';
 function Monitor() {
   const {
     visibleTasks,
+    hasMoreTasks,
     loading,
     systemStats,
     supply,
@@ -20,6 +21,7 @@ function Monitor() {
     handleAccept,
     handleComplete,
     handleIgnore,
+    handleShowMore,
   } = useTaskManager();
 
   return (
@@ -34,11 +36,13 @@ function Monitor() {
         <TaskList
           tasks={visibleTasks}
           loading={loading}
+          hasMoreTasks={hasMoreTasks}
           acceptedTaskIds={acceptedTaskIds}
           zoneMultipliers={zoneMultipliers}
           onAccept={handleAccept}
           onComplete={handleComplete}
           onIgnore={handleIgnore}
+          onShowMore={handleShowMore}
         />
         <aside>
           <ShoppingPanel />

@@ -6,6 +6,10 @@ import { lazy, Suspense } from 'react';
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
 const FloorPlanPage = lazy(() => import('./pages/FloorPlanPage'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage'));
+const AnomalyPage = lazy(() => import('./pages/AnomalyPage'));
+const TaskQueuePage = lazy(() => import('./pages/TaskQueuePage'));
+const VoicePage = lazy(() => import('./pages/VoicePage'));
+const EconomyPage = lazy(() => import('./pages/EconomyPage'));
 
 function LoginRedirect() {
   // Redirect to auth login
@@ -80,6 +84,54 @@ function Layout() {
           >
             Inventory
           </NavLink>
+          <NavLink
+            to="/task-queue"
+            className={({ isActive }) =>
+              `block px-4 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[var(--primary-50)] text-[var(--primary-700)] border-r-2 border-[var(--primary-500)]'
+                  : 'text-[var(--gray-700)] hover:bg-[var(--gray-100)]'
+              }`
+            }
+          >
+            Task Queue
+          </NavLink>
+          <NavLink
+            to="/anomaly"
+            className={({ isActive }) =>
+              `block px-4 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[var(--primary-50)] text-[var(--primary-700)] border-r-2 border-[var(--primary-500)]'
+                  : 'text-[var(--gray-700)] hover:bg-[var(--gray-100)]'
+              }`
+            }
+          >
+            Anomaly
+          </NavLink>
+          <NavLink
+            to="/voice"
+            className={({ isActive }) =>
+              `block px-4 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[var(--primary-50)] text-[var(--primary-700)] border-r-2 border-[var(--primary-500)]'
+                  : 'text-[var(--gray-700)] hover:bg-[var(--gray-100)]'
+              }`
+            }
+          >
+            Voice
+          </NavLink>
+          <NavLink
+            to="/economy"
+            className={({ isActive }) =>
+              `block px-4 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[var(--primary-50)] text-[var(--primary-700)] border-r-2 border-[var(--primary-500)]'
+                  : 'text-[var(--gray-700)] hover:bg-[var(--gray-100)]'
+              }`
+            }
+          >
+            Economy
+          </NavLink>
         </div>
         <div className="p-4 border-t border-[var(--gray-200)]">
           <p className="text-xs text-[var(--gray-500)] mb-2">{user?.display_name || user?.username}</p>
@@ -105,6 +157,10 @@ function Layout() {
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/floor-plan" element={<FloorPlanPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/task-queue" element={<TaskQueuePage />} />
+            <Route path="/anomaly" element={<AnomalyPage />} />
+            <Route path="/voice" element={<VoicePage />} />
+            <Route path="/economy" element={<EconomyPage />} />
             <Route path="*" element={<Navigate to="/analytics" replace />} />
           </Routes>
         </Suspense>

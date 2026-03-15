@@ -37,12 +37,17 @@ export default function MonitorHeader({ systemStats, supply, isAudioEnabled, onT
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--gray-100)] border border-[var(--gray-300)]">
                   <span className="text-sm text-[var(--gray-700)]">{systemStats.tasks_completed} 完了</span>
                 </div>
+                {systemStats.tasks_queued > 0 && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--info-50)] border border-[var(--info-border)]">
+                    <span className="text-sm font-medium text-[var(--info-700)]">{systemStats.tasks_queued} 待機中</span>
+                  </div>
+                )}
               </div>
             )}
             {supply && (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-yellow-100 to-amber-100 border border-[var(--gold)]">
                 <span className="text-sm font-medium text-[var(--gold-dark)]">
-                  {supply.circulating} 流通
+                  {(supply.circulating / 1000).toFixed(1)} SOMS 流通
                 </span>
               </div>
             )}

@@ -38,6 +38,20 @@ export interface Task {
   zone?: string;
   reward_multiplier?: number;
   reward_adjusted_bounty?: number;
+  estimated_duration?: number;  // minutes
+  min_people_required?: number;
+  expires_at?: string;
+  is_queued?: boolean;
+}
+
+export interface PurchaseHistory {
+  id: number;
+  item_name: string;
+  category: string | null;
+  store: string | null;
+  price: number | null;
+  quantity: number;
+  purchased_at: string;
 }
 
 export interface TaskReport {

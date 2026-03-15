@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, Coins, Zap, Circle, AlertCircle, AlertTriangle, QrCode, X, TrendingUp } from 'lucide-react';
+import { MapPin, Coins, Zap, Circle, AlertCircle, AlertTriangle, QrCode, X, TrendingUp, Clock, Users, Timer } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Card, Badge, Button } from '@soms/ui';
 import type { Task, TaskReport, ZoneMultiplierInfo } from '@soms/types';
@@ -14,26 +14,16 @@ interface TaskCardProps {
     onIgnore?: (taskId: number) => void;
 }
 
+const URGENCY_MAP: Record<number, { variant: 'neutral' | 'success' | 'info' | 'warning' | 'error'; icon: React.ReactNode; label: string; pulse?: boolean }> = {
+    0: { variant: 'neutral', icon: <Clock size={12} />, label: '延期' },
+    1: { variant: 'success', icon: <Circle size={12} />, label: '低' },
+    2: { variant: 'info', icon: <Circle size={12} />, label: '通常' },
+    3: { variant: 'warning', icon: <AlertCircle size={12} />, label: '高' },
+    4: { variant: 'error', icon: <AlertTriangle size={12} />, label: '緊急', pulse: true },
+};
+
 const getUrgencyBadge = (urgency: number) => {
-    if (urgency >= 3) {
-        return {
-            variant: 'error' as const,
-            icon: <AlertTriangle size={12} />,
-            label: '高優先度',
-        };
-    }
-    if (urgency >= 2) {
-        return {
-            variant: 'warning' as const,
-            icon: <AlertCircle size={12} />,
-            label: '中優先度',
-        };
-    }
-    return {
-        variant: 'success' as const,
-        icon: <Circle size={12} />,
-        label: '低優先度',
-    };
+    return URGENCY_MAP[urgency] ?? URGENCY_MAP[2];
 };
 
 const REPORT_STATUSES = [
@@ -66,7 +56,7 @@ const TaskCard = React.memo(function TaskCard({ task, isAccepted, zoneMultiplier
                             </div>
                         )}
                     </div>
-                    <Badge variant={urgencyBadge.variant} icon={urgencyBadge.icon}>
+                    <Badge variant={urgencyBadge.variant} icon={urgencyBadge.icon} className={urgencyBadge.pulse ? 'animate-pulse' : ''}>
                         {urgencyBadge.label}
                     </Badge>
                 </div>
@@ -76,6 +66,31 @@ const TaskCard = React.memo(function TaskCard({ task, isAccepted, zoneMultiplier
                     <p className="text-[var(--gray-700)] leading-relaxed">
                         {task.description}
                     </p>
+                )}
+
+                {/* Task metadata */}
+                {(task.estimated_duration || task.min_people_required || task.expires_at) && (
+                    <div className="flex items-center gap-3 flex-wrap text-xs text-[var(--gray-500)]">
+                        {task.estimated_duration != null && (
+                            <span className="flex items-center gap-1">
+                                <Timer size={12} />
+                                ~{task.estimated_duration}分
+                            </span>
+                        )}
+                        {task.min_people_required != null && task.min_people_required > 1 && (
+                            <span className="flex items-center gap-1">
+                                <Users size={12} />
+                                {task.min_people_required}人以上
+                            </span>
+                        )}
+                        {task.expires_at && !task.is_completed && (() => {
+                            const remaining = Math.max(0, Math.floor((new Date(task.expires_at).getTime() - Date.now()) / 60000));
+                            if (remaining <= 0) return <span className="text-[var(--error-700)]">期限切れ</span>;
+                            if (remaining < 60) return <span className="flex items-center gap-1 text-[var(--warning-700)]"><Clock size={12} />残り{remaining}分</span>;
+                            const hours = Math.floor(remaining / 60);
+                            return <span className="flex items-center gap-1"><Clock size={12} />残り{hours}時間</span>;
+                        })()}
+                    </div>
                 )}
 
                 <div className="flex items-center gap-3 flex-wrap">

@@ -13,8 +13,10 @@ import {
   completeTask,
 } from '../api';
 
-const MAX_DISPLAY_TASKS = 10;
+const DEFAULT_DISPLAY_TASKS = 10;
+const DISPLAY_TASKS_INCREMENT = 10;
 const COMPLETED_DISPLAY_SECONDS = 300; // 5 minutes
+const IGNORED_TASKS_KEY = 'soms-ignored-tasks';
 
 export function useTaskManager() {
   const queryClient = useQueryClient();
@@ -23,7 +25,15 @@ export function useTaskManager() {
   const [prevTaskIds, setPrevTaskIds] = useState<Set<number>>(new Set());
   const [playedVoiceEventIds, setPlayedVoiceEventIds] = useState<Set<number>>(new Set());
   const [acceptedTaskIds, setAcceptedTaskIds] = useState<Set<number>>(new Set());
-  const [ignoredTaskIds, setIgnoredTaskIds] = useState<Set<number>>(new Set());
+  const [ignoredTaskIds, setIgnoredTaskIds] = useState<Set<number>>(() => {
+    try {
+      const stored = localStorage.getItem(IGNORED_TASKS_KEY);
+      return stored ? new Set(JSON.parse(stored) as number[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const [maxDisplay, setMaxDisplay] = useState(DEFAULT_DISPLAY_TASKS);
   const initialLoadDone = useRef(false);
 
   const { enqueue, enqueueFromApi } = useAudioQueue(isAudioEnabled);
@@ -154,7 +164,7 @@ export function useTaskManager() {
   }, [voiceEventsQuery.data, isAudioEnabled, enqueue]);
 
   // Sort and filter tasks
-  const visibleTasks = tasks
+  const allFilteredTasks = tasks
     .filter(task => {
       if (ignoredTaskIds.has(task.id)) return false;
       if (task.is_completed && task.completed_at) {
@@ -170,8 +180,14 @@ export function useTaskManager() {
       const bAccepted = acceptedTaskIds.has(b.id);
       if (aAccepted !== bAccepted) return aAccepted ? -1 : 1;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    })
-    .slice(0, MAX_DISPLAY_TASKS);
+    });
+
+  const visibleTasks = allFilteredTasks.slice(0, maxDisplay);
+  const hasMoreTasks = allFilteredTasks.length > maxDisplay;
+
+  const handleShowMore = () => {
+    setMaxDisplay(prev => prev + DISPLAY_TASKS_INCREMENT);
+  };
 
   const handleAccept = (taskId: number) => {
     setAcceptedTaskIds(prev => new Set(prev).add(taskId));
@@ -198,7 +214,11 @@ export function useTaskManager() {
   };
 
   const handleIgnore = (taskId: number) => {
-    setIgnoredTaskIds(prev => new Set(prev).add(taskId));
+    setIgnoredTaskIds(prev => {
+      const next = new Set(prev).add(taskId);
+      try { localStorage.setItem(IGNORED_TASKS_KEY, JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
     enqueueFromApi(async () => {
       const res = await authFetch('/api/voice/rejection/random');
       if (!res.ok) return null;
@@ -209,6 +229,7 @@ export function useTaskManager() {
 
   return {
     visibleTasks,
+    hasMoreTasks,
     loading,
     systemStats,
     supply,
@@ -219,5 +240,6 @@ export function useTaskManager() {
     handleAccept,
     handleComplete,
     handleIgnore,
+    handleShowMore,
   };
 }
