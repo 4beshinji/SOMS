@@ -10,6 +10,7 @@ const AnomalyPage = lazy(() => import('./pages/AnomalyPage'));
 const TaskQueuePage = lazy(() => import('./pages/TaskQueuePage'));
 const VoicePage = lazy(() => import('./pages/VoicePage'));
 const EconomyPage = lazy(() => import('./pages/EconomyPage'));
+const ShoppingPage = lazy(() => import('./pages/ShoppingPage'));
 
 function LoginRedirect() {
   // Redirect to auth login
@@ -85,6 +86,18 @@ function Layout() {
             Inventory
           </NavLink>
           <NavLink
+            to="/shopping"
+            className={({ isActive }) =>
+              `block px-4 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[var(--primary-50)] text-[var(--primary-700)] border-r-2 border-[var(--primary-500)]'
+                  : 'text-[var(--gray-700)] hover:bg-[var(--gray-100)]'
+              }`
+            }
+          >
+            Shopping
+          </NavLink>
+          <NavLink
             to="/task-queue"
             className={({ isActive }) =>
               `block px-4 py-2.5 text-sm font-medium transition-colors ${
@@ -157,6 +170,7 @@ function Layout() {
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/floor-plan" element={<FloorPlanPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/shopping" element={<ShoppingPage />} />
             <Route path="/task-queue" element={<TaskQueuePage />} />
             <Route path="/anomaly" element={<AnomalyPage />} />
             <Route path="/voice" element={<VoicePage />} />
