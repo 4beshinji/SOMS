@@ -133,22 +133,58 @@ void setupCamera() {
 // ==================== WiFi ====================
 void setupWiFi() {
   WiFi.mode(WIFI_STA);
-  WiFi.setMinSecurity(WIFI_AUTH_WPA_PSK);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  WiFi.setMinSecurity(WIFI_AUTH_OPEN);
 
-  Serial.print("Connecting to WiFi");
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts++ < 20) {
-    delay(500);
-    Serial.print(".");
+  for (int retry = 0; retry < 5; retry++) {
+    if (retry > 0) {
+      Serial.printf("\nRetry %d/5...\n", retry + 1);
+      WiFi.disconnect(true);
+      delay(1000);
+    }
+
+    // Scan to find BSSID and channel, then connect explicitly
+    Serial.println("Scanning for AP...");
+    int n = WiFi.scanNetworks();
+    int bestIdx = -1;
+    int bestRSSI = -999;
+    for (int i = 0; i < n; i++) {
+      if (WiFi.SSID(i) == WIFI_SSID && WiFi.RSSI(i) > bestRSSI) {
+        bestIdx = i;
+        bestRSSI = WiFi.RSSI(i);
+      }
+    }
+
+    if (bestIdx < 0) {
+      Serial.printf("SSID '%s' not found in scan (%d networks)\n", WIFI_SSID, n);
+      WiFi.scanDelete();
+      continue;
+    }
+
+    uint8_t* bssid = WiFi.BSSID(bestIdx);
+    int32_t channel = WiFi.channel(bestIdx);
+    Serial.printf("Found: BSSID=%02X:%02X:%02X:%02X:%02X:%02X CH=%d RSSI=%d\n",
+                   bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],
+                   channel, bestRSSI);
+    WiFi.scanDelete();
+
+    WiFi.begin(WIFI_SSID, WIFI_PASS, channel, bssid);
+
+    Serial.print("Connecting");
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts++ < 40) {
+      delay(500);
+      Serial.print(".");
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.printf("\nWiFi connected: %s\n", WiFi.localIP().toString().c_str());
+      return;
+    }
+    Serial.println("\nConnect failed");
   }
 
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("\nWiFi connected: %s\n", WiFi.localIP().toString().c_str());
-  } else {
-    Serial.println("\nWiFi failed!");
-    ESP.restart();
-  }
+  Serial.println("WiFi failed after all retries!");
+  ESP.restart();
 }
 
 // ==================== MQTT ====================

@@ -284,8 +284,12 @@ def _get_pio() -> str:
 
 
 def pio_build(fw_dir: Path) -> bool:
-    """Run PlatformIO build."""
+    """Run PlatformIO build (force recompile to pick up generated_config.h)."""
     pio = _get_pio()
+    # Touch main source so PlatformIO detects the generated_config.h change
+    main_src = fw_dir / "src" / "main.cpp"
+    if main_src.exists():
+        main_src.touch()
     log.info("Building %s ...", fw_dir.name)
     result = subprocess.run(
         [pio, "run", "-d", str(fw_dir)],
