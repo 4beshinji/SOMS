@@ -20,6 +20,20 @@ shelves:
     price: null
     barcode: null               # Phase 2: JAN code for barcode-based registration
 
+  # XIAO ESP32-C6 + HX711 scale (deploy 時にアイテム情報を設定)
+  - device_id: scale_01
+    channel: weight
+    zone: kitchen
+    item_name: null               # デプロイ時に設定
+    category: null
+    unit_weight_g: null           # キャリブレーション後に設定
+    tare_weight_g: 0.0
+    min_threshold: 1
+    reorder_quantity: 1
+    store: null
+    price: null
+    barcode: null
+
   # Example: copy paper on shelf_02
   - device_id: shelf_02
     channel: weight

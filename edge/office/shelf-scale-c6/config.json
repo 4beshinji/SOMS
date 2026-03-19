@@ -1,0 +1,23 @@
+{
+  "device_id": "scale_01",
+  "zone": "kitchen",
+  "wifi_ssid": "GITY Wi-Fi",
+  "wifi_password": "gity2023",
+  "mqtt_broker": "192.168.128.161",
+  "mqtt_port": 1883,
+  "mqtt_user": "soms",
+  "mqtt_pass": "soms_dev_mqtt",
+  "report_interval": 5,
+  "board": "xiao_esp32_c6",
+  "sensors": [
+    {
+      "type": "hx711",
+      "bus": "gpio",
+      "dout_pin": 2,
+      "sck_pin": 3,
+      "scale": 420.0,
+      "tare": true,
+      "tare_readings": 20
+    }
+  ]
+}
