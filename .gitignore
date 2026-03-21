@@ -80,3 +80,10 @@ edge/test-edge/flash-tool/fleet.yaml
 *.db
 scan_*.txt
 verified_*.txt
+
+# Zigbee2MQTT runtime data
+services/zigbee2mqtt/data/log/
+services/zigbee2mqtt/data/state.json
+services/zigbee2mqtt/data/coordinator_backup.json
+services/zigbee2mqtt/data/migration-*.log
+services/zigbee2mqtt/data/configuration_backup_*.yaml
