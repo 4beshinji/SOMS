@@ -39,6 +39,12 @@ for scfg in sensor_configs:
 
 print(f"Active sensors: {registry.sensor_names} ({registry.sensor_count}/{len(sensor_configs)})")
 
+# ---- Disable ABC on MH-Z19C (manual calibration only) ----
+
+mhz19 = registry.get_driver("mhz19c")
+if mhz19:
+    mhz19.set_abc(False)
+
 # ---- LED (optional) ----
 
 led = None
@@ -64,8 +70,28 @@ def restart():
     machine.reset()
 
 
+def co2_calibrate():
+    """Zero-point calibration. Device must be in fresh outdoor air for 20+ min."""
+    mhz = registry.get_driver("mhz19c")
+    if mhz is None:
+        return {"error": "mhz19c not active"}
+    mhz.zero_calibrate()
+    return {"result": "zero-point calibration executed"}
+
+
+def co2_set_abc(enabled=False):
+    """Enable or disable ABC (Automatic Baseline Correction)."""
+    mhz = registry.get_driver("mhz19c")
+    if mhz is None:
+        return {"error": "mhz19c not active"}
+    mhz.set_abc(enabled)
+    return {"result": f"ABC {'ON' if enabled else 'OFF'}"}
+
+
 device.register_tool("get_status", get_status)
 device.register_tool("restart", restart)
+device.register_tool("co2_calibrate", co2_calibrate)
+device.register_tool("co2_set_abc", co2_set_abc)
 
 # ---- Connect & main loop ----
 

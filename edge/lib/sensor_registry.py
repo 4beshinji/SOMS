@@ -188,6 +188,13 @@ class SensorRegistry:
                 print(f"Read error ({name}): {e}")
         return result
 
+    def get_driver(self, sensor_type):
+        """Return the driver instance for a sensor type, or None."""
+        for name, driver in self._sensors:
+            if name == sensor_type:
+                return driver
+        return None
+
     @property
     def sensor_count(self):
         return len(self._sensors)

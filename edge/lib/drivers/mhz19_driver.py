@@ -22,10 +22,31 @@ class MHZ19C:
                     print("MH-Z19C checksum error")
         return None
 
-    def _checksum(self, data):
+    def set_abc(self, enabled):
+        """Enable (True) or disable (False) Automatic Baseline Correction."""
+        b3 = 0xA0 if enabled else 0x00
+        cmd = bytearray([0xFF, 0x01, 0x79, b3, 0x00, 0x00, 0x00, 0x00])
+        cmd.append(self._checksum_raw(cmd))
+        self.uart.write(cmd)
+        time.sleep(0.1)
+        state = "ON" if enabled else "OFF"
+        print(f"MH-Z19C ABC set to {state}")
+
+    def zero_calibrate(self):
+        """Zero-point calibration. Run after 20+ min in fresh outdoor air (~400 ppm)."""
+        cmd = bytearray([0xFF, 0x01, 0x87, 0x00, 0x00, 0x00, 0x00, 0x00])
+        cmd.append(self._checksum_raw(cmd))
+        self.uart.write(cmd)
+        time.sleep(0.1)
+        print("MH-Z19C zero-point calibration executed")
+
+    def _checksum_raw(self, data):
         csum = 0
         for i in range(1, 8):
             csum += data[i]
         csum = 0xFF - (csum & 0xFF)
         csum += 1
         return csum & 0xFF
+
+    def _checksum(self, data):
+        return self._checksum_raw(data)
