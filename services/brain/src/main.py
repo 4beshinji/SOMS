@@ -84,6 +84,7 @@ class Brain:
         self.device_registry = DeviceRegistry()
         self.inventory_tracker = InventoryTracker(config_path="config/inventory.yaml")
         self.world_model.inventory_tracker = self.inventory_tracker
+        self.sanitizer.set_inventory_tracker(self.inventory_tracker)
         self.calibration_manager = CalibrationManager()
         self.event_writer: EventWriter | None = None
 
@@ -139,11 +140,14 @@ class Brain:
             if len(parts) >= 5 and parts[0] == "office" and parts[2] == "sensor":
                 value = payload.get(parts[4]) or payload.get("value")
                 if value is not None:
+                    # Use remapped zone from WorldModel (handles legacy zone names)
+                    device_id = parts[3]
+                    zone = self.world_model.resolve_zone(device_id, parts[1])
                     self.event_writer.record_sensor(
-                        zone=parts[1],
+                        zone=zone,
                         channel=parts[4],
                         value=value,
-                        device_id=parts[3],
+                        device_id=device_id,
                         topic=topic,
                         region_id=self.region_id,
                     )
@@ -155,6 +159,10 @@ class Brain:
             if len(parts) >= 4:
                 device_id = parts[3]
                 self.device_registry.update_from_heartbeat(device_id, payload)
+                # Forward device label to WorldModel for LLM context
+                label = payload.get("label", "")
+                if label:
+                    self.world_model.set_device_label(device_id, label)
                 # Forward to Wallet service for reward distribution
                 if self.wallet_bridge and self._loop:
                     asyncio.ensure_future(
@@ -248,6 +256,7 @@ class Brain:
             user_content += "上記と同じアクションを短期間で繰り返さないでください。特にspeakは同じ内容を30分以内に再送しないこと。\n"
 
         user_msg = {"role": "user", "content": user_content}
+        logger.debug("LLM user_content:\n{}", user_content[:4000])
 
         messages = [system_msg, user_msg]
         tools = get_tools()
@@ -620,7 +629,8 @@ class Brain:
             logger.error(f"Event store init failed (non-fatal): {e}")
 
         # Shared HTTP session for all components (Layer 2)
-        async with aiohttp.ClientSession() as session:
+        connector = aiohttp.TCPConnector(ttl_dns_cache=30)
+        async with aiohttp.ClientSession(connector=connector) as session:
             # Initialize components with shared session
             self.llm = LLMClient(api_url=LLM_API_URL, session=session)
             self.dashboard = DashboardClient(session=session)

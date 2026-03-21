@@ -105,3 +105,8 @@ class GlobalTrack:
     @property
     def camera_ids(self) -> list[str]:
         return list(self.tracklets.keys())
+
+    @property
+    def source_ids(self) -> list[str]:
+        """Alias for camera_ids — includes WiFi source IDs if present."""
+        return list(self.tracklets.keys())

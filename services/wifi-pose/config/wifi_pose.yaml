@@ -4,8 +4,8 @@ mqtt:
 
 # WiFi CSI node definitions
 nodes:
-  wifi_node_01:
-    zone: office
+  sensor_node_01:
+    zone: main
     position: [17.5, 4.0]
     coverage_radius_m: 8.0
 
@@ -15,6 +15,7 @@ csi:
   hampel_window: 5
   hampel_threshold: 3.0
   spectrogram_window_sec: 1.0
+  sample_rate_hz: 10        # matches sensor_node CSI publish rate (10 Hz)
 
 # Pose estimation model
 model:

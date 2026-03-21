@@ -34,6 +34,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      wallet:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -281,7 +283,7 @@ services:
     networks:
       - soms-net
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -400,6 +402,7 @@ services:
       - MQTT_USER=${MQTT_USER:-soms}
       - MQTT_PASS=${MQTT_PASS:-soms_dev_mqtt}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - BACKEND_URL=http://backend:8000
     volumes:
       - ../services/zigbee2mqtt-bridge/src:/app
       - ../config:/app/config:ro
@@ -418,7 +421,7 @@ services:
     container_name: soms-anomaly
     restart: always
     ports:
-      - "127.0.0.1:${SOMS_PORT_ANOMALY:-8008}:8000"
+      - "127.0.0.1:${SOMS_PORT_ANOMALY:-8009}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -491,6 +494,8 @@ services:
         condition: service_healthy
       auth:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - soms-net
     healthcheck:

@@ -41,6 +41,7 @@ class PgSensorRepository(SensorDataRepository):
                 WHERE event_type = 'sensor_reading'
                   AND timestamp > now() - interval '10 minutes'
                   AND data->>'value' IS NOT NULL
+                  AND data->>'value' ~ '^-?[0-9]+(\\.[0-9]+)?$'
                   AND (CAST(:zone AS TEXT) IS NULL OR zone = :zone)
                 ORDER BY zone, data->>'channel', timestamp DESC
             """),
@@ -84,6 +85,7 @@ class PgSensorRepository(SensorDataRepository):
                 FROM events.raw_events
                 WHERE event_type = 'sensor_reading'
                   AND data->>'value' IS NOT NULL
+                  AND data->>'value' ~ '^-?[0-9]+(\\.[0-9]+)?$'
                   AND timestamp BETWEEN :start AND :end
                   AND (CAST(:zone AS TEXT) IS NULL OR zone = :zone)
                   AND (CAST(:channel AS TEXT) IS NULL OR data->>'channel' = :channel)

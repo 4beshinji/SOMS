@@ -56,6 +56,25 @@ class WorldModel:
         # Prevents repeated task creation for slow-changing conditions.
         self._suppressed_alerts: Dict[tuple, float] = {}
 
+        # Device label lookup: {device_id: label_str}
+        self._device_labels: Dict[str, str] = {}
+
+        # Sensor-type-aware processors
+        from .sensor_fusion import TrendDetector, EventCounter, StateTracker
+        self._trend_detector = TrendDetector()
+        self._event_counter = EventCounter()
+        self._state_tracker = StateTracker()
+
+        # Zone alias: maps legacy/device zone names to canonical zone_ids
+        # Built from spatial config device positions: {device_zone -> canonical_zone}
+        self._zone_aliases: Dict[str, str] = {}
+
+        # Device-to-zone mapping from spatial config: {device_id -> zone_id}
+        self._device_zone_map: Dict[str, str] = {}
+
+        # Device floor positions from spatial config: {device_id -> [x, y]}
+        self._device_positions: Dict[str, list] = {}
+
         # Spatial config
         self._spatial_config = spatial_config
         if spatial_config:
@@ -86,7 +105,16 @@ class WorldModel:
                 [0] * geom.grid_cols for _ in range(geom.grid_rows)
             ]
             zone.spatial.heatmap_window_start = time.time()
-        logger.info("Spatial config applied: %d zones pre-created", len(config.zones))
+        # Populate device labels, zone mappings, and positions from spatial config
+        for dev_id, dev_pos in config.devices.items():
+            if dev_pos.label:
+                self._device_labels[dev_id] = dev_pos.label
+            if dev_pos.zone and dev_pos.zone.startswith("zone_"):
+                self._device_zone_map[dev_id] = dev_pos.zone
+            if dev_pos.position and len(dev_pos.position) >= 2:
+                self._device_positions[dev_id] = dev_pos.position[:2]
+        logger.info("Spatial config applied: %d zones pre-created, %d device-zone mappings",
+                     len(config.zones), len(self._device_zone_map))
 
     def _add_event(self, zone: ZoneState, event: Event):
         """Append an event to a zone, trimming oldest entries if over limit."""
@@ -159,7 +187,15 @@ class WorldModel:
         device_type = parsed["device_type"]
         device_id = parsed.get("device_id")
         channel = parsed.get("channel")
-        
+
+        # Remap zone using device-to-zone mapping from spatial config.
+        # This handles devices that publish to legacy zone names (e.g. "main",
+        # "meeting_room_a") but are placed in canonical zones in ZoneEditor.
+        if device_id and device_id in self._device_zone_map:
+            canonical = self._device_zone_map[device_id]
+            if canonical != zone_id:
+                zone_id = canonical
+
         # Create zone if it doesn't exist
         if zone_id not in self.zones:
             self.zones[zone_id] = ZoneState(zone_id=zone_id)
@@ -175,6 +211,8 @@ class WorldModel:
                 _KNOWN_CHANNELS = {
                     "temperature", "humidity", "co2", "pressure",
                     "gas", "gas_resistance", "illuminance", "motion", "door",
+                    "motion_count", "presence", "contact", "vibration",
+                    "soil_moisture", "soil_temperature",
                 }
                 for key, val in payload.items():
                     if key in _KNOWN_CHANNELS:
@@ -236,37 +274,48 @@ class WorldModel:
         }
     
     def _update_environment(self, zone: ZoneState, channel: str, payload: dict, device_id: str):
-        """Update environmental data for a zone."""
+        """Dispatch sensor update by channel type."""
+        from .sensor_fusion import classify_channel, ChannelType
+
         current_time = time.time()
-        
-        # Extract value from payload
         value = payload.get(channel) or payload.get("value")
         if value is None:
             return
-        
-        # Store reading for sensor fusion
+
+        channel_type = classify_channel(channel)
         reading_key = f"{zone.zone_id}:{channel}"
+
+        if channel_type == ChannelType.ANALOG:
+            self._update_analog_channel(zone, channel, value, device_id, reading_key, current_time)
+        elif channel_type == ChannelType.EVENT:
+            self._update_event_channel(zone, channel, value, device_id, reading_key, current_time)
+        elif channel_type == ChannelType.STATE:
+            self._update_state_channel(zone, channel, value, device_id, reading_key, current_time)
+        else:
+            self._update_passthrough_channel(zone, channel, value, device_id, reading_key, current_time)
+
+        zone.environment.timestamps[channel] = current_time
+
+    def _update_analog_channel(self, zone, channel, value, device_id, reading_key, current_time):
+        """Process continuous analog sensor data with fusion + trend detection."""
         if reading_key not in self._sensor_readings:
             self._sensor_readings[reading_key] = []
-        
         self._sensor_readings[reading_key].append((device_id, value, current_time))
-        
-        # Keep only recent readings (last 10 minutes)
         self._sensor_readings[reading_key] = [
-            r for r in self._sensor_readings[reading_key]
-            if current_time - r[2] < 600
+            r for r in self._sensor_readings[reading_key] if current_time - r[2] < 600
         ]
-        
-        # Fuse multiple sensor readings with appropriate sensor type
         fused_value = self.sensor_fusion.fuse_generic(
-            self._sensor_readings[reading_key], 
-            sensor_type=channel  # Pass sensor type for half-life selection
+            self._sensor_readings[reading_key], sensor_type=channel
         )
-        
         if fused_value is None:
             return
-        
-        # Update zone environment
+
+        # Trend detection
+        self._trend_detector.record(reading_key, fused_value, current_time)
+        trend = self._trend_detector.get_trend(reading_key, fused_value, channel)
+        zone.environment.trends[channel] = trend
+
+        # Map to zone.environment fields
         if channel == "temperature":
             zone.environment.temperature = fused_value
         elif channel == "humidity":
@@ -279,24 +328,10 @@ class WorldModel:
             zone.environment.pressure = fused_value
         elif channel == "gas_resistance":
             zone.environment.gas_resistance = int(fused_value)
-        elif channel == "motion":
-            zone.occupancy.pir_detected = bool(fused_value)
-            zone.occupancy.person_count = self.sensor_fusion.integrate_occupancy(
-                vision_count=zone.occupancy.vision_count,
-                pir_active=zone.occupancy.pir_detected
-            )
-        elif channel == "door":
-            prev_door = getattr(zone, '_prev_door_state', None)
-            door_open = bool(fused_value)
-            if prev_door is not None and door_open != prev_door:
-                event = Event(
-                    timestamp=current_time,
-                    event_type="door_opened" if door_open else "door_closed",
-                    severity="info",
-                    data={"device_id": device_id, "state": "open" if door_open else "closed"}
-                )
-                self._add_event(zone, event)
-            zone._prev_door_state = door_open
+        elif channel == "soil_moisture":
+            zone.environment.soil_moisture = fused_value
+        elif channel == "soil_temperature":
+            zone.environment.soil_temperature = fused_value
         elif channel == "weight" and self.inventory_tracker:
             inv_event = self.inventory_tracker.update_weight(
                 zone.zone_id, device_id, channel, fused_value,
@@ -322,7 +357,6 @@ class WorldModel:
         elif channel == "barcode" and self.inventory_tracker:
             barcode_value = str(fused_value) if fused_value else ""
             if barcode_value:
-                # Resolve barcode to known item metadata before registering
                 known = self.inventory_tracker.lookup_barcode(barcode_value)
                 inv_event = self.inventory_tracker.handle_barcode_scan(
                     device_id, "weight", barcode_value,
@@ -346,8 +380,98 @@ class WorldModel:
                     )
                     self._add_event(zone, event)
 
-        # Update timestamp
-        zone.environment.timestamps[channel] = current_time
+    def _update_event_channel(self, zone, channel, value, device_id, reading_key, current_time):
+        """Process event/pulse sensor data (motion, vibration)."""
+        if channel == "motion_count":
+            self._event_counter.record_count(reading_key, int(value), current_time)
+        elif value:
+            self._event_counter.record_event(reading_key, current_time)
+
+        # Aggregate all motion-type events for this zone
+        motion_key = f"{zone.zone_id}:motion"
+        motion_count_key = f"{zone.zone_id}:motion_count"
+        vibration_key = f"{zone.zone_id}:vibration"
+        total = (
+            self._event_counter.get_count(motion_key)
+            + self._event_counter.get_count(motion_count_key)
+            + self._event_counter.get_count(vibration_key)
+        )
+        zone.occupancy.motion_event_count_5min = total
+        zone.occupancy.motion_frequency_per_min = total / 5.0
+
+        # Backwards compatibility: still update pir_detected
+        if channel == "motion" and value:
+            zone.occupancy.pir_detected = True
+            zone.occupancy.person_count = self.sensor_fusion.integrate_occupancy(
+                vision_count=zone.occupancy.vision_count,
+                pir_active=True,
+            )
+            # Accumulate heatmap at sensor position
+            pos = self._device_positions.get(device_id)
+            if pos:
+                self._accumulate_heatmap_from_floor_coords(
+                    zone, [(pos[0], pos[1])], current_time
+                )
+
+    def _update_state_channel(self, zone, channel, value, device_id, reading_key, current_time):
+        """Process binary state sensor data (door, presence, contact)."""
+        bool_value = bool(value)
+        state_key = f"{zone.zone_id}:{device_id}:{channel}"
+        self._state_tracker.update(state_key, bool_value, current_time)
+
+        if channel == "door":
+            prev_door = getattr(zone, '_prev_door_state', None)
+            if prev_door is not None and bool_value != prev_door:
+                event = Event(
+                    timestamp=current_time,
+                    event_type="door_opened" if bool_value else "door_closed",
+                    severity="info",
+                    data={"device_id": device_id, "state": "open" if bool_value else "closed"}
+                )
+                self._add_event(zone, event)
+            zone._prev_door_state = bool_value
+            state_info = self._state_tracker.get_state(state_key)
+            if state_info:
+                zone.occupancy.door_states[device_id] = {
+                    "open": state_info["state"],
+                    "duration_sec": state_info["duration_sec"],
+                    "changes_1h": state_info["changes_1h"],
+                }
+        elif channel == "presence":
+            zone.occupancy.presence_state = bool_value
+            state_info = self._state_tracker.get_state(state_key)
+            if state_info:
+                zone.occupancy.presence_duration_sec = state_info["duration_sec"]
+            if bool_value:
+                zone.occupancy.pir_detected = True
+                zone.occupancy.person_count = self.sensor_fusion.integrate_occupancy(
+                    vision_count=zone.occupancy.vision_count,
+                    pir_active=True,
+                )
+                # Accumulate heatmap at sensor position
+                pos = self._device_positions.get(device_id)
+                if pos:
+                    self._accumulate_heatmap_from_floor_coords(
+                        zone, [(pos[0], pos[1])], current_time
+                    )
+        elif channel == "contact":
+            door_open = not bool_value
+            door_key = f"{zone.zone_id}:{device_id}:door"
+            self._state_tracker.update(door_key, door_open, current_time)
+            state_info = self._state_tracker.get_state(door_key)
+            if state_info:
+                zone.occupancy.door_states[device_id] = {
+                    "open": state_info["state"],
+                    "duration_sec": state_info["duration_sec"],
+                    "changes_1h": state_info["changes_1h"],
+                }
+
+    def _update_passthrough_channel(self, zone, channel, value, device_id, reading_key, current_time):
+        """Store unknown channel data for LLM visibility."""
+        try:
+            zone.extra_sensors[channel] = float(value)
+        except (TypeError, ValueError):
+            zone.extra_sensors[channel] = 1.0 if value else 0.0
     
     def _update_occupancy(self, zone: ZoneState, payload: dict):
         """Update occupancy data from camera/vision system."""
@@ -849,6 +973,28 @@ class WorldModel:
         """Get all zones."""
         return self.zones
     
+    def resolve_zone(self, device_id: str, mqtt_zone: str) -> str:
+        """Resolve canonical zone_id for a device, applying spatial config overrides."""
+        if device_id in self._device_zone_map:
+            return self._device_zone_map[device_id]
+        return mqtt_zone
+
+    def set_device_label(self, device_id: str, label: str):
+        """Set or update a device's human-readable label."""
+        if label and label != device_id:
+            self._device_labels[device_id] = label
+
+    def get_device_label(self, device_id: str) -> str:
+        """Get a device's label, falling back to empty string."""
+        return self._device_labels.get(device_id, "")
+
+    def _zone_display_name(self, zone_id: str) -> str:
+        """Return display-friendly zone name, e.g. 'エントランス (zone_4d0rct)'."""
+        zone = self.zones.get(zone_id)
+        if zone and zone.metadata.display_name and zone.metadata.display_name != zone_id:
+            return f"{zone.metadata.display_name} ({zone_id})"
+        return zone_id
+
     def get_llm_context(self) -> str:
         """
         Generate optimized context string for LLM.
@@ -871,32 +1017,32 @@ class WorldModel:
             env = zone.environment
             if env.temperature is not None:
                 if env.temperature > 26:
-                    msg = f"[{zone_id}] 高温: {env.temperature:.1f}℃（基準: 18-26℃）"
+                    msg = f"[{self._zone_display_name(zone_id)}] 高温: {env.temperature:.1f}℃（基準: 18-26℃）"
                     if self._is_suppressed(zone_id, "high_temp"):
                         suppressed.append(f"🔄 {msg}（タスク発行済み・対応待ち）")
                     else:
                         alerts.append(f"⚠️ {msg}")
                 elif env.temperature < 18:
-                    msg = f"[{zone_id}] 低温: {env.temperature:.1f}℃（基準: 18-26℃）"
+                    msg = f"[{self._zone_display_name(zone_id)}] 低温: {env.temperature:.1f}℃（基準: 18-26℃）"
                     if self._is_suppressed(zone_id, "low_temp"):
                         suppressed.append(f"🔄 {msg}（タスク発行済み・対応待ち）")
                     else:
                         alerts.append(f"⚠️ {msg}")
             if env.co2 is not None and env.co2 > 1000:
-                msg = f"[{zone_id}] CO2高濃度: {env.co2}ppm（基準: 1000ppm以下）"
+                msg = f"[{self._zone_display_name(zone_id)}] CO2高濃度: {env.co2}ppm（基準: 1000ppm以下）"
                 if self._is_suppressed(zone_id, "high_co2"):
                     suppressed.append(f"🔄 {msg}（タスク発行済み・対応待ち）")
                 else:
                     alerts.append(f"⚠️ {msg}")
             if env.humidity is not None:
                 if env.humidity > 60:
-                    msg = f"[{zone_id}] 高湿度: {env.humidity:.0f}%（基準: 30-60%）"
+                    msg = f"[{self._zone_display_name(zone_id)}] 高湿度: {env.humidity:.0f}%（基準: 30-60%）"
                     if self._is_suppressed(zone_id, "high_humidity"):
                         suppressed.append(f"🔄 {msg}（タスク発行済み・対応待ち）")
                     else:
                         alerts.append(f"⚠️ {msg}")
                 elif env.humidity < 30:
-                    msg = f"[{zone_id}] 低湿度: {env.humidity:.0f}%（基準: 30-60%）"
+                    msg = f"[{self._zone_display_name(zone_id)}] 低湿度: {env.humidity:.0f}%（基準: 30-60%）"
                     if self._is_suppressed(zone_id, "low_humidity"):
                         suppressed.append(f"🔄 {msg}（タスク発行済み・対応待ち）")
                     else:
@@ -915,21 +1061,22 @@ class WorldModel:
                 inv_lines = []
                 for item in low_items:
                     suppressed_key = f"low_stock_{item['device_id']}"
+                    zone_display = self._zone_display_name(item["zone"])
                     if self._is_suppressed(item["zone"], suppressed_key):
                         inv_lines.append(
-                            f"🔄 [{item['zone']}] {item['item_name']}: "
+                            f"🔄 [{zone_display}] {item['item_name']}: "
                             f"残量{item['quantity']}個（買い物リスト追加済み）"
                         )
                     else:
                         inv_lines.append(
-                            f"⚠️ [{item['zone']}] {item['item_name']}: "
+                            f"⚠️ [{zone_display}] {item['item_name']}: "
                             f"残量{item['quantity']}個（閾値: {item['min_threshold']}）"
                         )
                 if inv_lines:
                     context_parts.append("### 在庫状況\n" + "\n".join(inv_lines))
 
         for zone_id, zone in sorted(self.zones.items()):
-            summary = f"### {zone_id}\n"
+            summary = f"### {self._zone_display_name(zone_id)}\n"
             
             # Occupancy and activity
             if zone.occupancy.person_count > 0:
@@ -942,31 +1089,66 @@ class WorldModel:
             else:
                 summary += "- 状態: 無人\n"
             
-            # Environment
+            # Environment (with trend arrows)
+            _TREND = {"rising": "↑", "falling": "↓", "stable": ""}
+            _t = lambda ch: _TREND.get(zone.environment.trends.get(ch, "stable"), "")
+
             if zone.environment.temperature is not None:
-                summary += f"- 気温: {zone.environment.temperature:.1f}℃ ({zone.environment.thermal_comfort})\n"
-            
+                summary += f"- 気温: {zone.environment.temperature:.1f}℃{_t('temperature')} ({zone.environment.thermal_comfort})\n"
+
             if zone.environment.humidity is not None:
-                summary += f"- 湿度: {zone.environment.humidity:.0f}%\n"
-            
+                summary += f"- 湿度: {zone.environment.humidity:.0f}%{_t('humidity')}\n"
+
             if zone.environment.co2 is not None:
-                summary += f"- CO2: {zone.environment.co2}ppm"
+                co2_str = f"- CO2: {zone.environment.co2}ppm{_t('co2')}"
                 if zone.environment.is_stuffy:
-                    summary += " ⚠️換気必要\n"
-                else:
-                    summary += "\n"
-            
+                    co2_str += " ⚠️換気必要"
+                summary += co2_str + "\n"
+
             if zone.environment.pressure is not None:
-                summary += f"- 気圧: {zone.environment.pressure:.1f}hPa\n"
+                summary += f"- 気圧: {zone.environment.pressure:.1f}hPa{_t('pressure')}\n"
 
             if zone.environment.illuminance is not None:
-                summary += f"- 照度: {zone.environment.illuminance:.0f}lux\n"
+                summary += f"- 照度: {zone.environment.illuminance:.0f}lux{_t('illuminance')}\n"
+
+            if zone.environment.soil_moisture is not None:
+                summary += f"- 土壌水分: {zone.environment.soil_moisture:.1f}%\n"
+
+            # Motion event frequency
+            if zone.occupancy.motion_event_count_5min > 0:
+                summary += f"- 動体検知: 直近5分で{zone.occupancy.motion_event_count_5min}回\n"
+
+            # Presence state with duration
+            if zone.occupancy.presence_state is not None:
+                dur_min = int(zone.occupancy.presence_duration_sec / 60)
+                state_str = "在室検知中" if zone.occupancy.presence_state else "不在"
+                summary += f"- 在室センサー: {state_str} ({dur_min}分間)\n"
+
+            # Door states with duration
+            for dev_id, door_info in zone.occupancy.door_states.items():
+                label = self._device_labels.get(dev_id, dev_id)
+                dur_min = int(door_info["duration_sec"] / 60)
+                state_str = "開放中" if door_info["open"] else "閉鎖中"
+                changes = door_info.get("changes_1h", 0)
+                door_line = f"- ドア({label}): {state_str} ({dur_min}分間)"
+                if changes > 0:
+                    door_line += f" [1h内 {changes}回開閉]"
+                summary += door_line + "\n"
+
+            # Passthrough/unknown channels
+            if zone.extra_sensors:
+                for ch_name, ch_val in sorted(zone.extra_sensors.items()):
+                    summary += f"- {ch_name}: {ch_val}\n"
             
             # Devices
             if zone.devices:
                 summary += "- デバイス:\n"
                 for device_id, device in zone.devices.items():
-                    summary += f"  - {device.device_type} ({device_id}): {device.power_state}\n"
+                    label = self._device_labels.get(device_id, "")
+                    if label:
+                        summary += f"  - {label} ({device_id}): {device.power_state}\n"
+                    else:
+                        summary += f"  - {device.device_type} ({device_id}): {device.power_state}\n"
             
             # Spatial summary
             if zone.spatial.persons and current_time - zone.spatial.last_spatial_update < 30:
@@ -1018,7 +1200,7 @@ class WorldModel:
                 for adj_id in zone.metadata.adjacent_zones:
                     adj_zone = self.zones.get(adj_id)
                     if adj_zone and adj_zone.occupancy.person_count > 0:
-                        adj_parts.append(f"{adj_id}({adj_zone.occupancy.person_count}人)")
+                        adj_parts.append(f"{self._zone_display_name(adj_id)}({adj_zone.occupancy.person_count}人)")
                 if adj_parts:
                     summary += f"- 隣接在室: {', '.join(adj_parts)}\n"
 

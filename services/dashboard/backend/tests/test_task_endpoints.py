@@ -218,41 +218,16 @@ class TestCreateTask:
         assert existing.description == "Updated description"
         assert existing.bounty_gold == 2000
 
-    def test_duplicate_stage2_zone_task_type_overlap(self):
-        """Stage 2: same zone + overlapping task_type → updates existing."""
-        existing = make_task_obj(id=7, title="Old Title", zone="main",
-                                 task_type=["cleaning", "hvac"],
-                                 json_encode_task_type=True)
-        db = make_mock_db([
-            [],            # Stage 1: no exact match
-            [existing],    # Stage 2: zone candidates
-        ])
+    def test_same_zone_task_type_overlap_creates_new(self):
+        """Same zone + overlapping task_type but different category → new task.
 
-        async def _refresh(obj):
-            pass
-        db.refresh = _refresh
-
-        app = _create_app(db)
-        client = TestClient(app)
-        resp = client.post("/tasks/", json={
-            "title": "Different Title",
-            "description": "New desc",
-            "zone": "main",
-            "task_type": ["cleaning"],
-        }, headers=SERVICE_HEADERS)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["id"] == 7  # Same existing task updated
-
-    def test_no_duplicate_stage2_no_overlap(self):
-        """Stage 2: same zone but different task_type → creates new."""
-        existing = make_task_obj(id=7, title="Old Title", zone="main",
-                                 task_type=["hvac"],
-                                 json_encode_task_type=True)
+        Stage 2 (zone+task_type overlap) was removed because it caused
+        false merges (e.g., device-check title with humidity description).
+        """
         sys_stats = make_sys_stats()
         db = make_mock_db([
             [],            # Stage 1: no exact match
-            [existing],    # Stage 2: zone candidates (but no overlap)
+            # Stage 1.5: titles have no category keywords → skipped
             [sys_stats],   # _get_or_create_system_stats
         ])
 
@@ -267,11 +242,74 @@ class TestCreateTask:
             client = TestClient(app)
             resp = client.post("/tasks/", json={
                 "title": "Different Title",
-                "description": "New",
+                "description": "New desc",
                 "zone": "main",
-                "task_type": ["cleaning"],  # No overlap with "hvac"
+                "task_type": ["cleaning"],
             }, headers=SERVICE_HEADERS)
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == 20  # New task, not merged
+
+    def test_stage1_5_duplicate_updates_title(self):
+        """Stage 1.5 duplicate: title should be updated to the new value."""
+        existing = make_task_obj(id=5, title="デバイス確認タスク",
+                                 description="デバイスを調べる",
+                                 zone="main", json_encode_task_type=True)
+        db = make_mock_db([
+            [],            # Stage 1: no exact match (different title)
+            [existing],    # Stage 1.5: category candidates
+        ])
+
+        async def _refresh(obj):
+            pass
+        db.refresh = _refresh
+
+        app = _create_app(db)
+        client = TestClient(app)
+        resp = client.post("/tasks/", json={
+            "title": "不明デバイスを調査してください",
+            "description": "新しいデバイスが検出されました",
+            "zone": "main",
+        }, headers=SERVICE_HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == 5  # Same task (Stage 1.5 match)
+        assert existing.title == "不明デバイスを調査してください"  # Title updated
+
+    def test_device_check_and_humidity_not_merged(self):
+        """Regression: device-check title must NOT be merged with humidity task.
+
+        This was the reported bug: title='デバイスネットワークの確認が必要'
+        with description about low humidity.
+        """
+        existing = make_task_obj(id=7, title="デバイスネットワークの確認が必要",
+                                 zone="main", task_type=["environment"],
+                                 json_encode_task_type=True)
+        sys_stats = make_sys_stats()
+        db = make_mock_db([
+            [],            # Stage 1: no exact match
+            [existing],    # Stage 1.5: candidates (device_check vs humidity → no overlap)
+            [sys_stats],   # _get_or_create_system_stats
+        ])
+
+        db.add = lambda obj: None
+
+        async def _refresh(obj):
+            _new_task_refresh(obj, default_id=20)
+        db.refresh = _refresh
+
+        with patch("routers.tasks._grant_device_xp", new_callable=AsyncMock):
+            app = _create_app(db)
+            client = TestClient(app)
+            resp = client.post("/tasks/", json={
+                "title": "加湿と換気を行ってください",
+                "description": "湿度が29%と基準（30-60%）を下回っています。",
+                "zone": "main",
+                "task_type": ["environment"],
+            }, headers=SERVICE_HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == 20  # New task, NOT merged into device-check
 
     def test_duplicate_updates_voice_data_when_provided(self):
         """When updating a duplicate, voice data is only updated if provided."""

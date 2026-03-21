@@ -1,8 +1,10 @@
 import { useSensorLatest } from '../../hooks/useAnalytics';
 import { getChannelMeta, formatFullTimestamp } from '../../utils/channelConfig';
+import { useZoneName } from '../../hooks/useZoneNames';
 
 export default function LatestReadingsSection() {
   const { data: readings, isLoading } = useSensorLatest();
+  const zoneName = useZoneName();
 
   if (isLoading) {
     return (
@@ -51,7 +53,7 @@ export default function LatestReadingsSection() {
               const meta = getChannelMeta(r.channel);
               return (
                 <tr key={`${r.zone}-${r.channel}-${i}`} className="hover:bg-[var(--gray-50)] transition-colors">
-                  <td className="px-5 py-2.5 text-[var(--gray-700)] capitalize">{r.zone}</td>
+                  <td className="px-5 py-2.5 text-[var(--gray-700)]">{zoneName(r.zone)}</td>
                   <td className="px-5 py-2.5">
                     <span className="flex items-center gap-1.5">
                       <span

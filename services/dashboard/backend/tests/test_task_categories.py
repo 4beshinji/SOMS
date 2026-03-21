@@ -28,7 +28,7 @@ class TestClassifyTask:
         assert "humidity" in cats
 
     def test_unrelated_task_empty(self):
-        cats = _classify_task("掃除をしてください", "会議室をきれいにする")
+        cats = _classify_task("書類を提出してください", "経理部に届ける")
         assert cats == set()
 
     def test_multiple_categories(self):
@@ -50,6 +50,39 @@ class TestClassifyTask:
     def test_all_device_check_variants(self, title):
         cats = _classify_task(title)
         assert "device_check" in cats
+
+    def test_device_network_keyword(self):
+        cats = _classify_task("デバイスネットワークの確認が必要")
+        assert "device_check" in cats
+
+    def test_temperature_extended_keywords(self):
+        assert "temperature" in _classify_task("暑いので冷房をつけて")
+        assert "temperature" in _classify_task("寒いので暖房をつけて")
+
+    def test_humidity_dryness_keyword(self):
+        cats = _classify_task("乾燥がひどい")
+        assert "humidity" in cats
+
+    def test_lighting_keywords(self):
+        cats = _classify_task("照明が暗いです")
+        assert "lighting" in cats
+
+    def test_cleaning_keywords(self):
+        cats = _classify_task("ホワイトボードを清掃してください")
+        assert "cleaning" in cats
+
+    def test_safety_keywords(self):
+        cats = _classify_task("転倒検知")
+        assert "safety" in cats
+
+    def test_device_check_and_humidity_no_overlap(self):
+        """Regression: the exact bug scenario — these must be different categories."""
+        device_cats = _classify_task("デバイスネットワークの確認が必要")
+        humidity_cats = _classify_task("加湿と換気を行ってください",
+                                       "湿度が29%と基準を下回っています")
+        assert not (device_cats & humidity_cats), (
+            f"Should not overlap: {device_cats} vs {humidity_cats}"
+        )
 
     def test_legitimate_device_task_not_categorized(self):
         """A battery replacement task for a device should NOT match device_check."""

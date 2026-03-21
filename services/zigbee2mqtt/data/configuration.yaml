@@ -11,6 +11,11 @@ serial:
 frontend:
   enabled: true
   port: 8080
+availability:
+  active:
+    timeout: 600
+  passive:
+    timeout: 1800
 advanced:
   log_level: info
   network_key:
@@ -32,25 +37,59 @@ advanced:
     - 103
   pan_id: 48362
 devices:
+  # --- 在室/動体検知（イベント駆動 + 5分keepalive）---
   '0xa4c138e17e7ba03a':
-    friendly_name: '0xa4c138e17e7ba03a'
+    friendly_name: 24GhzSensor1
+    reporting:
+      min_report_interval: 10
+      max_report_interval: 300
   '0xa4c138b65ad26965':
-    friendly_name: '0xa4c138b65ad26965'
-  '0xa4c13811d0a93ed4':
-    friendly_name: '0xa4c13811d0a93ed4'
-  '0xa4c13821dd1c6e60':
-    friendly_name: '0xa4c13821dd1c6e60'
-  '0xa4c1388f90e1f7ce':
-    friendly_name: '0xa4c1388f90e1f7ce'
+    friendly_name: motion_exRed_sensor1
+    reporting:
+      min_report_interval: 10
+      max_report_interval: 300
   '0xa4c138fbeb32da9c':
-    friendly_name: '0xa4c138fbeb32da9c'
-  '0xa4c138cdb4a972c2':
-    friendly_name: '0xa4c138cdb4a972c2'
-  '0xa4c138df630150a6':
-    friendly_name: '0xa4c138df630150a6'
-  '0xa4c138c8ccde0851':
-    friendly_name: '0xa4c138c8ccde0851'
+    friendly_name: 10GhzSensor1
+    reporting:
+      min_report_interval: 10
+      max_report_interval: 300
+  # --- 温湿度（5分間隔）---
+  '0xa4c13821dd1c6e60':
+    friendly_name: Temp&hum1
+    reporting:
+      min_report_interval: 60
+      max_report_interval: 300
+  '0xa4c1388f90e1f7ce':
+    friendly_name: Temp&hum2
+    reporting:
+      min_report_interval: 60
+      max_report_interval: 300
+  # --- 照度（5分間隔）---
+  '0xa4c13811d0a93ed4':
+    friendly_name: LXsensor1
+    reporting:
+      min_report_interval: 60
+      max_report_interval: 300
+  # --- 土壌（30分間隔）---
+  '0xa4c1385f0ced58cc':
+    friendly_name: Soilsensor1
+    reporting:
+      min_report_interval: 300
+      max_report_interval: 1800
   '0xa4c1388207db1b9d':
-    friendly_name: '0xa4c1388207db1b9d'
+    friendly_name: Soilsensor2
+    reporting:
+      min_report_interval: 300
+      max_report_interval: 1800
+  '0xa4c138c8ccde0851':
+    friendly_name: Soilsensor3
+    reporting:
+      min_report_interval: 300
+      max_report_interval: 1800
+  # --- イベント駆動のみ（変化時送信）---
+  '0xa4c138cdb4a972c2':
+    friendly_name: VibSensor1
+  '0xa4c138df630150a6':
+    friendly_name: water_leak1
 groups: {}
 version: 5

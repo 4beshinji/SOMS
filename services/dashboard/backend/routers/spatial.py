@@ -81,6 +81,33 @@ class ArucoSaveRequest(BaseModel):
     aruco_markers: dict[str, ArucoMarkerInput]
 
 
+class CameraInput(BaseModel):
+    zone: str
+    position: list[float]           # [x, y]
+    resolution: list[int] = [640, 480]
+    fov_deg: float = 90.0
+    orientation_deg: float = 0.0
+
+
+class CamerasSaveRequest(BaseModel):
+    cameras: dict[str, CameraInput]
+
+
+class DeviceInput(BaseModel):
+    zone: str
+    position: list[float]           # [x, y]
+    type: str = "sensor"
+    channels: list[str] = []
+    orientation_deg: float | None = None
+    fov_deg: float | None = None
+    detection_range_m: float | None = None
+    label: str | None = None
+
+
+class DevicesSaveRequest(BaseModel):
+    devices: dict[str, DeviceInput]
+
+
 # ── Endpoints ───────────────────────────────────────────────────────
 
 
@@ -239,3 +266,99 @@ async def save_aruco_markers(req: ArucoSaveRequest):
     sc._cached_config = None
 
     return {"saved": len(req.aruco_markers), "path": SPATIAL_YAML_PATH}
+
+
+# ── Camera Endpoints (YAML) ──────────────────────────────────────
+
+
+@router.get("/cameras")
+async def get_cameras():
+    """Get camera definitions from spatial.yaml."""
+    if not os.path.exists(SPATIAL_YAML_PATH):
+        return {"cameras": {}}
+    with open(SPATIAL_YAML_PATH, "r") as f:
+        raw = yaml.safe_load(f) or {}
+    return {"cameras": raw.get("cameras", {})}
+
+
+@router.put("/cameras")
+async def save_cameras(req: CamerasSaveRequest):
+    """Save camera definitions to spatial.yaml (preserves other sections)."""
+    import spatial_config as sc
+
+    if os.path.exists(SPATIAL_YAML_PATH):
+        with open(SPATIAL_YAML_PATH, "r") as f:
+            raw = yaml.safe_load(f) or {}
+    else:
+        raw = {}
+
+    # Replace cameras section
+    raw["cameras"] = {}
+    for cam_id, cam in req.cameras.items():
+        raw["cameras"][cam_id] = {
+            "zone": cam.zone,
+            "position": cam.position,
+            "resolution": cam.resolution,
+            "fov_deg": cam.fov_deg,
+            "orientation_deg": cam.orientation_deg,
+        }
+
+    with open(SPATIAL_YAML_PATH, "w") as f:
+        yaml.dump(raw, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+    # Invalidate cached config
+    sc._cached_config = None
+
+    return {"saved": len(req.cameras), "path": SPATIAL_YAML_PATH}
+
+
+# ── Device Endpoints (YAML) ──────────────────────────────────────
+
+
+@router.get("/devices")
+async def get_devices():
+    """Get device definitions from spatial.yaml."""
+    if not os.path.exists(SPATIAL_YAML_PATH):
+        return {"devices": {}}
+    with open(SPATIAL_YAML_PATH, "r") as f:
+        raw = yaml.safe_load(f) or {}
+    return {"devices": raw.get("devices", {})}
+
+
+@router.put("/devices")
+async def save_devices(req: DevicesSaveRequest):
+    """Save device definitions to spatial.yaml (preserves other sections)."""
+    import spatial_config as sc
+
+    if os.path.exists(SPATIAL_YAML_PATH):
+        with open(SPATIAL_YAML_PATH, "r") as f:
+            raw = yaml.safe_load(f) or {}
+    else:
+        raw = {}
+
+    # Replace devices section
+    raw["devices"] = {}
+    for dev_id, dev in req.devices.items():
+        entry: dict[str, Any] = {
+            "zone": dev.zone,
+            "position": dev.position,
+            "type": dev.type,
+            "channels": dev.channels,
+        }
+        if dev.orientation_deg is not None:
+            entry["orientation_deg"] = dev.orientation_deg
+        if dev.fov_deg is not None:
+            entry["fov_deg"] = dev.fov_deg
+        if dev.detection_range_m is not None:
+            entry["detection_range_m"] = dev.detection_range_m
+        if dev.label:
+            entry["label"] = dev.label
+        raw["devices"][dev_id] = entry
+
+    with open(SPATIAL_YAML_PATH, "w") as f:
+        yaml.dump(raw, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+    # Invalidate cached config
+    sc._cached_config = None
+
+    return {"saved": len(req.devices), "path": SPATIAL_YAML_PATH}

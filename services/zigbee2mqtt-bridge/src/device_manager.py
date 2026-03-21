@@ -2,6 +2,9 @@
 
 import asyncio
 import logging
+import os
+
+import aiohttp
 
 from mqtt_bridge import MQTTBridge
 from devices import DEVICE_TYPE_MAP
@@ -29,8 +32,41 @@ class DeviceManager:
             "flush_interval_sec", DEFAULT_FLUSH_INTERVAL
         )
 
-    def create_devices(self):
-        """Instantiate device objects from config."""
+    async def sync_zones_from_spatial(self):
+        """Fetch spatial config from dashboard and build device->zone mapping.
+
+        Returns a dict {device_id: zone_id} from the spatial config's device
+        positions. This allows ZoneEditor placements to override YAML zone settings.
+        """
+        backend_url = os.getenv("BACKEND_URL", "http://backend:8000")
+        url = f"{backend_url}/sensors/spatial/config"
+        mapping: dict[str, dict] = {}
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status != 200:
+                        logger.warning("Spatial config fetch failed: %d", resp.status)
+                        return mapping
+                    data = await resp.json()
+            for dev_id, dev_info in (data.get("devices") or {}).items():
+                zone = dev_info.get("zone", "")
+                label = dev_info.get("label", "")
+                # Only use canonical zone IDs (zone_*) — skip legacy names like "main"
+                if zone and zone.startswith("zone_"):
+                    mapping[dev_id] = {"zone": zone, "label": label}
+            logger.info("Spatial config sync: %d device-zone mappings loaded", len(mapping))
+        except Exception as e:
+            logger.warning("Spatial config sync failed (non-fatal): %s", e)
+        return mapping
+
+    def create_devices(self, spatial_overrides: dict | None = None):
+        """Instantiate device objects from config.
+
+        Args:
+            spatial_overrides: Optional {device_id: {"zone": ..., "label": ...}}
+                from spatial config to override YAML zone/label settings.
+        """
+        overrides = spatial_overrides or {}
         for dev_cfg in self._config.get("devices", []):
             dev_type = dev_cfg.get("type", "")
             cls = DEVICE_TYPE_MAP.get(dev_type)
@@ -38,18 +74,33 @@ class DeviceManager:
                 logger.warning(f"Unknown device type: {dev_type}, skipping {dev_cfg.get('soms_device_id')}")
                 continue
 
+            soms_id = dev_cfg["soms_device_id"]
+            zone = dev_cfg.get("zone", "main")
+            label = dev_cfg.get("label", "")
+
+            # Override from spatial config (ZoneEditor placement)
+            if soms_id in overrides:
+                override = overrides[soms_id]
+                if override.get("zone"):
+                    logger.info("Zone override: %s: %s -> %s", soms_id, zone, override["zone"])
+                    zone = override["zone"]
+                if override.get("label") and not label:
+                    label = override["label"]
+
             device = cls(
                 z2m_friendly_name=dev_cfg["z2m_friendly_name"],
-                soms_device_id=dev_cfg["soms_device_id"],
-                zone=dev_cfg.get("zone", "main"),
-                label=dev_cfg.get("label", ""),
+                soms_device_id=soms_id,
+                zone=zone,
+                label=label,
                 mqtt_bridge=self._mqtt,
             )
             self._devices[device.soms_device_id] = device
             self._mqtt.register_device(device)
             self._mqtt.register_z2m_device(device.z2m_friendly_name, device)
-            logger.info(f"Created device: {device.soms_device_id} ({dev_type}) -> {device.z2m_friendly_name}")
+            logger.info(f"Created device: {device.soms_device_id} ({dev_type}) zone={zone} -> {device.z2m_friendly_name}")
 
+        # Store overrides for auto-registered devices
+        self._spatial_overrides = overrides
         logger.info(f"Total devices: {len(self._devices)}")
 
     @property
@@ -82,6 +133,15 @@ class DeviceManager:
         zone = self._config.get("default_zone", "main")
         definition = z2m_device.get("definition") or {}
         label = definition.get("description", friendly_name)
+
+        # Override from spatial config (ZoneEditor placement)
+        overrides = getattr(self, "_spatial_overrides", {})
+        if soms_id in overrides:
+            override = overrides[soms_id]
+            if override.get("zone"):
+                zone = override["zone"]
+            if override.get("label"):
+                label = override["label"]
 
         device = GenericSensorDevice(
             z2m_friendly_name=friendly_name,

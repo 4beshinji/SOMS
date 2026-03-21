@@ -214,6 +214,9 @@ export interface DevicePosition {
   position: number[];
   type: string;
   channels: string[];
+  orientation_deg?: number | null;
+  fov_deg?: number | null;
+  detection_range_m?: number | null;
 }
 
 export interface CameraConfig {
@@ -236,6 +239,8 @@ export interface SpatialDetection {
   center_px: number[];
   bbox_px: number[];
   confidence: number;
+  track_id?: number;
+  floor_position_m?: number[] | null;
 }
 
 export interface LiveSpatialData {
@@ -368,6 +373,9 @@ export interface DevicePositionResponse {
   y: number;
   device_type: string;
   channels: string[];
+  orientation_deg: number | null;
+  fov_deg: number | null;
+  detection_range_m: number | null;
 }
 
 export interface CreateDevicePositionRequest {
@@ -377,10 +385,18 @@ export interface CreateDevicePositionRequest {
   y: number;
   device_type: string;
   channels: string[];
+  orientation_deg?: number | null;
+  fov_deg?: number | null;
+  detection_range_m?: number | null;
 }
 
 export interface UpdateDevicePositionRequest {
   x: number;
   y: number;
   zone?: string;
+  device_type?: string;
+  channels?: string[];
+  orientation_deg?: number | null;
+  fov_deg?: number | null;
+  detection_range_m?: number | null;
 }

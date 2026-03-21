@@ -15,6 +15,7 @@
 #include <ArduinoJson.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME680.h>
+#include "esp_wifi.h"
 
 // ==================== Configuration ====================
 #if __has_include("generated_config.h")
@@ -55,9 +56,19 @@ const char* MQTT_PASS_STR = CFG_MQTT_PASS;
 const char* DEVICE_ID = CFG_DEVICE_ID;
 const char* ZONE = CFG_ZONE;
 
+// WiFi CSI configuration
+#ifndef CFG_CSI_ENABLED
+#define CFG_CSI_ENABLED 0
+#endif
+#define CSI_PUBLISH_INTERVAL_MS 100   // 10 Hz publish rate
+#define CSI_SUBCARRIER_COUNT    52    // LLTF 20 MHz
+
 // MQTT topics (built dynamically in setup())
 char topicPrefix[128];
 char topicMcpRequest[128];
+#if CFG_CSI_ENABLED
+char topicCSI[128];
+#endif
 
 // I2C pins (XIAO ESP32-S3)
 #define SDA_PIN 5
@@ -77,6 +88,64 @@ Adafruit_BME680 bme;
 unsigned long lastTelemetry = 0;
 unsigned long lastStatus = 0;
 
+// ==================== WiFi CSI ====================
+#if CFG_CSI_ENABLED
+static int8_t csi_raw_buf[CSI_SUBCARRIER_COUNT * 2];
+static volatile bool csi_data_ready = false;
+static portMUX_TYPE csi_mux = portMUX_INITIALIZER_UNLOCKED;
+static unsigned long lastCSI = 0;
+
+static void wifi_csi_cb(void* ctx, wifi_csi_info_t* info) {
+  if (!info || !info->buf) return;
+  int offset = info->first_word_invalid ? 4 : 0;
+  int available = (info->len - offset) / 2;
+  if (available < CSI_SUBCARRIER_COUNT) return;
+
+  portENTER_CRITICAL(&csi_mux);
+  memcpy((void*)csi_raw_buf, info->buf + offset, CSI_SUBCARRIER_COUNT * 2);
+  csi_data_ready = true;
+  portEXIT_CRITICAL(&csi_mux);
+}
+
+void setupCSI() {
+  wifi_csi_config_t cfg;
+  memset(&cfg, 0, sizeof(cfg));
+  cfg.lltf_en = true;
+  cfg.htltf_en = true;
+  cfg.stbc_htltf2_en = true;
+  cfg.ltf_merge_en = true;
+  cfg.channel_filter_en = true;
+  cfg.manu_scale = false;
+  cfg.shift = false;
+
+  ESP_ERROR_CHECK(esp_wifi_set_csi_config(&cfg));
+  ESP_ERROR_CHECK(esp_wifi_set_csi_rx_cb(wifi_csi_cb, NULL));
+  ESP_ERROR_CHECK(esp_wifi_set_csi(true));
+  Serial.printf("WiFi CSI enabled → %s (10 Hz)\n", topicCSI);
+}
+
+void publishCSI() {
+  int8_t local_buf[CSI_SUBCARRIER_COUNT * 2];
+
+  portENTER_CRITICAL(&csi_mux);
+  memcpy(local_buf, (void*)csi_raw_buf, sizeof(local_buf));
+  csi_data_ready = false;
+  portEXIT_CRITICAL(&csi_mux);
+
+  JsonDocument doc;
+  JsonArray amp = doc["amplitudes"].to<JsonArray>();
+  for (int i = 0; i < CSI_SUBCARRIER_COUNT; i++) {
+    float re = (float)local_buf[2 * i];
+    float im = (float)local_buf[2 * i + 1];
+    amp.add(sqrtf(re * re + im * im));
+  }
+
+  String output;
+  serializeJson(doc, output);
+  mqtt.publish(topicCSI, output.c_str());
+}
+#endif
+
 // Forward declarations
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 void handleToolCall(JsonDocument& doc);
@@ -93,6 +162,9 @@ void setup() {
   // Build MQTT topics dynamically
   snprintf(topicPrefix, sizeof(topicPrefix), "office/%s/sensor/%s", ZONE, DEVICE_ID);
   snprintf(topicMcpRequest, sizeof(topicMcpRequest), "mcp/%s/request/call_tool", DEVICE_ID);
+#if CFG_CSI_ENABLED
+  snprintf(topicCSI, sizeof(topicCSI), "office/%s/wifi-csi/%s", ZONE, DEVICE_ID);
+#endif
 
   // I2C init
   Wire.begin(SDA_PIN, SCL_PIN);
@@ -155,6 +227,11 @@ void setup() {
     Serial.println("\nMQTT connection failed!");
   }
 
+  // WiFi CSI collection (after WiFi + MQTT are up)
+#if CFG_CSI_ENABLED
+  setupCSI();
+#endif
+
   Serial.println("=== Initialization Complete ===\n");
   publishStatus();
 }
@@ -191,6 +268,14 @@ void loop() {
     publishStatus();
     lastStatus = millis();
   }
+
+  // WiFi CSI publish (10 Hz)
+#if CFG_CSI_ENABLED
+  if (csi_data_ready && millis() - lastCSI >= CSI_PUBLISH_INTERVAL_MS) {
+    publishCSI();
+    lastCSI = millis();
+  }
+#endif
 
   delay(10);
 }

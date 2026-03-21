@@ -26,6 +26,7 @@ from pose_estimator import PoseEstimator
 from state_publisher import StatePublisher
 from camera_discovery import CameraDiscovery
 from image_sources import ImageSourceFactory
+from snapshot_server import SnapshotServer
 
 
 async def main():
@@ -73,14 +74,30 @@ async def main():
         camera_id = monitor_config["camera_id"]
         zone_name = monitor_config.get("zone_name", "default")
 
+        # Auto-create HTTP image source from cam_{ip} camera_id
+        source = None
+        parts = camera_id.replace("cam_", "").split("_")
+        if len(parts) == 4 and all(p.isdigit() for p in parts):
+            ip = ".".join(parts)
+            from image_sources.base import CameraInfo
+            cam_info = CameraInfo(
+                camera_id=camera_id,
+                protocol="http_stream",
+                address=f"http://{ip}:81/",
+                zone_name=zone_name,
+            )
+            source = ImageSourceFactory.create(cam_info)
+            logger.info(f"Static monitor {camera_id}: HTTP source http://{ip}:81/")
+
         if monitor_type == "OccupancyMonitor":
-            monitor = OccupancyMonitor(camera_id, zone_name)
+            monitor = OccupancyMonitor(camera_id, zone_name, image_source=source)
         elif monitor_type == "WhiteboardMonitor":
-            monitor = WhiteboardMonitor(camera_id, zone_name)
+            monitor = WhiteboardMonitor(camera_id, zone_name, image_source=source)
         elif monitor_type == "ActivityMonitor":
             monitor = ActivityMonitor(
                 camera_id, zone_name,
                 fall_detection_config=fall_detection_config,
+                image_source=source,
             )
         else:
             logger.warning(f"Unknown monitor type: {monitor_type}")
@@ -211,12 +228,25 @@ async def main():
             cam_id = cam_cfg["camera_id"]
             zone = cam_cfg["zone_name"]
 
-            # Create image source for this camera if it was discovered
+            # Create dedicated image source for tracking (don't share with activity monitor)
             source = None
-            for name, monitor in scheduler.monitors.items():
-                if hasattr(monitor, 'camera_id') and monitor.camera_id == cam_id:
-                    source = monitor._image_source
-                    break
+            parts = cam_id.replace("cam_", "").split("_")
+            if len(parts) == 4 and all(p.isdigit() for p in parts):
+                ip = ".".join(parts)
+                from image_sources.base import CameraInfo
+                cam_info = CameraInfo(
+                    camera_id=cam_id,
+                    protocol="http_stream",
+                    address=f"http://{ip}:81/",
+                    zone_name=zone,
+                )
+                source = ImageSourceFactory.create(cam_info)
+            else:
+                # Fallback: try to find from existing monitors
+                for name, monitor in scheduler.monitors.items():
+                    if hasattr(monitor, 'camera_id') and monitor.camera_id == cam_id:
+                        source = monitor._image_source
+                        break
 
             track_monitor = TrackingMonitor(
                 camera_id=cam_id,
@@ -307,6 +337,24 @@ async def main():
                 logger.info("VLM periodic service registered with %d zones", len(zone_sources))
 
         logger.info("=== VLM Pipeline Ready (model=%s, api=%s) ===", vlm_model, vlm_api_style)
+
+    # --- Snapshot HTTP Server ---
+    snapshot_port = int(os.environ.get("SNAPSHOT_PORT", "8019"))
+    spatial_path_snap = Path(__file__).parent.parent.parent.parent / "config" / "spatial.yaml"
+    snap_server = SnapshotServer(port=snapshot_port)
+    snap_server.load_config(monitors_yaml=config_path, spatial_yaml=spatial_path_snap)
+
+    # Inject verified URLs from discovery + scheduler into snapshot server
+    for name, monitor in scheduler.monitors.items():
+        if hasattr(monitor, 'camera_id') and hasattr(monitor, '_image_source'):
+            src = monitor._image_source
+            if src and hasattr(src, 'camera_info'):
+                zone = getattr(monitor, 'zone_name', '') or ''
+                snap_server.set_discovered_url(
+                    monitor.camera_id, src.camera_info.address, zone,
+                )
+
+    await snap_server.start()
 
     logger.info("=== Vision Service Ready ===")
 

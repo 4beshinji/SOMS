@@ -6,6 +6,7 @@ import {
   fetchAnomalyDetections,
   triggerTraining,
 } from '../api/anomaly';
+import { useZoneName } from '../hooks/useZoneNames';
 
 const SEVERITY_STYLES: Record<string, string> = {
   normal: 'bg-[var(--success-50)] text-[var(--success-700)]',
@@ -18,6 +19,7 @@ export default function AnomalyPage() {
   const [filterZone, setFilterZone] = useState('');
   const [filterSeverity, setFilterSeverity] = useState('');
   const [filterHours, setFilterHours] = useState(24);
+  const zoneName = useZoneName();
 
   const healthQuery = useQuery({
     queryKey: ['anomaly-health'],
@@ -85,7 +87,7 @@ export default function AnomalyPage() {
             (modelsQuery.data ?? []).map((m) => (
               <div key={m.id} className="px-4 py-3 flex items-center justify-between">
                 <div>
-                  <span className="text-sm font-medium text-[var(--gray-900)]">{m.zone}</span>
+                  <span className="text-sm font-medium text-[var(--gray-900)]">{zoneName(m.zone)}</span>
                   <span className="text-xs text-[var(--gray-500)] ml-2">{m.arch}</span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -153,7 +155,7 @@ export default function AnomalyPage() {
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${SEVERITY_STYLES[d.severity] ?? SEVERITY_STYLES.normal}`}>
                   {d.severity}
                 </span>
-                <span className="text-[var(--gray-900)] font-medium">{d.zone}</span>
+                <span className="text-[var(--gray-900)] font-medium">{zoneName(d.zone)}</span>
                 <span className="text-[var(--gray-500)]">{d.channel}</span>
                 <span className="text-[var(--gray-500)] ml-auto">
                   score: {d.score.toFixed(2)} | predicted: {d.predicted.toFixed(1)} | actual: {d.actual.toFixed(1)}

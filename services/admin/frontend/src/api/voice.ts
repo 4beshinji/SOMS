@@ -16,7 +16,8 @@ export interface CurrencyUnitStatus {
 export async function fetchRejectionStatus(): Promise<StockStatus> {
   const res = await authFetch('/api/voice/rejection/status');
   if (!res.ok) throw new Error('Failed to fetch rejection status');
-  return res.json();
+  const data = await res.json();
+  return { count: data.stock_count, max: data.max_stock, generating: data.is_generating };
 }
 
 export async function clearRejectionStock(): Promise<void> {
@@ -27,7 +28,8 @@ export async function clearRejectionStock(): Promise<void> {
 export async function fetchAcceptanceStatus(): Promise<StockStatus> {
   const res = await authFetch('/api/voice/acceptance/status');
   if (!res.ok) throw new Error('Failed to fetch acceptance status');
-  return res.json();
+  const data = await res.json();
+  return { count: data.stock_count, max: data.max_stock, generating: data.is_generating };
 }
 
 export async function clearAcceptanceStock(): Promise<void> {
@@ -38,7 +40,13 @@ export async function clearAcceptanceStock(): Promise<void> {
 export async function fetchCurrencyUnitStatus(): Promise<CurrencyUnitStatus> {
   const res = await authFetch('/api/voice/currency-units/status');
   if (!res.ok) throw new Error('Failed to fetch currency unit status');
-  return res.json();
+  const data = await res.json();
+  return {
+    count: data.stock_count,
+    max: data.max_stock,
+    generating: false,
+    sample: data.sample ? [data.sample] : [],
+  };
 }
 
 export async function clearCurrencyUnitStock(): Promise<void> {

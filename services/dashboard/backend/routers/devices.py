@@ -74,6 +74,8 @@ class UpdateDevicePositionIn(BaseModel):
     x: float
     y: float
     zone: str | None = None
+    device_type: str | None = None
+    channels: list[str] | None = None
     orientation_deg: float | None = None
     fov_deg: float | None = None
     detection_range_m: float | None = None
@@ -159,11 +161,16 @@ async def update_device_position(
     row.y = body.y
     if body.zone is not None:
         row.zone = body.zone
-    if body.orientation_deg is not None:
+    if body.device_type is not None:
+        row.device_type = body.device_type
+    if body.channels is not None:
+        row.channels = json.dumps(body.channels)
+    # For orientation/fov/range: update only if explicitly sent (allows clearing to null)
+    if "orientation_deg" in body.model_fields_set:
         row.orientation_deg = body.orientation_deg
-    if body.fov_deg is not None:
+    if "fov_deg" in body.model_fields_set:
         row.fov_deg = body.fov_deg
-    if body.detection_range_m is not None:
+    if "detection_range_m" in body.model_fields_set:
         row.detection_range_m = body.detection_range_m
     await db.commit()
     await db.refresh(row)
@@ -206,6 +213,7 @@ class DiscoveredDevice(BaseModel):
     online: bool | None = None
     battery_pct: int | None = None
     bridge: str | None = None  # "switchbot" | "zigbee2mqtt" | None
+    model: str | None = None   # hardware model (e.g. Z2M modelId)
 
 
 # ── Discovery cache ──────────────────────────────────────────────────
@@ -237,6 +245,14 @@ _TYPE_CHANNELS: dict[str, list[str]] = {
     "ir_ac": ["power_state"],
     "ir_tv": ["power_state"],
     "ir_fan": ["power_state"],
+    "vibration": ["vibration"],
+    "soil": ["temperature", "humidity"],
+    "occupancy": ["occupancy"],
+    "pressure": ["pressure"],
+    "co2": ["co2"],
+    "air_quality": ["pm25", "voc"],
+    "water_leak": ["water_leak"],
+    "smoke": ["smoke"],
 }
 
 
@@ -250,6 +266,87 @@ def _load_bridge_configs() -> list[dict]:
     devices: list[dict] = []
     z2m_bridge_devices: list[dict] = []  # raw config entries for cross-reference
 
+    # ZCL Cluster ID → (channel, device_type) mapping
+    _ZCL_CLUSTER_MAP: dict[int, tuple[str, str | None]] = {
+        1026: ("temperature", "temp_humidity"),
+        1029: ("humidity", "temp_humidity"),
+        1024: ("illuminance", "illuminance"),
+        1028: ("pressure", "pressure"),
+        1280: ("motion", "motion"),         # IAS Zone — refined by model override
+        1030: ("occupancy", "presence"),
+        6:    ("power_state", "plug"),
+        8:    ("brightness", "light"),
+        768:  ("color", "light"),
+        1794: ("power", None),
+        2820: ("power", None),
+        1027: ("pressure", "pressure"),
+        1037: ("co2", "co2"),               # CO2 concentration
+        1066: ("pm25", "air_quality"),       # PM2.5
+    }
+
+    # Model ID → override device_type (ZCL clusters alone can't distinguish IAS Zone subtypes)
+    _MODEL_TYPE_OVERRIDE: dict[str, str] = {
+        "ZG-102ZM": "vibration",            # Vibration sensor, not generic motion
+        "ZG-303Z":  "soil",                 # Soil moisture (reports temp+humidity via ZCL)
+        "ZG-204ZK": "presence",             # 24GHz mmWave presence (IAS Zone → motion, but really presence)
+        "ZG-204ZV": "presence",             # 24GHz mmWave multi-sensor
+    }
+
+    # Z2M database.db — IEEE → model/manufacturer/capabilities lookup
+    z2m_db_models: dict[str, dict] = {}  # ieee_norm → {modelId, manufName, channels, device_type}
+    z2m_db_path = Path("/app/z2m-data/database.db")
+    if not z2m_db_path.exists():
+        z2m_db_path = Path("services/zigbee2mqtt/data/database.db")
+    if z2m_db_path.exists():
+        try:
+            with open(z2m_db_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    entry = json.loads(line)
+                    ieee = entry.get("ieeeAddr", "")
+                    if ieee and entry.get("type") != "Coordinator":
+                        ieee_norm = ieee.lower().replace("0x", "")
+                        # Collect all inClusters across endpoints
+                        all_in: set[int] = set()
+                        for ep in entry.get("endpoints", {}).values():
+                            all_in.update(ep.get("inClusterList", []))
+                        # Derive channels and device_type from ZCL clusters
+                        auto_channels: list[str] = []
+                        auto_types: list[str] = []
+                        for cid in sorted(all_in):
+                            mapping = _ZCL_CLUSTER_MAP.get(cid)
+                            if mapping:
+                                ch, typ = mapping
+                                if ch not in auto_channels:
+                                    auto_channels.append(ch)
+                                if typ and typ not in auto_types:
+                                    auto_types.append(typ)
+                        # Apply model-based override for IAS Zone subtypes
+                        model_id = entry.get("modelId", "")
+                        override = _MODEL_TYPE_OVERRIDE.get(model_id)
+                        if override:
+                            # Replace the primary IAS-derived type with the correct one
+                            auto_types = [override if t == "motion" else t for t in auto_types]
+                            if override not in auto_types:
+                                auto_types.insert(0, override)
+                            # Deduplicate
+                            seen: list[str] = []
+                            for t in auto_types:
+                                if t not in seen:
+                                    seen.append(t)
+                            auto_types = seen
+
+                        z2m_db_models[ieee_norm] = {
+                            "modelId": model_id,
+                            "manufName": entry.get("manufName", ""),
+                            "channels": auto_channels,
+                            "device_type": ",".join(auto_types) if auto_types else "sensor",
+                        }
+        except Exception as e:
+            logger.debug("Failed to load z2m database.db: %s", e)
+
     # Zigbee2MQTT bridge config
     z2m_path = Path("/app/config/zigbee2mqtt-bridge.yaml")
     if not z2m_path.exists():
@@ -260,13 +357,30 @@ def _load_bridge_configs() -> list[dict]:
                 z2m = yaml.safe_load(f) or {}
             z2m_bridge_devices = z2m.get("devices", [])
             for d in z2m_bridge_devices:
+                # Lookup model from database.db via IEEE address
+                fname = d.get("z2m_friendly_name", "")
+                ieee_norm = fname.lower().replace("0x", "")
+                db_info = z2m_db_models.get(ieee_norm, {})
+                model_str = db_info.get("modelId", "")
+                if model_str and db_info.get("manufName"):
+                    model_str = f"{db_info['manufName']} {model_str}"
+                # Channels: prefer bridge config type mapping, fallback to ZCL auto-detect
+                cfg_channels = _TYPE_CHANNELS.get(d.get("type", ""), [])
+                zcl_channels = db_info.get("channels", [])
+                # Merge: config channels + any ZCL channels not already covered
+                merged_channels = list(cfg_channels)
+                for ch in zcl_channels:
+                    if ch not in merged_channels:
+                        merged_channels.append(ch)
                 devices.append({
                     "device_id": d.get("soms_device_id", ""),
                     "device_type": d.get("type", "sensor"),
                     "zone": d.get("zone"),
                     "label": d.get("label"),
-                    "channels": _TYPE_CHANNELS.get(d.get("type", ""), []),
+                    "channels": merged_channels,
                     "bridge": "zigbee2mqtt",
+                    "model": model_str or None,
+                    "_z2m_friendly_name": fname,  # for dedup in discover_devices
                 })
         except Exception as e:
             logger.warning("Failed to load z2m config: %s", e)
@@ -275,24 +389,39 @@ def _load_bridge_configs() -> list[dict]:
     z2m_conf_path = Path("/app/z2m-data/configuration.yaml")
     if not z2m_conf_path.exists():
         z2m_conf_path = Path("services/zigbee2mqtt/data/configuration.yaml")
-    registered_z2m_names = {d.get("z2m_friendly_name") for d in z2m_bridge_devices}
+    # Collect both z2m_friendly_name values and their normalized IEEE forms
+    registered_z2m_names: set[str] = set()
+    for d in z2m_bridge_devices:
+        name = d.get("z2m_friendly_name", "")
+        if name:
+            registered_z2m_names.add(name)
+            # Also register normalized IEEE form (lowercase, no 0x prefix)
+            registered_z2m_names.add(name.lower().replace("0x", ""))
     if z2m_conf_path.exists():
         try:
             with open(z2m_conf_path) as f:
                 z2m_conf = yaml.safe_load(f) or {}
             for ieee, info in (z2m_conf.get("devices") or {}).items():
                 fname = info.get("friendly_name", ieee)
-                if fname in registered_z2m_names:
+                ieee_norm = ieee.replace("'", "").lower().replace("0x", "")
+                if fname in registered_z2m_names or ieee_norm in registered_z2m_names:
                     continue  # already in bridge config
                 # Auto-generated SOMS ID matches bridge auto_register pattern
                 short_ieee = ieee.replace("0x", "").replace("'", "").lower()[-8:]
+                db_info = z2m_db_models.get(ieee_norm, {})
+                model_str = db_info.get("modelId", "")
+                if model_str and db_info.get("manufName"):
+                    model_str = f"{db_info['manufName']} {model_str}"
+                auto_type = db_info.get("device_type", "sensor")
+                auto_channels = db_info.get("channels", [])
                 devices.append({
                     "device_id": f"z2m_auto_{short_ieee}",
-                    "device_type": "generic_sensor",
+                    "device_type": auto_type,
                     "zone": None,
                     "label": f"Z2M {fname}",
-                    "channels": [],
+                    "channels": auto_channels,
                     "bridge": "zigbee2mqtt",
+                    "model": model_str or None,
                 })
         except Exception as e:
             logger.warning("Failed to load z2m configuration.yaml: %s", e)
@@ -345,7 +474,26 @@ async def discover_devices(db: AsyncSession = Depends(get_db)):
             "online": None,
             "battery_pct": None,
             "bridge": d.get("bridge"),
+            "model": d.get("model"),
         }
+
+    # Build set of known IEEE suffixes from all z2m config devices for dedup.
+    # Covers both z2m_auto_ IDs and bridge-registered IDs whose IEEE suffix
+    # may appear as stale z2m_auto_ entries in Brain's DeviceRegistry snapshot.
+    _known_z2m_suffixes: set[str] = set()
+    for d in config_devices:
+        if d.get("bridge") != "zigbee2mqtt":
+            continue
+        did = d.get("device_id", "")
+        # z2m_auto_ devices: suffix is the IEEE tail
+        if did.startswith("z2m_auto_"):
+            _known_z2m_suffixes.add(did.replace("z2m_auto_", ""))
+        # Also extract IEEE suffix from raw bridge config z2m_friendly_name
+        ieee_raw = d.get("_z2m_friendly_name", "")
+        if ieee_raw:
+            _known_z2m_suffixes.add(
+                ieee_raw.replace("0x", "").replace("'", "").lower()[-8:]
+            )
 
     # 2. Brain DeviceRegistry snapshot (from events.device_registry_snapshot)
     try:
@@ -366,6 +514,12 @@ async def discover_devices(db: AsyncSession = Depends(get_db)):
                     merged[did]["battery_pct"] = entry.get("battery_pct")
                     merged[did]["source"] = "both"
                 else:
+                    # Skip z2m_auto_ heartbeat ghosts whose IEEE suffix
+                    # matches a device already registered via bridge config
+                    if did.startswith("z2m_auto_"):
+                        suffix = did.replace("z2m_auto_", "")
+                        if suffix in _known_z2m_suffixes:
+                            continue
                     merged[did] = {
                         "device_id": did,
                         "source": "heartbeat",

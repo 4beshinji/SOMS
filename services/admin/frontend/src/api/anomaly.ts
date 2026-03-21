@@ -30,7 +30,10 @@ export async function fetchAnomalyHealth(): Promise<{ status: string }> {
 export async function fetchAnomalyModels(): Promise<AnomalyModel[]> {
   const res = await authFetch('/api/anomaly/models');
   if (!res.ok) throw new Error('Failed to fetch anomaly models');
-  return res.json();
+  const data = await res.json();
+  const models = data.models ?? data;
+  if (Array.isArray(models)) return models;
+  return Object.values(models);
 }
 
 export async function fetchAnomalyDetections(params?: {
@@ -46,7 +49,8 @@ export async function fetchAnomalyDetections(params?: {
   if (params?.hours) qs.set('hours', String(params.hours));
   const res = await authFetch(`/api/anomaly/admin/anomalies?${qs}`);
   if (!res.ok) throw new Error('Failed to fetch anomaly detections');
-  return res.json();
+  const data = await res.json();
+  return data.detections ?? data;
 }
 
 export async function triggerTraining(zone?: string): Promise<{ message: string }> {

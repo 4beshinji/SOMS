@@ -84,10 +84,14 @@ def _publish_task_report(task: "models.Task"):
 # Category-based fuzzy duplicate detection (Stage 1.5)
 _TASK_CATEGORIES: dict[str, list[str]] = {
     "device_check": ["デバイス確認", "デバイス調査", "デバイス登録", "未登録", "未確認デバイス",
-                      "デバイスの確認", "デバイスの調査", "デバイスの登録", "未認識", "不明デバイス"],
-    "temperature": ["温度", "室温", "エアコン", "空調"],
+                      "デバイスの確認", "デバイスの調査", "デバイスの登録", "未認識", "不明デバイス",
+                      "デバイスネットワーク"],
+    "temperature": ["温度", "室温", "エアコン", "空調", "暑い", "寒い", "冷房", "暖房"],
     "co2": ["co2", "換気", "二酸化炭素"],
-    "humidity": ["湿度", "加湿", "除湿"],
+    "humidity": ["湿度", "加湿", "除湿", "乾燥"],
+    "lighting": ["照明", "照度", "ライト", "明るさ"],
+    "cleaning": ["掃除", "清掃", "ホワイトボード", "片付け"],
+    "safety": ["転倒", "落下", "安全確認"],
 }
 
 
@@ -205,29 +209,12 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
                     )
                     break
 
-    # Duplicate Check Stage 2: same zone + overlapping task_type
-    # (LLM often generates slightly different titles for the same issue)
-    if not existing_task and task.zone and task.task_type:
-        query2 = select(models.Task).filter(
-            models.Task.zone == task.zone,
-            models.Task.is_completed == False
-        )
-        result2 = await db.execute(query2)
-        candidates = result2.scalars().all()
-        new_types = set(task.task_type)
-        for candidate in candidates:
-            if candidate.task_type:
-                try:
-                    existing_types = set(json.loads(candidate.task_type))
-                except (json.JSONDecodeError, TypeError):
-                    existing_types = set()
-                if new_types & existing_types:  # Any overlap
-                    existing_task = candidate
-                    break
-
     if existing_task:
         # Update existing task in place (preserve ID to prevent repeated audio)
+        old_title = existing_task.title
+        existing_task.title = task.title
         existing_task.description = task.description
+        existing_task.location = task.location
         existing_task.bounty_gold = task.bounty_gold
         existing_task.expires_at = task.expires_at
         existing_task.task_type = json.dumps(task.task_type) if task.task_type else None
@@ -246,6 +233,10 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
             existing_task.completion_text = task.completion_text
         await db.commit()
         await db.refresh(existing_task)
+        logger.info(
+            "Duplicate task updated: id=%d title='%s'->'%s'",
+            existing_task.id, old_title, task.title,
+        )
         return _task_to_response(existing_task)
 
     new_task = models.Task(

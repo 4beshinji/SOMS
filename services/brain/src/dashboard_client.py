@@ -191,6 +191,7 @@ class DashboardClient:
                     orientation_deg=d.get("orientation_deg"),
                     fov_deg=d.get("fov_deg"),
                     detection_range_m=d.get("detection_range_m"),
+                    label=d.get("label", ""),
                 )
             for cam_id, c in raw.get("cameras", {}).items():
                 pos = c.get("position", [0.0, 0.0])

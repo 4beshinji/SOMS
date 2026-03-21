@@ -9,21 +9,23 @@ z2m_base_topic: zigbee2mqtt
 # type: temp_humidity | motion | presence | illuminance | contact | plug | light
 # soms_device_id: unique ID used in MQTT topics (e.g. office/main/sensor/{soms_device_id}/...)
 # zone: SOMS zone name (e.g. "main", "meeting_room")
+default_zone: zone_4d0rct
+
 devices:
   - z2m_friendly_name: "0xa4c138e17e7ba03a"
     type: presence
     soms_device_id: "z2m_presence_01"
-    zone: "main"
-    label: "24GHz人体存在センサー"
+    zone: "zone_4d0rct"
+    label: "24GHz人体存在センサー（エントランス）"
 
   - z2m_friendly_name: "0xa4c138b65ad26965"
     type: motion
     soms_device_id: "z2m_motion_01"
-    zone: "main"
-    label: "モーションセンサー"
+    zone: "zone_4d0rct"
+    label: "モーションセンサー（エントランス）"
 
   - z2m_friendly_name: "0xa4c13811d0a93ed4"
     type: illuminance
     soms_device_id: "z2m_lux_01"
-    zone: "main"
+    zone: "zone_4d0rct"
     label: "照度センサー"

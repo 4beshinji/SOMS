@@ -1,30 +1,79 @@
 monitors:
-  - name: occupancy_meeting_room
-    type: OccupancyMonitor
-    camera_id: camera_node_01
-    zone_name: meeting_room_a
+  - name: activity_zone_6wpk8l
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_172
+    zone_name: zone_6wpk8l
     enabled: true
 
-  - name: whiteboard_meeting_room
-    type: WhiteboardMonitor
-    camera_id: camera_node_01
-    zone_name: meeting_room_a
+  - name: activity_meeting_room_b
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_173
+    zone_name: meeting_room_b
+    enabled: true
+
+  - name: activity_desk_area_a
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_177
+    zone_name: desk_area_a
+    enabled: true
+
+  - name: activity_entrance
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_178
+    zone_name: entrance
+    enabled: true
+
+  - name: activity_cam_162
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_162
+    zone_name: cam_192_168_128_162
+    enabled: true
+
+  - name: activity_cam_164
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_164
+    zone_name: cam_192_168_128_164
+    enabled: true
+
+  - name: activity_cam_166
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_166
+    zone_name: cam_192_168_128_166
+    enabled: true
+
+  - name: activity_zone_gu4bzs
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_175
+    zone_name: zone_gu4bzs
     enabled: true
 
 discovery:
   enabled: true
   network: "192.168.128.0/24"
   timeout: 3.0
-  verify_yolo: true
-  default_interval_sec: 10.0
+  verify_yolo: false
+  default_interval_sec: 30.0
   exclude_ips:
     - "192.168.128.1"
     - "192.168.128.161"
+    # Exclude all static monitor cameras
+    - "192.168.128.172"
+    - "192.168.128.173"
+    - "192.168.128.177"
+    - "192.168.128.178"
+    - "192.168.128.162"
+    - "192.168.128.164"
+    - "192.168.128.166"
+    - "192.168.128.175"
   zone_map:
-    "192.168.128.172": "kitchen"
+    "192.168.128.172": "zone_6wpk8l"
     "192.168.128.173": "meeting_room_b"
     "192.168.128.177": "desk_area_a"
     "192.168.128.178": "entrance"
+    "192.168.128.162": "cam_192_168_128_162"
+    "192.168.128.164": "cam_192_168_128_164"
+    "192.168.128.166": "cam_192_168_128_166"
+    "192.168.128.175": "zone_gu4bzs"
 
 fall_detection:
   enabled: true
@@ -61,7 +110,7 @@ vlm:
     interval_sec: 300
 
 tracking:
-  enabled: false  # torchreid not available in ROCm base image yet
+  enabled: true
   tracker: botsort.yaml
   reid_model: osnet_x0_5
   publish_interval_sec: 0.5
@@ -80,7 +129,7 @@ tracking:
     tracklet_timeout_s: 60.0
     global_track_timeout_s: 300.0
   cameras:
-    - camera_id: cam_192_168_128_172
-      zone_name: kitchen
-    - camera_id: cam_192_168_128_178
-      zone_name: entrance
+    - camera_id: cam_192_168_128_162
+      zone_name: cam_192_168_128_162
+    - camera_id: cam_192_168_128_166
+      zone_name: cam_192_168_128_166

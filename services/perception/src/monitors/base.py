@@ -47,8 +47,32 @@ class MonitorBase(ABC):
 
                 if image is not None:
                     self._consecutive_failures = 0
+                    # Cache frame for snapshot server
+                    try:
+                        from snapshot_server import SnapshotServer
+                        SnapshotServer.cache_frame(self.camera_id, image)
+                    except Exception:
+                        pass  # Non-blocking
                     # 推論実行
                     detections = await self.analyze(image)
+                    # Cache annotated frame for snapshot overlay
+                    try:
+                        all_dets = []
+                        if isinstance(detections, dict):
+                            all_dets = detections.get("all_detections", [])
+                        elif isinstance(detections, list):
+                            # TrackingMonitor returns list[TrackedPerson]
+                            for d in detections:
+                                if hasattr(d, 'bbox_px'):
+                                    all_dets.append({
+                                        "class": "person",
+                                        "confidence": getattr(d, 'confidence', 0.5),
+                                        "bbox": d.bbox_px,
+                                    })
+                        if all_dets:
+                            SnapshotServer.cache_annotated(self.camera_id, image, all_dets)
+                    except Exception:
+                        pass
                     # 結果処理
                     await self.process_results(detections)
                 else:

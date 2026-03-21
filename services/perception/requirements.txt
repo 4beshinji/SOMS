@@ -8,3 +8,7 @@ pyyaml>=6.0.0
 # torchreid: install from github when tracking is enabled
 # git+https://github.com/KaiyangZhou/deep-person-reid.git
 scipy>=1.10.0
+lap>=0.5.12
+aiohttp>=3.9.0
+gdown>=4.6.0
+torchreid>=0.2.5

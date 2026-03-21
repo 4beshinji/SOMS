@@ -1,11 +1,10 @@
 /**
  * Camera Node - Freenove ESP32 WROVER v3.0
- * MCP-compliant Request-Driven Image Server
+ * MJPEG HTTP Stream + MCP Control
  *
  * Features:
- * - JSON-RPC 2.0 MCP protocol via mcp/{device_id}/request/call_tool
- * - Dynamic resolution JPEG capture on demand
- * - Base64-encoded image delivery over MQTT
+ * - MJPEG HTTP stream on port 81 (for Perception pipeline)
+ * - JSON-RPC 2.0 MCP protocol via MQTT (for Brain control)
  * - Periodic heartbeat
  */
 
@@ -15,6 +14,7 @@
 #include <ArduinoJson.h>
 #include <base64.h>
 #include "esp_camera.h"
+#include "esp_http_server.h"
 
 // ==================== Configuration ====================
 #if __has_include("generated_config.h")
@@ -44,6 +44,17 @@
 #endif
 #ifndef CFG_ZONE
 #define CFG_ZONE "main"
+#endif
+
+// Static IP (leave undefined or "" for DHCP)
+#ifndef CFG_STATIC_IP
+#define CFG_STATIC_IP ""
+#endif
+#ifndef CFG_GATEWAY
+#define CFG_GATEWAY "192.168.128.1"
+#endif
+#ifndef CFG_SUBNET
+#define CFG_SUBNET "255.255.255.0"
 #endif
 
 const char* WIFI_SSID = CFG_WIFI_SSID;
@@ -77,6 +88,66 @@ char topicStatus[128];
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 #define LED_PIN           2
+
+// ==================== MJPEG Stream ====================
+#define PART_BOUNDARY "123456789000000000000987654321"
+static const char *STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
+static const char *STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
+static const char *STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
+
+static httpd_handle_t stream_httpd = NULL;
+
+static esp_err_t stream_handler(httpd_req_t *req) {
+  esp_err_t res = ESP_OK;
+  char part_buf[64];
+
+  res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
+  if (res != ESP_OK) return res;
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+  while (true) {
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb) {
+      Serial.println("[Stream] Capture failed");
+      res = ESP_FAIL;
+      break;
+    }
+
+    size_t hlen = snprintf(part_buf, sizeof(part_buf), STREAM_PART, fb->len);
+
+    res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
+    if (res == ESP_OK)
+      res = httpd_resp_send_chunk(req, part_buf, hlen);
+    if (res == ESP_OK)
+      res = httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
+
+    esp_camera_fb_return(fb);
+
+    if (res != ESP_OK) break;  // Client disconnected
+  }
+  return res;
+}
+
+void startStreamServer() {
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.server_port = 81;
+  config.ctrl_port = 32769;
+  config.stack_size = 8192;
+
+  httpd_uri_t stream_uri = {
+    .uri = "/",
+    .method = HTTP_GET,
+    .handler = stream_handler,
+    .user_ctx = NULL
+  };
+
+  if (httpd_start(&stream_httpd, &config) == ESP_OK) {
+    httpd_register_uri_handler(stream_httpd, &stream_uri);
+    Serial.printf("MJPEG stream: http://%s:81/\n", WiFi.localIP().toString().c_str());
+  } else {
+    Serial.println("Failed to start stream server!");
+  }
+}
 
 // ==================== Globals ====================
 WiFiClient wifiClient;
@@ -114,7 +185,7 @@ void setupCamera() {
   config.pin_sccb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
+  config.xclk_freq_hz = 10000000;  // 10MHz: avoids WiFi scan interference on WROVER
   config.pixel_format = PIXFORMAT_JPEG;
   config.frame_size = FRAMESIZE_VGA;
   config.jpeg_quality = 10;
@@ -167,7 +238,21 @@ void setupWiFi() {
                    channel, bestRSSI);
     WiFi.scanDelete();
 
-    WiFi.begin(WIFI_SSID, WIFI_PASS, channel, bssid);
+    // Static IP config before begin()
+    if (strlen(CFG_STATIC_IP) > 0) {
+      IPAddress ip, gw, sn;
+      ip.fromString(CFG_STATIC_IP);
+      gw.fromString(CFG_GATEWAY);
+      sn.fromString(CFG_SUBNET);
+      WiFi.config(ip, gw, sn, gw);
+    }
+
+    // Connect without BSSID/channel lock when using static IP (avoids NO_AP_FOUND)
+    if (strlen(CFG_STATIC_IP) > 0) {
+      WiFi.begin(WIFI_SSID, WIFI_PASS);
+    } else {
+      WiFi.begin(WIFI_SSID, WIFI_PASS, channel, bssid);
+    }
 
     Serial.print("Connecting");
     int attempts = 0;
@@ -190,26 +275,34 @@ void setupWiFi() {
 // ==================== MQTT ====================
 void mqttCallback(char* topic, byte* payload, unsigned int length);
 
+bool mqttConnect() {
+  bool connected;
+  if (strlen(MQTT_USER) > 0) {
+    connected = mqtt.connect(DEVICE_ID, MQTT_USER, MQTT_PASS_STR);
+  } else {
+    connected = mqtt.connect(DEVICE_ID);
+  }
+  if (connected) {
+    mqtt.subscribe(topicMcpRequest);
+    Serial.printf("MQTT connected, subscribed: %s\n", topicMcpRequest);
+  }
+  return connected;
+}
+
 void setupMQTT() {
   mqtt.setServer(MQTT_SERVER, MQTT_PORT);
   mqtt.setCallback(mqttCallback);
   mqtt.setBufferSize(32768);
 
+  // Try a few times, but don't block forever — stream server must stay alive
   Serial.print("Connecting to MQTT");
-  while (!mqtt.connected()) {
-    bool connected;
-    if (strlen(MQTT_USER) > 0) {
-      connected = mqtt.connect(DEVICE_ID, MQTT_USER, MQTT_PASS_STR);
-    } else {
-      connected = mqtt.connect(DEVICE_ID);
-    }
-    if (connected) {
-      mqtt.subscribe(topicMcpRequest);
-      Serial.printf("\nMQTT connected, subscribed: %s\n", topicMcpRequest);
-    } else {
-      Serial.print(".");
-      delay(2000);
-    }
+  for (int i = 0; i < 5 && !mqtt.connected(); i++) {
+    if (mqttConnect()) break;
+    Serial.print(".");
+    delay(2000);
+  }
+  if (!mqtt.connected()) {
+    Serial.println("\nMQTT not available — stream-only mode");
   }
 }
 
@@ -365,6 +458,7 @@ void setup() {
 
   setupCamera();
   setupWiFi();
+  startStreamServer();
   setupMQTT();
 
   digitalWrite(LED_PIN, HIGH);
@@ -375,15 +469,20 @@ void setup() {
 
 // ==================== Main Loop ====================
 void loop() {
-  if (!mqtt.connected()) {
+  // Non-blocking MQTT reconnect (try once per 10s, never block)
+  static unsigned long lastMqttRetry = 0;
+  if (!mqtt.connected() && millis() - lastMqttRetry > 10000) {
     Serial.println("MQTT reconnecting...");
-    setupMQTT();
+    mqttConnect();
+    lastMqttRetry = millis();
   }
-  mqtt.loop();
+  if (mqtt.connected()) {
+    mqtt.loop();
+  }
 
-  // Status every 30 seconds
+  // Status every 30 seconds (only if MQTT is up)
   static unsigned long lastStatus = 0;
-  if (millis() - lastStatus > 30000) {
+  if (mqtt.connected() && millis() - lastStatus > 30000) {
     publishStatus();
     lastStatus = millis();
   }

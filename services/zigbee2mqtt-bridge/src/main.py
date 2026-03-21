@@ -37,7 +37,10 @@ async def main():
 
     # Device manager (no API client — Z2M pushes state)
     dm = DeviceManager(config, mqtt)
-    dm.create_devices()
+
+    # Sync zone assignments from spatial config (ZoneEditor placements)
+    spatial_overrides = await dm.sync_zones_from_spatial()
+    dm.create_devices(spatial_overrides=spatial_overrides)
 
     if not dm.devices:
         logger.warning("No devices configured — bridge will run but do nothing")

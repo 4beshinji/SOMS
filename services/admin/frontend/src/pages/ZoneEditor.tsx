@@ -27,6 +27,7 @@ interface DeviceItem {
   orientationDeg: number | null;
   fovDeg: number | null;
   detectionRangeM: number | null;
+  label?: string | null;
   dirty?: boolean;
   isNew?: boolean;
 }
@@ -80,6 +81,7 @@ interface DiscoveredDevice {
   online: boolean | null;
   battery_pct: number | null;
   bridge: string | null;
+  model: string | null;
 }
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -94,14 +96,29 @@ const CAM_COLOR = '#ef4444';
 const MARKER_COLOR = '#6b7280';
 
 const DEVICE_CATALOG: Record<string, CatalogEntry> = {
+  // ── Motion / Presence ────────────────────
   motion:        { label:'Motion (PIR)', channels:['motion','illuminance'], directional:true, defaultFov:120, defaultRange:6, color:'#f59e0b' },
-  presence:      { label:'Presence (24GHz)', channels:['motion'], directional:true, defaultFov:120, defaultRange:7, color:'#f59e0b' },
+  presence:      { label:'Presence (mmWave)', channels:['motion','occupancy'], directional:true, defaultFov:120, defaultRange:7, color:'#f59e0b' },
   pir:           { label:'PIR', channels:['motion'], directional:true, defaultFov:110, defaultRange:6, color:'#f59e0b' },
+  vibration:     { label:'Vibration', channels:['vibration'], directional:false, color:'#f59e0b' },
+  occupancy:     { label:'Occupancy', channels:['occupancy'], directional:true, defaultFov:120, defaultRange:5, color:'#f59e0b' },
+  // ── Environment ──────────────────────────
   temp_humidity: { label:'Temp/Humidity', channels:['temperature','humidity'], directional:false, color:'#10b981' },
   illuminance:   { label:'Illuminance', channels:['illuminance'], directional:false, color:'#10b981' },
+  pressure:      { label:'Pressure', channels:['pressure'], directional:false, color:'#10b981' },
+  soil:          { label:'Soil Moisture', channels:['temperature','humidity'], directional:false, color:'#65a30d' },
+  co2:           { label:'CO2', channels:['co2'], directional:false, color:'#10b981' },
+  air_quality:   { label:'Air Quality', channels:['pm25','voc'], directional:false, color:'#10b981' },
+  // ── Contact / Leak ───────────────────────
   contact:       { label:'Contact', channels:['contact'], directional:false, color:'#8b5cf6' },
+  water_leak:    { label:'Water Leak', channels:['water_leak'], directional:false, color:'#0ea5e9' },
+  smoke:         { label:'Smoke', channels:['smoke'], directional:false, color:'#dc2626' },
+  // ── Actuators ────────────────────────────
   plug:          { label:'Smart Plug', channels:['power_state'], directional:false, color:'#3b82f6' },
   light:         { label:'Smart Light', channels:['brightness'], directional:false, color:'#3b82f6' },
+  curtain:       { label:'Curtain', channels:['position'], directional:false, color:'#3b82f6' },
+  lock:          { label:'Lock', channels:['lock_state'], directional:false, color:'#3b82f6' },
+  // ── ESP32 composite ──────────────────────
   bme680:        { label:'BME680', channels:['temperature','humidity','pressure','gas'], directional:false, color:'#10b981' },
   mhz19c:        { label:'CO2 (MH-Z19C)', channels:['co2'], directional:false, color:'#10b981' },
   sensor:        { label:'Generic Sensor', channels:[], directional:false, color:'#9ca3af' },
@@ -175,12 +192,37 @@ function nextDeviceId(type: string, existing: DeviceItem[]): string {
   return `${prefix}_${String(max + 1).padStart(2, '0')}`;
 }
 
+/** Parse comma-separated device types */
+function parseTypes(type: string): string[] {
+  return type.split(',').map(t => t.trim()).filter(Boolean);
+}
+
+/** Merge channels from multiple types (deduplicated, order-preserving) */
+function mergeChannels(types: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const t of types) {
+    for (const ch of (DEVICE_CATALOG[t]?.channels ?? [])) {
+      if (!seen.has(ch)) { seen.add(ch); result.push(ch); }
+    }
+  }
+  return result;
+}
+
 function deviceColor(type: string): string {
-  return DEVICE_CATALOG[type]?.color ?? '#9ca3af';
+  const types = parseTypes(type);
+  // Prioritise directional type for colour (e.g. 10GHz radar + temp_humidity → radar colour)
+  const dir = types.find(t => DEVICE_CATALOG[t]?.directional);
+  if (dir) return DEVICE_CATALOG[dir]!.color;
+  for (const t of types) {
+    const c = DEVICE_CATALOG[t]?.color;
+    if (c) return c;
+  }
+  return '#9ca3af';
 }
 
 function isDirectional(type: string): boolean {
-  return DEVICE_CATALOG[type]?.directional ?? false;
+  return parseTypes(type).some(t => DEVICE_CATALOG[t]?.directional ?? false);
 }
 
 // Marker center and size from corners
@@ -201,6 +243,31 @@ const sInput: React.CSSProperties = { width:'100%', marginBottom:8, padding:'4px
 const sLabel: React.CSSProperties = { display:'block', fontSize:12, color:'#9ca3af', marginBottom:4 };
 const sBtn = (active: boolean, c: string): React.CSSProperties => ({ flex:1, padding:'6px 12px', fontSize:12, borderRadius:4, border:'none', cursor:'pointer', fontWeight:500, background:active?c:'#1f2937', color:active?'#fff':'#9ca3af' });
 
+// ── Collapsible Section ────────────────────────────────────────────
+
+function CollapsibleSection({ label, count, extra, defaultOpen = true, children }: {
+  label: string; count: number; extra?: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ borderBottom:'1px solid #1f2937' }}>
+      <div onClick={() => setOpen(p => !p)}
+        style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 12px', cursor:'pointer', userSelect:'none' }}>
+        <span style={{ fontSize:10, color:'#6b7280', transition:'transform 0.15s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}>&#9654;</span>
+        <h2 style={{ fontSize:11, fontWeight:600, color:'#6b7280', textTransform:'uppercase', margin:0, flex:1 }}>
+          {label} ({count})
+        </h2>
+        {extra && <span onClick={e => e.stopPropagation()}>{extra}</span>}
+      </div>
+      {open && (
+        <div style={{ maxHeight:200, overflowY:'auto', padding:'0 12px 8px' }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Component ──────────────────────────────────────────────────────
 
 export default function ZoneEditor() {
@@ -218,14 +285,19 @@ export default function ZoneEditor() {
   const [cursor, setCursor] = useState<Point | null>(null);
   const [editVtx, setEditVtx] = useState<{ zid: string; vi: number } | null>(null);
   const [dragEntity, setDragEntity] = useState<{ type: string; id: string } | null>(null);
+  const [dragCorner, setDragCorner] = useState<{ markerId: string; ci: number } | null>(null);
   const [rotateEntity, setRotateEntity] = useState<{ type: string; id: string } | null>(null);
   const [layers, setLayers] = useState<LayerVis>({ zones: true, devices: true, cameras: true, markers: true, cones: true });
   const [placeDeviceType, setPlaceDeviceType] = useState('sensor');
   const [discovered, setDiscovered] = useState<DiscoveredDevice[]>([]);
   const [pendingBind, setPendingBind] = useState<DiscoveredDevice | null>(null);
+  const [discoveredCams, setDiscoveredCams] = useState<{ camera_id: string; zone: string; fov_deg: number | null; orientation_deg: number | null; resolution: [number,number] | null }[]>([]);
+  const [pendingCamBind, setPendingCamBind] = useState<string | null>(null);
   const [vb, setVb] = useState({ x: -PAD, y: -PAD, w: 34, h: 19 });
   const vbRef = useRef(vb);
   vbRef.current = vb;
+  const [deletedDeviceIds, setDeletedDeviceIds] = useState<string[]>([]);
+  const [deletedCameraIds, setDeletedCameraIds] = useState<string[]>([]);
   const [panning, setPanning] = useState(false);
   const panRef = useRef<{ cx: number; cy: number; vx: number; vy: number } | null>(null);
 
@@ -235,9 +307,10 @@ export default function ZoneEditor() {
     Promise.all([
       fetch('/api/sensors/spatial/floorplan').then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); }),
       fetch('/api/sensors/spatial/zones').then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); }),
-      fetch('/api/sensors/spatial/config').then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); }),
+      fetch('/api/sensors/spatial/devices').then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); }),
+      fetch('/api/sensors/spatial/cameras').then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); }),
       fetch('/api/sensors/spatial/aruco').then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); }),
-    ]).then(([f, z, cfg, ar]) => {
+    ]).then(([f, z, devData, camData, ar]) => {
       setFp(f);
       setVb({ x: -PAD, y: -PAD, w: f.building.width_m + PAD * 2, h: f.building.height_m + PAD * 2 });
       setZones(Object.entries(z.zones || {}).map(([id, d]: [string, any], i) => ({
@@ -246,18 +319,19 @@ export default function ZoneEditor() {
         polygon: (d.polygon || []).map((p: number[]) => ({ x: p[0], y: p[1] })),
         color: COLORS[i % COLORS.length],
       })));
-      // Devices from spatial config
-      const devs: DeviceItem[] = Object.entries(cfg.devices || {}).map(([id, d]: [string, any]) => ({
+      // Devices from YAML
+      const devs: DeviceItem[] = Object.entries(devData.devices || {}).map(([id, d]: [string, any]) => ({
         id, zone: d.zone || 'unknown', x: d.position?.[0] ?? 0, y: d.position?.[1] ?? 0,
         deviceType: d.type || 'sensor', channels: d.channels || [],
         orientationDeg: d.orientation_deg ?? null, fovDeg: d.fov_deg ?? null,
         detectionRangeM: d.detection_range_m ?? null,
+        label: d.label ?? null,
       }));
       setDevices(devs);
-      // Cameras from spatial config
-      const cams: CameraItem[] = Object.entries(cfg.cameras || {}).map(([id, d]: [string, any]) => ({
+      // Cameras from YAML
+      const cams: CameraItem[] = Object.entries(camData.cameras || {}).map(([id, d]: [string, any]) => ({
         id, zone: d.zone || 'unknown', x: d.position?.[0] ?? 0, y: d.position?.[1] ?? 0,
-        z: d.z ?? null, fovDeg: d.fov_deg ?? 90, orientationDeg: d.orientation_deg ?? 0,
+        z: null, fovDeg: d.fov_deg ?? 90, orientationDeg: d.orientation_deg ?? 0,
         resolution: d.resolution || [640, 480],
       }));
       setCameras(cams);
@@ -269,6 +343,14 @@ export default function ZoneEditor() {
     }).catch(e => setErr(e.message));
     // Discovery (non-blocking)
     fetch('/api/devices/discovery').then(r => r.ok ? r.json() : []).then(setDiscovered).catch(() => {});
+    // Camera discovery from Perception service (non-blocking)
+    fetch('/api/cameras/').then(r => r.ok ? r.json() : []).then((list: any[]) => {
+      setDiscoveredCams(list.map(c => ({
+        camera_id: c.camera_id, zone: c.zone || 'unknown',
+        fov_deg: c.fov_deg ?? null, orientation_deg: c.orientation_deg ?? null,
+        resolution: c.resolution ?? null,
+      })));
+    }).catch(() => {});
   }, []);
 
   // ── SVG→World ─────────────────────────────────────────────────
@@ -319,6 +401,15 @@ export default function ZoneEditor() {
         }));
       }
     }
+    // Drag individual marker corner
+    if (dragCorner && w) {
+      setMarkers(p => p.map(m => {
+        if (m.id !== dragCorner.markerId) return m;
+        const nc = [...m.corners.map(c => [...c])];
+        nc[dragCorner.ci] = [w.x, w.y];
+        return { ...m, corners: nc, dirty: true };
+      }));
+    }
     // Rotate handle
     if (rotateEntity && w) {
       if (rotateEntity.type === 'device') {
@@ -335,7 +426,7 @@ export default function ZoneEditor() {
         }));
       }
     }
-  }, [toWorld, panning, editVtx, dragEntity, rotateEntity, zones]);
+  }, [toWorld, panning, editVtx, dragEntity, dragCorner, rotateEntity, zones]);
 
   const beginPan = useCallback((cx: number, cy: number) => {
     setPanning(true);
@@ -352,7 +443,7 @@ export default function ZoneEditor() {
 
   const onUp = useCallback(() => {
     setPanning(false); panRef.current = null; setEditVtx(null);
-    setDragEntity(null); setRotateEntity(null);
+    setDragEntity(null); setDragCorner(null); setRotateEntity(null);
   }, []);
 
   const onWheel = useCallback((e: React.WheelEvent) => {
@@ -378,14 +469,15 @@ export default function ZoneEditor() {
   const finish = useCallback(() => {
     if (drawing.length < 3) return;
     const i = zones.length;
-    const nz: Zone = { id: `zone_${String(i).padStart(2,'0')}`, displayName: `zone_${String(i).padStart(2,'0')}`, polygon: drawing, color: COLORS[i % COLORS.length] };
+    const rid = `zone_${Math.random().toString(36).slice(2, 8)}`;
+    const nz: Zone = { id: rid, displayName: rid, polygon: drawing, color: COLORS[i % COLORS.length] };
     setZones(p => [...p, nz]);
     setDrawing([]);
     setSelEntity({ type: 'zone', id: nz.id });
     setMode('select');
   }, [drawing, zones]);
 
-  const cancel = useCallback(() => { setDrawing([]); setPendingBind(null); setMode('select'); }, []);
+  const cancel = useCallback(() => { setDrawing([]); setPendingBind(null); setPendingCamBind(null); setMode('select'); }, []);
 
   // ── Placement click ─────────────────────────────────────────
 
@@ -403,14 +495,19 @@ export default function ZoneEditor() {
     if (mode === 'place-device') {
       const bind = pendingBind;
       const devType = bind ? bind.device_type : placeDeviceType;
-      const cat = DEVICE_CATALOG[devType] || DEVICE_CATALOG.sensor;
+      const types = parseTypes(devType);
+      // Prioritise directional type for defaults (FOV, range, orientation)
+      const dirType = types.find(t => DEVICE_CATALOG[t]?.directional);
+      const cat = dirType ? DEVICE_CATALOG[dirType]! : (DEVICE_CATALOG[types[0]] || DEVICE_CATALOG.sensor);
       const id = bind ? bind.device_id : nextDeviceId(placeDeviceType, devices);
+      const channels = bind ? bind.channels : mergeChannels(types);
       const nd: DeviceItem = {
         id, zone: bind?.zone || detectZone(w, zones), x: w.x, y: w.y,
-        deviceType: devType, channels: bind ? bind.channels : cat.channels,
-        orientationDeg: cat.directional ? 0 : null,
-        fovDeg: cat.directional ? (cat.defaultFov ?? 90) : null,
-        detectionRangeM: cat.directional ? (cat.defaultRange ?? 5) : null,
+        deviceType: devType, channels,
+        orientationDeg: dirType ? 0 : null,
+        fovDeg: dirType ? (cat.defaultFov ?? 90) : null,
+        detectionRangeM: dirType ? (cat.defaultRange ?? 5) : null,
+        label: bind?.label ?? null,
         dirty: true, isNew: true,
       };
       setDevices(p => [...p, nd]);
@@ -421,14 +518,17 @@ export default function ZoneEditor() {
     }
 
     if (mode === 'place-camera') {
-      const id = `cam_${Date.now().toString(36)}`;
+      const bindCam = pendingCamBind ? discoveredCams.find(c => c.camera_id === pendingCamBind) : null;
+      const id = bindCam ? bindCam.camera_id : `cam_${Date.now().toString(36)}`;
       const nc: CameraItem = {
-        id, zone: detectZone(w, zones), x: w.x, y: w.y, z: 2.5,
-        fovDeg: 90, orientationDeg: 0, resolution: [640, 480],
+        id, zone: bindCam?.zone || detectZone(w, zones), x: w.x, y: w.y, z: 2.5,
+        fovDeg: bindCam?.fov_deg ?? 90, orientationDeg: bindCam?.orientation_deg ?? 0,
+        resolution: bindCam?.resolution ?? [640, 480],
         dirty: true, isNew: true,
       };
       setCameras(p => [...p, nc]);
       setSelEntity({ type: 'camera', id });
+      setPendingCamBind(null);
       setMode('select');
       return;
     }
@@ -463,14 +563,22 @@ export default function ZoneEditor() {
   // ── Device/Camera/Marker ops ────────────────────────────────
 
   const delDevice = useCallback((id: string) => {
+    const device = devices.find(d => d.id === id);
+    if (device && !device.isNew) {
+      setDeletedDeviceIds(prev => [...prev, id]);
+    }
     setDevices(p => p.filter(d => d.id !== id));
     setSelEntity(s => s?.type === 'device' && s.id === id ? null : s);
-  }, []);
+  }, [devices]);
 
   const delCamera = useCallback((id: string) => {
+    const camera = cameras.find(c => c.id === id);
+    if (camera && !camera.isNew) {
+      setDeletedCameraIds(prev => [...prev, id]);
+    }
     setCameras(p => p.filter(c => c.id !== id));
     setSelEntity(s => s?.type === 'camera' && s.id === id ? null : s);
-  }, []);
+  }, [cameras]);
 
   const delMarker = useCallback((id: string) => {
     setMarkers(p => p.filter(m => m.id !== id));
@@ -483,6 +591,13 @@ export default function ZoneEditor() {
     setDevices(p => p.map(d => d.id === oldId ? { ...d, id: newId, dirty: true } : d));
     setSelEntity(s => s?.type === 'device' && s.id === oldId ? { type: 'device', id: newId } : s);
   }, [devices]);
+
+  const chgCameraId = useCallback((oldId: string, newId: string) => {
+    if (!/^[a-z0-9_]+$/.test(newId)) return;
+    if (cameras.some(c => c.id !== oldId && c.id === newId)) return;
+    setCameras(p => p.map(c => c.id === oldId ? { ...c, id: newId, dirty: true } : c));
+    setSelEntity(s => s?.type === 'camera' && s.id === oldId ? { type: 'camera', id: newId } : s);
+  }, [cameras]);
 
   const refreshDiscovery = useCallback(() => {
     fetch('/api/devices/discovery').then(r => r.ok ? r.json() : []).then(setDiscovered).catch(() => {});
@@ -526,48 +641,45 @@ export default function ZoneEditor() {
       if (!zr.ok) throw new Error(`zones: ${zr.status}`);
       parts.push(`${zones.length} zones`);
 
-      // 2. Dirty devices
-      const dirtyDevs = devices.filter(d => d.dirty);
-      for (const d of dirtyDevs) {
-        if (d.isNew) {
-          const r = await fetch('/api/devices/positions/', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              device_id: d.id, zone: d.zone, x: d.x, y: d.y,
-              device_type: d.deviceType, channels: d.channels,
-              orientation_deg: d.orientationDeg, fov_deg: d.fovDeg, detection_range_m: d.detectionRangeM,
-            }),
-          });
-          if (!r.ok) throw new Error(`device ${d.id}: ${r.status}`);
-        } else {
-          const r = await fetch(`/api/devices/positions/${encodeURIComponent(d.id)}`, {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              x: d.x, y: d.y, zone: d.zone,
-              orientation_deg: d.orientationDeg, fov_deg: d.fovDeg, detection_range_m: d.detectionRangeM,
-            }),
-          });
-          if (!r.ok) throw new Error(`device ${d.id}: ${r.status}`);
+      // 2. Devices → save all to YAML
+      {
+        const dd: Record<string, any> = {};
+        for (const d of devices) {
+          const entry: Record<string, any> = {
+            zone: d.zone, position: [Math.round(d.x*100)/100, Math.round(d.y*100)/100],
+            type: d.deviceType, channels: d.channels,
+          };
+          if (d.orientationDeg != null) entry.orientation_deg = d.orientationDeg;
+          if (d.fovDeg != null) entry.fov_deg = d.fovDeg;
+          if (d.detectionRangeM != null) entry.detection_range_m = d.detectionRangeM;
+          if (d.label) entry.label = d.label;
+          dd[d.id] = entry;
         }
+        const dr = await fetch('/api/sensors/spatial/devices', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ devices: dd }) });
+        if (!dr.ok) throw new Error(`devices: ${dr.status}`);
+        parts.push(`${devices.length} devices`);
+        setDevices(p => p.map(d => ({ ...d, dirty: false, isNew: false })));
+        setDeletedDeviceIds([]);
       }
-      if (dirtyDevs.length) parts.push(`${dirtyDevs.length} devices`);
-      setDevices(p => p.map(d => ({ ...d, dirty: false, isNew: false })));
 
-      // 3. Dirty cameras
-      const dirtyCams = cameras.filter(c => c.dirty);
-      for (const c of dirtyCams) {
-        const r = await fetch(`/api/devices/cameras/${encodeURIComponent(c.id)}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ zone: c.zone, x: c.x, y: c.y, z: c.z, fov_deg: c.fovDeg, orientation_deg: c.orientationDeg }),
-        });
-        if (!r.ok) throw new Error(`camera ${c.id}: ${r.status}`);
+      // 3. Cameras → save all to YAML
+      {
+        const cd: Record<string, any> = {};
+        for (const c of cameras) {
+          cd[c.id] = {
+            zone: c.zone, position: [Math.round(c.x*100)/100, Math.round(c.y*100)/100],
+            resolution: c.resolution, fov_deg: c.fovDeg, orientation_deg: c.orientationDeg,
+          };
+        }
+        const cr = await fetch('/api/sensors/spatial/cameras', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cameras: cd }) });
+        if (!cr.ok) throw new Error(`cameras: ${cr.status}`);
+        parts.push(`${cameras.length} cameras`);
+        setCameras(p => p.map(c => ({ ...c, dirty: false, isNew: false })));
+        setDeletedCameraIds([]);
       }
-      if (dirtyCams.length) parts.push(`${dirtyCams.length} cameras`);
-      setCameras(p => p.map(c => ({ ...c, dirty: false, isNew: false })));
 
-      // 4. Dirty markers → save all
-      const dirtyM = markers.filter(m => m.dirty);
-      if (dirtyM.length) {
+      // 4. Markers → save all to YAML
+      {
         const md: Record<string, any> = {};
         for (const m of markers) {
           md[m.id] = { corners: m.corners.map(c => [Math.round(c[0]*100)/100, Math.round(c[1]*100)/100]) };
@@ -582,7 +694,7 @@ export default function ZoneEditor() {
       setTimeout(() => setSaveMsg(null), 3000);
       refreshDiscovery();
     } catch (e: any) { setSaveMsg(`Error: ${e.message}`); }
-  }, [zones, devices, cameras, markers, refreshDiscovery]);
+  }, [zones, devices, cameras, markers, deletedDeviceIds, deletedCameraIds, refreshDiscovery]);
 
   // ── Render ──────────────────────────────────────────────────
 
@@ -660,8 +772,10 @@ export default function ZoneEditor() {
         )}
 
         {mode === 'place-camera' && (
-          <div style={{ padding:'8px 12px', background:'rgba(120,0,0,0.2)', borderBottom:'1px solid #1f2937', fontSize:12, color:'#fca5a5' }}>
-            Click on the floor plan to place a camera.
+          <div style={{ padding:'8px 12px', background: pendingCamBind ? 'rgba(30,58,95,0.4)' : 'rgba(120,0,0,0.2)', borderBottom:'1px solid #1f2937', fontSize:12, color: pendingCamBind ? '#93c5fd' : '#fca5a5' }}>
+            {pendingCamBind
+              ? <>Placing <b>{pendingCamBind}</b><br/>Click on the floor plan to place.</>
+              : <>Click on the floor plan to place a camera.</>}
             <br/><button onClick={cancel} style={{ marginTop:4, color:'#f87171', background:'none', border:'none', cursor:'pointer', textDecoration:'underline', fontSize:12 }}>Cancel (Esc)</button>
           </div>
         )}
@@ -682,110 +796,131 @@ export default function ZoneEditor() {
           </div>
         )}
 
-        {/* Entity lists */}
-        <div style={{ flex:1, overflowY:'auto', padding:12 }}>
-          {/* Zones */}
-          <h2 style={{ fontSize:11, fontWeight:600, color:'#6b7280', textTransform:'uppercase', marginBottom:8 }}>Zones ({zones.length})</h2>
-          {zones.map(z => (
-            <div key={z.id} onClick={() => setSelEntity({ type: 'zone', id: z.id })}
-              style={{ marginBottom:4, padding:6, borderRadius:4, fontSize:11, cursor:'pointer',
-                background: selEntity?.type==='zone'&&selEntity.id===z.id?'#374151':'rgba(31,41,55,0.5)',
-                outline: selEntity?.type==='zone'&&selEntity.id===z.id?'1px solid #3b82f6':'none' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                <div style={{ width:10, height:10, borderRadius:2, flexShrink:0, background:z.color }}/>
-                <span style={{ fontWeight:500, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{z.displayName}</span>
-                <span style={{ marginLeft:'auto', color:'#6b7280' }}>{area(z.polygon).toFixed(1)}m²</span>
-              </div>
-            </div>
-          ))}
-
-          {/* Devices */}
-          {devices.length > 0 && <>
-            <h2 style={{ fontSize:11, fontWeight:600, color:'#6b7280', textTransform:'uppercase', marginTop:12, marginBottom:8 }}>Devices ({devices.length})</h2>
-            {devices.map(d => (
-              <div key={d.id} onClick={() => setSelEntity({ type: 'device', id: d.id })}
-                style={{ marginBottom:4, padding:6, borderRadius:4, fontSize:11, cursor:'pointer',
-                  background: selEntity?.type==='device'&&selEntity.id===d.id?'#374151':'rgba(31,41,55,0.5)',
-                  outline: selEntity?.type==='device'&&selEntity.id===d.id?`1px solid ${deviceColor(d.deviceType)}`:'none' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <div style={{ width:10, height:10, borderRadius:10, flexShrink:0, background:deviceColor(d.deviceType) }}/>
-                  <span style={{ fontWeight:500, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.id}</span>
-                  {d.dirty && <span style={{ color:'#f59e0b' }}>*</span>}
-                </div>
-              </div>
-            ))}
-          </>}
-
-          {/* Cameras */}
-          {cameras.length > 0 && <>
-            <h2 style={{ fontSize:11, fontWeight:600, color:'#6b7280', textTransform:'uppercase', marginTop:12, marginBottom:8 }}>Cameras ({cameras.length})</h2>
-            {cameras.map(c => (
-              <div key={c.id} onClick={() => setSelEntity({ type: 'camera', id: c.id })}
-                style={{ marginBottom:4, padding:6, borderRadius:4, fontSize:11, cursor:'pointer',
-                  background: selEntity?.type==='camera'&&selEntity.id===c.id?'#374151':'rgba(31,41,55,0.5)',
-                  outline: selEntity?.type==='camera'&&selEntity.id===c.id?`1px solid ${CAM_COLOR}`:'none' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <div style={{ width:10, height:10, borderRadius:2, flexShrink:0, background:CAM_COLOR }}/>
-                  <span style={{ fontWeight:500, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.id}</span>
-                  {c.dirty && <span style={{ color:'#f59e0b' }}>*</span>}
-                </div>
-              </div>
-            ))}
-          </>}
-
-          {/* Markers */}
-          {markers.length > 0 && <>
-            <h2 style={{ fontSize:11, fontWeight:600, color:'#6b7280', textTransform:'uppercase', marginTop:12, marginBottom:8 }}>ArUco Markers ({markers.length})</h2>
-            {markers.map(m => (
-              <div key={m.id} onClick={() => setSelEntity({ type: 'marker', id: m.id })}
-                style={{ marginBottom:4, padding:6, borderRadius:4, fontSize:11, cursor:'pointer',
-                  background: selEntity?.type==='marker'&&selEntity.id===m.id?'#374151':'rgba(31,41,55,0.5)',
-                  outline: selEntity?.type==='marker'&&selEntity.id===m.id?`1px solid ${MARKER_COLOR}`:'none' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <div style={{ width:10, height:10, borderRadius:1, flexShrink:0, background:MARKER_COLOR }}/>
-                  <span style={{ fontWeight:500, color:'#fff' }}>ID {m.id}</span>
-                  {m.dirty && <span style={{ color:'#f59e0b' }}>*</span>}
-                </div>
-              </div>
-            ))}
-          </>}
-
-          {/* Discovered — Unplaced */}
-          {(() => {
-            const unplaced = discovered.filter(d => !d.placed);
-            if (!unplaced.length) return null;
-            return <>
-              <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:12, marginBottom:8 }}>
-                <h2 style={{ fontSize:11, fontWeight:600, color:'#6b7280', textTransform:'uppercase', margin:0 }}>
-                  Discovered ({unplaced.length})
-                </h2>
-                <button onClick={refreshDiscovery}
-                  style={{ padding:'1px 6px', fontSize:10, borderRadius:3, border:'1px solid #374151', background:'none', color:'#9ca3af', cursor:'pointer' }}>
-                  ↻
-                </button>
-              </div>
-              {unplaced.map(d => (
-                <div key={d.device_id}
-                  onClick={() => {
-                    const cat = DEVICE_CATALOG[d.device_type];
-                    setPendingBind(d);
-                    if (cat) setPlaceDeviceType(d.device_type);
-                    setMode('place-device');
-                  }}
+        {/* Entity lists — collapsible sections */}
+        <div style={{ flex:1, overflowY:'auto', padding:0 }}>
+          {/* Section helper */}
+          {[
+            { key: 'zones', label: 'Zones', count: zones.length, content: () =>
+              zones.map(z => (
+                <div key={z.id} onClick={() => setSelEntity({ type: 'zone', id: z.id })}
                   style={{ marginBottom:4, padding:6, borderRadius:4, fontSize:11, cursor:'pointer',
-                    background: pendingBind?.device_id === d.device_id ? '#1e3a5f' : 'rgba(31,41,55,0.5)',
-                    outline: pendingBind?.device_id === d.device_id ? '1px solid #3b82f6' : 'none' }}>
+                    background: selEntity?.type==='zone'&&selEntity.id===z.id?'#374151':'rgba(31,41,55,0.5)',
+                    outline: selEntity?.type==='zone'&&selEntity.id===z.id?'1px solid #3b82f6':'none' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                    <div style={{ width:8, height:8, borderRadius:8, flexShrink:0,
-                      background: d.online === true ? '#22c55e' : d.online === false ? '#ef4444' : '#6b7280' }}/>
-                    <span style={{ fontWeight:500, color:'#d1d5db', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.device_id}</span>
-                    {d.bridge && <span style={{ fontSize:9, padding:'1px 4px', borderRadius:3, background:'#1f2937', color:'#9ca3af' }}>{d.bridge}</span>}
+                    <div style={{ width:10, height:10, borderRadius:2, flexShrink:0, background:z.color }}/>
+                    <span style={{ fontWeight:500, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{z.displayName}</span>
+                    <span style={{ marginLeft:'auto', color:'#6b7280' }}>{area(z.polygon).toFixed(1)}m²</span>
                   </div>
-                  {d.label && <div style={{ fontSize:10, color:'#6b7280', marginTop:2, paddingLeft:14 }}>{d.label}</div>}
                 </div>
-              ))}
-            </>;
-          })()}
+              ))
+            },
+            { key: 'devices', label: 'Devices', count: devices.length, hide: devices.length === 0, content: () =>
+              devices.map(d => (
+                <div key={d.id} onClick={() => setSelEntity({ type: 'device', id: d.id })}
+                  style={{ marginBottom:4, padding:6, borderRadius:4, fontSize:11, cursor:'pointer',
+                    background: selEntity?.type==='device'&&selEntity.id===d.id?'#374151':'rgba(31,41,55,0.5)',
+                    outline: selEntity?.type==='device'&&selEntity.id===d.id?`1px solid ${deviceColor(d.deviceType)}`:'none' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ width:10, height:10, borderRadius:10, flexShrink:0, background:deviceColor(d.deviceType) }}/>
+                    <span style={{ fontWeight:500, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.id}</span>
+                    {d.dirty && <span style={{ color:'#f59e0b' }}>*</span>}
+                  </div>
+                  {d.label && <div style={{ fontSize:10, color:'#6b7280', marginTop:1, paddingLeft:16, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.label}</div>}
+                </div>
+              ))
+            },
+            { key: 'cameras', label: 'Cameras', count: cameras.length, hide: cameras.length === 0, content: () =>
+              cameras.map(c => (
+                <div key={c.id} onClick={() => setSelEntity({ type: 'camera', id: c.id })}
+                  style={{ marginBottom:4, padding:6, borderRadius:4, fontSize:11, cursor:'pointer',
+                    background: selEntity?.type==='camera'&&selEntity.id===c.id?'#374151':'rgba(31,41,55,0.5)',
+                    outline: selEntity?.type==='camera'&&selEntity.id===c.id?`1px solid ${CAM_COLOR}`:'none' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ width:10, height:10, borderRadius:2, flexShrink:0, background:CAM_COLOR }}/>
+                    <span style={{ fontWeight:500, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.id}</span>
+                    {c.dirty && <span style={{ color:'#f59e0b' }}>*</span>}
+                  </div>
+                </div>
+              ))
+            },
+            { key: 'markers', label: 'ArUco Markers', count: markers.length, hide: markers.length === 0, content: () =>
+              markers.map(m => (
+                <div key={m.id} onClick={() => setSelEntity({ type: 'marker', id: m.id })}
+                  style={{ marginBottom:4, padding:6, borderRadius:4, fontSize:11, cursor:'pointer',
+                    background: selEntity?.type==='marker'&&selEntity.id===m.id?'#374151':'rgba(31,41,55,0.5)',
+                    outline: selEntity?.type==='marker'&&selEntity.id===m.id?`1px solid ${MARKER_COLOR}`:'none' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ width:10, height:10, borderRadius:1, flexShrink:0, background:MARKER_COLOR }}/>
+                    <span style={{ fontWeight:500, color:'#fff' }}>ID {m.id}</span>
+                    {m.dirty && <span style={{ color:'#f59e0b' }}>*</span>}
+                  </div>
+                </div>
+              ))
+            },
+            (() => {
+              const placedDevIds = new Set(devices.map(d => d.id));
+              const unplaced = discovered.filter(d => !d.placed && !placedDevIds.has(d.device_id));
+              if (!unplaced.length) return null;
+              return {
+                key: 'discovered', label: 'Discovered', count: unplaced.length,
+                extra: <button onClick={refreshDiscovery} style={{ padding:'1px 6px', fontSize:10, borderRadius:3, border:'1px solid #374151', background:'none', color:'#9ca3af', cursor:'pointer' }}>↻</button>,
+                content: () => unplaced.map(d => (
+                  <div key={d.device_id}
+                    onClick={() => {
+                      const cat = DEVICE_CATALOG[d.device_type];
+                      setPendingBind(d);
+                      if (cat) setPlaceDeviceType(d.device_type);
+                      setMode('place-device');
+                    }}
+                    style={{ marginBottom:4, padding:6, borderRadius:4, fontSize:11, cursor:'pointer',
+                      background: pendingBind?.device_id === d.device_id ? '#1e3a5f' : 'rgba(31,41,55,0.5)',
+                      outline: pendingBind?.device_id === d.device_id ? '1px solid #3b82f6' : 'none' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <div style={{ width:8, height:8, borderRadius:8, flexShrink:0,
+                        background: d.online === true ? '#22c55e' : d.online === false ? '#ef4444' : '#6b7280' }}/>
+                      <span style={{ fontWeight:500, color:'#d1d5db', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.device_id}</span>
+                      {d.bridge && <span style={{ fontSize:9, padding:'1px 4px', borderRadius:3, background:'#1f2937', color:'#9ca3af' }}>{d.bridge}</span>}
+                    </div>
+                    {d.label && <div style={{ fontSize:10, color:'#6b7280', marginTop:2, paddingLeft:14 }}>{d.label}</div>}
+                    {d.model && <div style={{ fontSize:9, color:'#4b5563', marginTop:1, paddingLeft:14 }}>{d.model}</div>}
+                  </div>
+                ))
+              };
+            })(),
+            (() => {
+              const placedIds = new Set(cameras.map(c => c.id));
+              const unplacedCams = discoveredCams.filter(c => !placedIds.has(c.camera_id));
+              if (!unplacedCams.length) return null;
+              return {
+                key: 'disc-cams', label: 'Discovered Cameras', count: unplacedCams.length,
+                content: () => unplacedCams.map(c => (
+                  <div key={c.camera_id}
+                    onClick={() => { setPendingCamBind(c.camera_id); setMode('place-camera'); }}
+                    style={{ marginBottom:4, padding:6, borderRadius:4, fontSize:11, cursor:'pointer',
+                      background: pendingCamBind === c.camera_id ? '#1e3a5f' : 'rgba(31,41,55,0.5)',
+                      outline: pendingCamBind === c.camera_id ? '1px solid #ef4444' : 'none' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <div style={{ width:10, height:8, borderRadius:2, flexShrink:0, background:CAM_COLOR }}/>
+                      <span style={{ fontWeight:500, color:'#d1d5db', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {c.camera_id.replace('cam_','').replace(/_/g,'.')}
+                      </span>
+                    </div>
+                    <div style={{ fontSize:9, color:'#6b7280', marginTop:1, paddingLeft:16 }}>
+                      {c.zone}{c.resolution ? ` ${c.resolution[0]}x${c.resolution[1]}` : ''}{c.fov_deg != null ? ` FOV ${c.fov_deg}°` : ''}
+                    </div>
+                  </div>
+                ))
+              };
+            })(),
+          ].filter(s => s != null && !('hide' in s && s.hide)).map(sec => {
+            const s = sec as { key: string; label: string; count: number; extra?: React.ReactNode; content: () => React.ReactNode };
+            return (
+              <CollapsibleSection key={s.key} label={s.label} count={s.count} extra={s.extra}
+                defaultOpen={s.key !== 'discovered' && s.key !== 'disc-cams'}>
+                {s.content()}
+              </CollapsibleSection>
+            );
+          })}
         </div>
 
         {/* Property Panel */}
@@ -796,9 +931,16 @@ export default function ZoneEditor() {
             <input value={sel.id} onChange={e => chgId(sel.id, e.target.value)} style={sInput}/>
             <label style={sLabel}>Display Name</label>
             <input value={sel.displayName} onChange={e => renZone(sel.id, e.target.value)} style={sInput}/>
-            <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#6b7280', marginBottom:8 }}>
-              <span>{sel.polygon.length} vertices</span><span>{area(sel.polygon).toFixed(1)} m²</span>
-            </div>
+            <label style={sLabel}>Vertices ({sel.polygon.length}) — {area(sel.polygon).toFixed(1)} m²</label>
+            {sel.polygon.map((p, vi) => (
+              <div key={vi} style={{ display:'flex', gap:4, marginBottom:4, alignItems:'center' }}>
+                <span style={{ fontSize:10, color:'#6b7280', width:16, flexShrink:0 }}>{vi}</span>
+                <input type="number" step="0.1" value={p.x} style={{ ...sInput, flex:1, marginBottom:0 }}
+                  onChange={e => setZones(prev => prev.map(z => z.id !== sel.id ? z : { ...z, polygon: z.polygon.map((pt, i) => i === vi ? { ...pt, x: +e.target.value } : pt) }))}/>
+                <input type="number" step="0.1" value={p.y} style={{ ...sInput, flex:1, marginBottom:0 }}
+                  onChange={e => setZones(prev => prev.map(z => z.id !== sel.id ? z : { ...z, polygon: z.polygon.map((pt, i) => i === vi ? { ...pt, y: +e.target.value } : pt) }))}/>
+              </div>
+            ))}
             <button onClick={() => delZone(sel.id)}
               style={{ width:'100%', padding:'4px 8px', fontSize:12, borderRadius:4, border:'none', cursor:'pointer', background:'rgba(127,29,29,0.5)', color:'#f87171' }}>
               Delete Zone</button>
@@ -816,18 +958,36 @@ export default function ZoneEditor() {
               <input value={selDev.id} readOnly style={{ ...sInput, opacity:0.6 }}/>
             )}
             {selDev.isNew && <p style={{ fontSize:10, color:'#fbbf24', margin:'-4px 0 6px' }}>Confirm device ID before saving</p>}
-            <label style={sLabel}>Type</label>
-            <select value={selDev.deviceType} onChange={e => {
-              const cat = DEVICE_CATALOG[e.target.value] || DEVICE_CATALOG.sensor;
-              setDevices(p => p.map(d => d.id === selDev.id ? {
-                ...d, deviceType: e.target.value, channels: cat.channels, dirty: true,
-                fovDeg: cat.directional ? (cat.defaultFov ?? d.fovDeg ?? 90) : null,
-                detectionRangeM: cat.directional ? (cat.defaultRange ?? d.detectionRangeM ?? 5) : null,
-                orientationDeg: cat.directional ? (d.orientationDeg ?? 0) : null,
-              } : d));
-            }} style={sInput}>
-              {Object.entries(DEVICE_CATALOG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
+            <label style={sLabel}>Label</label>
+            <input value={selDev.label ?? ''} placeholder="e.g. 24GHz人体存在センサー"
+              onChange={e => setDevices(p => p.map(d => d.id === selDev.id ? { ...d, label: e.target.value || null, dirty: true } : d))} style={sInput}/>
+            <label style={sLabel}>Types</label>
+            <div style={{ maxHeight:120, overflowY:'auto', marginBottom:8, padding:4, background:'#1f2937', borderRadius:4, border:'1px solid #374151' }}>
+              {Object.entries(DEVICE_CATALOG).map(([k, v]) => {
+                const types = parseTypes(selDev.deviceType);
+                const checked = types.includes(k);
+                return (
+                  <label key={k} style={{ display:'flex', alignItems:'center', gap:6, padding:'2px 4px', fontSize:11, color:'#e5e7eb', cursor:'pointer' }}>
+                    <input type="checkbox" checked={checked} onChange={() => {
+                      const next = checked ? types.filter(t => t !== k) : [...types, k];
+                      if (next.length === 0) return;
+                      const newType = next.join(',');
+                      const channels = mergeChannels(next);
+                      const dir = next.some(t => DEVICE_CATALOG[t]?.directional);
+                      const firstDir = next.find(t => DEVICE_CATALOG[t]?.directional);
+                      const firstCat = firstDir ? DEVICE_CATALOG[firstDir] : null;
+                      setDevices(p => p.map(d => d.id === selDev.id ? {
+                        ...d, deviceType: newType, channels, dirty: true,
+                        fovDeg: dir ? (firstCat?.defaultFov ?? d.fovDeg ?? 90) : null,
+                        detectionRangeM: dir ? (firstCat?.defaultRange ?? d.detectionRangeM ?? 5) : null,
+                        orientationDeg: dir ? (d.orientationDeg ?? 0) : null,
+                      } : d));
+                    }} style={{ accentColor: v.color }}/>
+                    <span style={{ color: v.color, fontWeight: checked ? 600 : 400 }}>{v.label}</span>
+                  </label>
+                );
+              })}
+            </div>
             <label style={sLabel}>Zone</label>
             <input value={selDev.zone} readOnly style={{ ...sInput, opacity:0.6 }}/>
             <div style={{ display:'flex', gap:8, marginBottom:8 }}>
@@ -871,7 +1031,13 @@ export default function ZoneEditor() {
           <div style={{ padding:12, borderTop:'1px solid #1f2937', maxHeight:300, overflowY:'auto' }}>
             <h3 style={{ fontSize:11, fontWeight:600, color:'#6b7280', textTransform:'uppercase', marginBottom:8 }}>Camera Properties</h3>
             <label style={sLabel}>ID</label>
-            <input value={selCam.id} readOnly style={{ ...sInput, opacity:0.6 }}/>
+            {selCam.isNew ? (
+              <input value={selCam.id} onChange={e => chgCameraId(selCam.id, e.target.value)}
+                style={{ ...sInput, borderColor:'#ef4444' }} placeholder="e.g. cam_kitchen"/>
+            ) : (
+              <input value={selCam.id} readOnly style={{ ...sInput, opacity:0.6 }}/>
+            )}
+            {selCam.isNew && <p style={{ fontSize:10, color:'#fca5a5', margin:'-4px 0 6px' }}>Confirm camera ID before saving</p>}
             <label style={sLabel}>Zone</label>
             <input value={selCam.zone} readOnly style={{ ...sInput, opacity:0.6 }}/>
             <div style={{ display:'flex', gap:8, marginBottom:8 }}>
@@ -922,10 +1088,23 @@ export default function ZoneEditor() {
             {(() => { const c = markerCenter(selMkr.corners); return (
               <input value={`${c.x.toFixed(2)}, ${c.y.toFixed(2)}`} readOnly style={{ ...sInput, opacity:0.6 }}/>
             ); })()}
-            <label style={sLabel}>Corners (read-only)</label>
+            <label style={sLabel}>Corners (drag on canvas or edit)</label>
             {selMkr.corners.map((c, i) => (
-              <div key={i} style={{ fontSize:11, color:'#6b7280', marginBottom:2 }}>
-                [{c[0].toFixed(2)}, {c[1].toFixed(2)}]
+              <div key={i} style={{ display:'flex', gap:4, marginBottom:4 }}>
+                <input type="number" step="0.01" value={c[0]} style={{ ...sInput, flex:1, marginBottom:0 }}
+                  onChange={e => setMarkers(p => p.map(m => {
+                    if (m.id !== selMkr.id) return m;
+                    const nc = [...m.corners.map(cc => [...cc])];
+                    nc[i][0] = +e.target.value;
+                    return { ...m, corners: nc, dirty: true };
+                  }))}/>
+                <input type="number" step="0.01" value={c[1]} style={{ ...sInput, flex:1, marginBottom:0 }}
+                  onChange={e => setMarkers(p => p.map(m => {
+                    if (m.id !== selMkr.id) return m;
+                    const nc = [...m.corners.map(cc => [...cc])];
+                    nc[i][1] = +e.target.value;
+                    return { ...m, corners: nc, dirty: true };
+                  }))}/>
               </div>
             ))}
             <button onClick={() => delMarker(selMkr.id)} style={{ width:'100%', marginTop:8, padding:'4px 8px', fontSize:12, borderRadius:4, border:'none', cursor:'pointer', background:'rgba(127,29,29,0.5)', color:'#f87171' }}>
@@ -1092,10 +1271,11 @@ export default function ZoneEditor() {
                 <text x={c.x} y={fy - c.y + 0.04} textAnchor="middle" dominantBaseline="central"
                   fill="#d1d5db" fontSize={vb.w*0.007} fontWeight="700" pointerEvents="none">
                   {m.id}</text>
-                {/* Show corners when selected */}
-                {isSel && m.corners.map((corner, ci) =>
-                  <circle key={ci} cx={corner[0]} cy={fy - corner[1]} r={vb.w*0.003}
-                    fill="#fbbf24" stroke="#fff" strokeWidth={0.02} pointerEvents="none"/>
+                {/* Show draggable corners when selected */}
+                {isSel && mode==='select' && m.corners.map((corner, ci) =>
+                  <circle key={ci} cx={corner[0]} cy={fy - corner[1]} r={vb.w*0.004}
+                    fill="#fbbf24" stroke="#fff" strokeWidth={0.02} style={{ cursor:'move' }}
+                    onMouseDown={e => { e.stopPropagation(); setDragCorner({ markerId: m.id, ci }); }}/>
                 )}
               </g>
             );

@@ -22,6 +22,7 @@ import {
   formatTimestamp,
   formatFullTimestamp,
 } from '../../utils/channelConfig';
+import { useZoneName } from '../../hooks/useZoneNames';
 
 export default function TimeSeriesSection() {
   const { data: zones } = useZoneOverview();
@@ -35,6 +36,7 @@ export default function TimeSeriesSection() {
   const [selectedZone, setSelectedZone] = useState<string>('');
   const [selectedChannel, setSelectedChannel] = useState<string>('');
   const [selectedWindow, setSelectedWindow] = useState<string>('1h');
+  const zoneName = useZoneName();
 
   // Auto-select first zone
   const zone = selectedZone || availableZones[0] || '';
@@ -96,7 +98,7 @@ export default function TimeSeriesSection() {
             )}
             {availableZones.map((z: string) => (
               <option key={z} value={z}>
-                {z}
+                {zoneName(z)}
               </option>
             ))}
           </select>

@@ -1,9 +1,11 @@
 import { motion } from 'framer-motion';
 import { useZoneOverview, type ZoneSnapshot } from '../../hooks/useAnalytics';
 import { getChannelMeta, timeAgo } from '../../utils/channelConfig';
+import { useZoneName } from '../../hooks/useZoneNames';
 
 export default function ZoneOverviewSection() {
   const { data: zones, isLoading, isError } = useZoneOverview();
+  const zoneName = useZoneName();
 
   if (isLoading) {
     return (
@@ -40,8 +42,8 @@ export default function ZoneOverviewSection() {
           className="bg-white rounded-xl elevation-2 p-5"
         >
           <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold text-[var(--gray-900)] text-lg capitalize">
-              {zone.zone}
+            <h4 className="font-semibold text-[var(--gray-900)] text-lg">
+              {zoneName(zone.zone)}
             </h4>
             <span className="text-xs text-[var(--gray-400)]">
               {timeAgo(zone.last_update)}

@@ -4,7 +4,7 @@ import { Spinner } from '@soms/ui';
 import { lazy, Suspense } from 'react';
 
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
-const FloorPlanPage = lazy(() => import('./pages/FloorPlanPage'));
+const SpatialMonitorPage = lazy(() => import('./pages/SpatialMonitorPage'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage'));
 const AnomalyPage = lazy(() => import('./pages/AnomalyPage'));
 const TaskQueuePage = lazy(() => import('./pages/TaskQueuePage'));
@@ -12,6 +12,7 @@ const VoicePage = lazy(() => import('./pages/VoicePage'));
 const EconomyPage = lazy(() => import('./pages/EconomyPage'));
 const ShoppingPage = lazy(() => import('./pages/ShoppingPage'));
 const ZoneEditor = lazy(() => import('./pages/ZoneEditor'));
+const CameraSetupPage = lazy(() => import('./pages/CameraSetupPage'));
 
 function LoginRedirect() {
   return (
@@ -55,9 +56,9 @@ function Layout() {
   const { user, logout } = useAuth();
 
   return (
-    <div className="min-h-screen bg-[var(--gray-50)] flex">
+    <div className="h-screen bg-[var(--gray-50)] flex overflow-hidden">
       {/* Sidebar */}
-      <nav className="w-56 bg-white border-r border-[var(--gray-200)] flex flex-col">
+      <nav className="w-56 bg-white border-r border-[var(--gray-200)] flex flex-col flex-shrink-0 overflow-y-auto">
         <div className="p-4 border-b border-[var(--gray-200)]">
           <h1 className="text-lg font-bold text-[var(--gray-900)]">SOMS Admin</h1>
         </div>
@@ -75,7 +76,7 @@ function Layout() {
             Analytics
           </NavLink>
           <NavLink
-            to="/floor-plan"
+            to="/spatial"
             className={({ isActive }) =>
               `block px-4 py-2.5 text-sm font-medium transition-colors ${
                 isActive
@@ -84,7 +85,7 @@ function Layout() {
               }`
             }
           >
-            Floor Plan
+            Spatial Monitor
           </NavLink>
           <NavLink
             to="/inventory"
@@ -158,12 +159,30 @@ function Layout() {
           >
             Economy
           </NavLink>
-          <a
-            href="/zone-editor"
-            className="block px-4 py-2.5 text-sm font-medium text-[var(--gray-700)] hover:bg-[var(--gray-100)] transition-colors"
+          <NavLink
+            to="/cameras"
+            className={({ isActive }) =>
+              `block px-4 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[var(--primary-50)] text-[var(--primary-700)] border-r-2 border-[var(--primary-500)]'
+                  : 'text-[var(--gray-700)] hover:bg-[var(--gray-100)]'
+              }`
+            }
           >
-            Zone Editor ↗
-          </a>
+            Camera Setup
+          </NavLink>
+          <NavLink
+            to="/zone-editor"
+            className={({ isActive }) =>
+              `block px-4 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[var(--primary-50)] text-[var(--primary-700)] border-r-2 border-[var(--primary-500)]'
+                  : 'text-[var(--gray-700)] hover:bg-[var(--gray-100)]'
+              }`
+            }
+          >
+            Zone Editor
+          </NavLink>
         </div>
         <div className="p-4 border-t border-[var(--gray-200)]">
           <p className="text-xs text-[var(--gray-500)] mb-2">{user?.display_name || user?.username}</p>
@@ -177,7 +196,7 @@ function Layout() {
       </nav>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto min-h-0">
         <Suspense
           fallback={
             <div className="flex items-center justify-center py-24">
@@ -187,13 +206,16 @@ function Layout() {
         >
           <Routes>
             <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/floor-plan" element={<FloorPlanPage />} />
+            <Route path="/spatial" element={<SpatialMonitorPage />} />
+
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/shopping" element={<ShoppingPage />} />
             <Route path="/task-queue" element={<TaskQueuePage />} />
             <Route path="/anomaly" element={<AnomalyPage />} />
             <Route path="/voice" element={<VoicePage />} />
             <Route path="/economy" element={<EconomyPage />} />
+            <Route path="/cameras" element={<CameraSetupPage />} />
+            <Route path="/zone-editor" element={<ZoneEditor />} />
             <Route path="*" element={<Navigate to="/analytics" replace />} />
           </Routes>
         </Suspense>
@@ -226,7 +248,6 @@ export default function App() {
       }
     >
       <Routes>
-        <Route path="/zone-editor" element={<ZoneEditor />} />
         <Route path="*" element={<Layout />} />
       </Routes>
     </Suspense>

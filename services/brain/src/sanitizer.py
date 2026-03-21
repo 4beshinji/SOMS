@@ -24,6 +24,13 @@ class Sanitizer:
         self._speak_history: dict[str, float] = {}  # zone -> last_speak_time
         self._speak_cooldown = 300  # 5 minutes
 
+        # Inventory whitelist — only registered items can be added to shopping
+        self._inventory_tracker = None
+
+    def set_inventory_tracker(self, tracker):
+        """Inject InventoryTracker for shopping item whitelist validation."""
+        self._inventory_tracker = tracker
+
     def validate_tool_call(self, tool_name: str, args: Dict[str, Any]) -> Tuple[bool, str]:
         """
         Validate a tool call. Returns (is_safe, reason).
@@ -98,10 +105,19 @@ class Sanitizer:
         self._speak_history[zone] = time.time()
 
     def _validate_add_shopping_item(self, args: Dict[str, Any]) -> Tuple[bool, str]:
-        """Validate add_shopping_item parameters."""
+        """Validate add_shopping_item parameters.
+
+        Only items registered in the inventory system can be added.
+        """
         name = args.get("name", "")
         if not name or not name.strip():
             return False, "商品名が空です"
+
+        # Whitelist: only registered inventory items
+        if self._inventory_tracker is not None:
+            registered = self._inventory_tracker.get_registered_item_names()
+            if name.strip() not in registered:
+                return False, f"'{name}' は在庫管理システムに登録されていません。登録済み品目のみ追加できます"
 
         quantity = args.get("quantity", 1)
         if isinstance(quantity, (int, float)) and (quantity < 1 or quantity > 100):

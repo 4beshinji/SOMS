@@ -279,12 +279,20 @@ class InventoryTracker:
         return None
 
     def get_inventory_status(self, zone: str = None) -> List[Dict[str, Any]]:
-        """Get current inventory status for all tracked shelves."""
+        """Get current inventory status for all tracked shelves.
+
+        Shelves that have never received sensor data (current_weight_g is None)
+        are excluded — they are config placeholders without a live sensor.
+        """
         result = []
         for key, shelf in self._shelves.items():
             if zone and shelf.zone != zone:
                 continue
             state = self._states[key]
+
+            # Skip shelves with no sensor data received yet
+            if state.current_weight_g is None:
+                continue
 
             if state.mode == "multi" and state.items:
                 # Multi-item mode: report each item individually
@@ -316,6 +324,19 @@ class InventoryTracker:
                     "status": "low" if state.quantity < shelf.min_threshold else "ok",
                 })
         return result
+
+    def get_registered_item_names(self) -> set:
+        """Return set of item names for shelves with live sensor data.
+
+        Shelves that have never received data are excluded so that
+        config placeholders don't pollute the shopping whitelist.
+        """
+        return {
+            shelf.item_name
+            for key, shelf in self._shelves.items()
+            if self._states[key].current_weight_g is not None
+            and shelf.item_name  # skip null/empty names
+        }
 
     def get_item_for_shopping(self, device_id: str, channel: str) -> Optional[Dict[str, Any]]:
         """Get shopping item data for a shelf sensor (for Shopping API)."""

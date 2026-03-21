@@ -261,7 +261,7 @@ const TaskCard = React.memo(function TaskCard({ task, isAccepted, zoneMultiplier
                             initial={{ scale: 0.8, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.8, opacity: 0 }}
-                            onClick={e => e.stopPropagation()}
+                            onClick={(e: React.MouseEvent) => e.stopPropagation()}
                         >
                             <button
                                 onClick={() => setShowQR(false)}

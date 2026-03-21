@@ -50,7 +50,15 @@ class WalletBridge:
                     self._last_forwarded[device_id] = now
                     logger.debug("Heartbeat forwarded: %s → Wallet", device_id)
                 elif resp.status == 404:
-                    # Device not registered in Wallet — skip silently
+                    # Device not registered — auto-register then retry
+                    registered = await self._auto_register_device(
+                        device_id, payload, device_info,
+                    )
+                    if registered:
+                        # Retry heartbeat after registration
+                        async with self.session.post(url, json=body, headers=self._service_headers(), timeout=10) as retry_resp:
+                            if retry_resp.status == 200:
+                                logger.info("Heartbeat forwarded after auto-register: %s", device_id)
                     self._last_forwarded[device_id] = now
                 else:
                     text = await resp.text()
@@ -59,7 +67,46 @@ class WalletBridge:
                         device_id, resp.status, text[:200],
                     )
         except Exception as e:
+            # Connection errors: throttle 60s to avoid log spam, allow retry
+            self._last_forwarded[device_id] = now - self.forward_interval + 60
             logger.warning("Heartbeat forward error: %s → %s", device_id, e)
+
+    async def _auto_register_device(
+        self, device_id: str, payload: dict, device_info=None,
+    ) -> bool:
+        """Register a device in Wallet service (system wallet as owner)."""
+        device_type = "sensor_node"
+        if device_info:
+            device_type = device_info.device_type or "sensor_node"
+        elif "device_type" in payload:
+            device_type = payload["device_type"]
+
+        display_name = payload.get("label", "") or device_id
+        topic_prefix = f"office/{payload.get('zone', 'unknown')}/sensor/{device_id}"
+
+        body = {
+            "device_id": device_id,
+            "owner_id": 0,  # system wallet
+            "device_type": device_type,
+            "display_name": display_name,
+            "topic_prefix": topic_prefix,
+        }
+        url = f"{self.wallet_url}/devices/"
+        try:
+            async with self.session.post(url, json=body, headers=self._service_headers(), timeout=10) as resp:
+                if resp.status in (200, 201):
+                    logger.info("Auto-registered device in Wallet: %s (%s)", device_id, display_name)
+                    return True
+                elif resp.status == 409:
+                    # Already exists (race condition) — that's fine
+                    return True
+                else:
+                    text = await resp.text()
+                    logger.warning("Device auto-register failed: %s → %d %s", device_id, resp.status, text[:200])
+                    return False
+        except Exception as e:
+            logger.warning("Device auto-register error: %s → %s", device_id, e)
+            return False
 
     async def forward_children(self, parent_id: str, payload: dict):
         """Forward heartbeats for child devices listed in the payload."""

@@ -15,7 +15,12 @@ class EnvironmentData(BaseModel):
     illuminance: Optional[float] = None  # lux
     pressure: Optional[float] = None  # hPa
     gas_resistance: Optional[int] = None  # Ohms (BME680 VOC indicator)
-    
+    soil_moisture: Optional[float] = None  # Percentage
+    soil_temperature: Optional[float] = None  # Celsius
+
+    # Trend indicators per channel: "stable" | "rising" | "falling"
+    trends: Dict[str, str] = Field(default_factory=dict)
+
     # Timestamps for each measurement
     timestamps: Dict[str, float] = Field(default_factory=dict)
     
@@ -51,6 +56,17 @@ class OccupancyData(BaseModel):
     activity_class: str = "unknown"        # "idle"|"low"|"moderate"|"high"
     posture_duration_sec: float = 0.0      # Current posture duration (seconds)
     posture_status: str = "unknown"        # "changing"|"mostly_static"|"static"
+
+    # Event-based motion tracking
+    motion_event_count_5min: int = 0
+    motion_frequency_per_min: float = 0.0
+
+    # State-based presence tracking
+    presence_state: Optional[bool] = None
+    presence_duration_sec: float = 0.0
+
+    # Door state tracking: {device_id: {"open": bool, "duration_sec": float, "changes_1h": int}}
+    door_states: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
 
     # Temporal statistics
     last_entry_time: Optional[float] = None
@@ -217,7 +233,10 @@ class ZoneState(BaseModel):
     
     # Event history (recent events only)
     events: List[Event] = Field(default_factory=list)
-    
+
+    # Passthrough sensor data for unknown/generic channels
+    extra_sensors: Dict[str, float] = Field(default_factory=dict)
+
     # Metadata
     last_update: float = Field(default_factory=time.time)
     

@@ -11,11 +11,13 @@ import {
   formatFullTimestamp,
   heatmapCellColor,
 } from '../../utils/channelConfig';
+import { useZoneName } from '../../hooks/useZoneNames';
 
 export default function HeatmapSection() {
   const { data: zones } = useZoneOverview();
   const [period, setPeriod] = useState('hour');
   const [selectedZone, setSelectedZone] = useState<string>('');
+  const zoneName = useZoneName();
 
   const availableZones = useMemo(() => {
     if (!zones || zones.length === 0) return [];
@@ -58,7 +60,7 @@ export default function HeatmapSection() {
             <option value="">All Zones</option>
             {availableZones.map((z: string) => (
               <option key={z} value={z}>
-                {z}
+                {zoneName(z)}
               </option>
             ))}
           </select>
@@ -110,8 +112,8 @@ export default function HeatmapSection() {
             >
               {/* Zone label */}
               <div className="flex items-center justify-between mb-3">
-                <h4 className="font-semibold text-[var(--gray-900)] text-lg capitalize">
-                  {hm.zone}
+                <h4 className="font-semibold text-[var(--gray-900)] text-lg">
+                  {zoneName(hm.zone)}
                 </h4>
                 {(hm.period_start || hm.period_end) && (
                   <span className="text-xs text-[var(--gray-400)]">

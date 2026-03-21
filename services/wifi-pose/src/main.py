@@ -41,6 +41,7 @@ class WifiPoseService:
             hampel_window=csi_cfg.get("hampel_window", 5),
             hampel_threshold=csi_cfg.get("hampel_threshold", 3.0),
             spectrogram_window_sec=csi_cfg.get("spectrogram_window_sec", 1.0),
+            sample_rate_hz=csi_cfg.get("sample_rate_hz", 100.0),
         )
 
         # Pose estimator

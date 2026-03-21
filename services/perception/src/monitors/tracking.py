@@ -1,35 +1,47 @@
 """
 Tracking Monitor — per-camera BoT-SORT SCT + ReID extraction.
 
-Runs YOLO model.track() with persist=True for single-camera tracking,
-extracts ReID embeddings, projects foot points to floor coordinates,
+Uses the shared YOLOInference singleton for detection (single GPU model),
+and a lightweight per-camera BOTSORT tracker for temporal association.
+Extracts ReID embeddings, projects foot points to floor coordinates,
 and feeds results into the shared CrossCameraTracker.
-
-Each camera gets its own YOLO instance to maintain separate tracker state.
 """
 import time
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
-from ultralytics import YOLO
+from ultralytics.trackers import BOTSORT
 
 from monitors.base import MonitorBase
 from state_publisher import StatePublisher
+from yolo_inference import YOLOInference
 from tracking.tracklet import TrackedPerson
 from tracking.homography import foot_from_bbox, pixel_to_floor
 from tracking.reid_embedder import ReIDEmbedder
 
 logger = logging.getLogger(__name__)
 
-# Default tracker config relative to perception config dir
-_DEFAULT_TRACKER_CFG = str(
-    Path(__file__).parent.parent.parent / "config" / "tracker" / "botsort.yaml"
+# Default BOTSORT parameters (matches ultralytics/cfg/trackers/botsort.yaml)
+_DEFAULT_BOTSORT_ARGS = SimpleNamespace(
+    tracker_type="botsort",
+    track_high_thresh=0.25,
+    track_low_thresh=0.1,
+    new_track_thresh=0.25,
+    track_buffer=30,
+    match_thresh=0.8,
+    fuse_score=True,
+    gmc_method="sparseOptFlow",
+    proximity_thresh=0.5,
+    appearance_thresh=0.8,
+    with_reid=False,
+    model="auto",
 )
 
 
 class TrackingMonitor(MonitorBase):
-    """Per-camera person tracker using BoT-SORT + ReID."""
+    """Per-camera person tracker using shared YOLO + per-camera BOTSORT."""
 
     def __init__(
         self,
@@ -43,7 +55,7 @@ class TrackingMonitor(MonitorBase):
         super().__init__(
             name=f"Tracking_{camera_id}",
             camera_id=camera_id,
-            interval_sec=0.2,  # 5 FPS
+            interval_sec=1.0,
             resolution="VGA",
             quality=15,
             image_source=image_source,
@@ -52,61 +64,63 @@ class TrackingMonitor(MonitorBase):
         self._cross_tracker = cross_camera_tracker
         self._publisher = StatePublisher.get_instance()
         self._reid = ReIDEmbedder.get_instance()
-        self._tracker_config = tracker_config or _DEFAULT_TRACKER_CFG
 
-        # Each camera needs its own YOLO instance for independent tracker state
-        logger.info("Loading YOLO tracker for %s: %s", camera_id, model_path)
-        self._yolo = YOLO(model_path)
+        # Shared YOLO singleton — no extra GPU memory per camera
+        self._yolo = YOLOInference.get_instance(model_path)
+
+        # Lightweight per-camera tracker (CPU only, ~few MB each)
+        self._botsort = BOTSORT(_DEFAULT_BOTSORT_ARGS, frame_rate=1)
+        logger.info("TrackingMonitor %s: shared YOLO + per-camera BOTSORT", camera_id)
 
     async def analyze(self, image: np.ndarray):
         """
-        Run BoT-SORT tracking + ReID extraction.
+        Run shared YOLO detect + per-camera BOTSORT tracking + ReID.
 
         Returns list of TrackedPerson dataclass instances.
         """
-        # BoT-SORT: persist=True keeps tracker state across frames
-        results = self._yolo.track(
-            image,
-            persist=True,
-            tracker=self._tracker_config,
-            classes=[0],  # person class only
-            verbose=False,
-            conf=0.5,
-        )
+        # Shared YOLO inference (person class only)
+        results = self._yolo.model(image, verbose=False, conf=0.5, classes=[0])
 
-        if not results or results[0].boxes is None:
+        # Move boxes to CPU for BOTSORT (which uses numpy internally)
+        boxes = results[0].boxes.cpu() if results and results[0].boxes is not None else None
+
+        if boxes is None or len(boxes) == 0:
+            if boxes is not None:
+                self._botsort.update(boxes, image)
             return []
 
-        boxes = results[0].boxes
-        if boxes.id is None:
-            # No tracks assigned yet
+        # Per-camera BOTSORT tracking (CPU, lightweight)
+        tracked = self._botsort.update(boxes, image)
+        # tracked: ndarray shape (N, 7) — [x1, y1, x2, y2, track_id, conf, cls]
+
+        if len(tracked) == 0:
             return []
 
-        track_ids = boxes.id.cpu().numpy().astype(int)
-        bboxes = boxes.xyxy.cpu().numpy()  # (N, 4)
-        confs = boxes.conf.cpu().numpy()
-
-        # Batch ReID extraction
-        bbox_list = bboxes.tolist()
-        embeddings = self._reid.extract(image, bbox_list)
+        # ReID extraction
+        bboxes = tracked[:, :4].tolist()
+        embeddings = self._reid.extract(image, bboxes)
 
         timestamp = time.time()
         persons = []
 
-        for i, (track_id, bbox, conf) in enumerate(zip(track_ids, bboxes, confs)):
-            bbox_f = bbox.tolist()
+        for i, row in enumerate(tracked):
+            x1, y1, x2, y2 = row[:4]
+            track_id = int(row[4])
+            conf = float(row[5])
+
+            bbox_f = [float(x1), float(y1), float(x2), float(y2)]
             foot_px = foot_from_bbox(bbox_f)
             foot_floor = pixel_to_floor(self.camera_id, foot_px) or [0.0, 0.0]
 
             embedding = embeddings[i] if i < len(embeddings) else np.zeros(512)
 
             persons.append(TrackedPerson(
-                track_id=int(track_id),
+                track_id=track_id,
                 camera_id=self.camera_id,
                 bbox_px=bbox_f,
                 foot_px=foot_px,
                 foot_floor=foot_floor,
-                confidence=float(conf),
+                confidence=conf,
                 reid_embedding=embedding,
                 timestamp=timestamp,
             ))

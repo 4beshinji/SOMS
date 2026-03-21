@@ -218,7 +218,11 @@ class ToolExecutor:
             return {"success": False, "error": f"ゾーン '{zone_id}' が見つかりません"}
 
         # Build status string
-        lines = [f"ゾーン: {zone_id}"]
+        display_name = zone.metadata.display_name
+        if display_name and display_name != zone_id:
+            lines = [f"ゾーン: {display_name} ({zone_id})"]
+        else:
+            lines = [f"ゾーン: {zone_id}"]
 
         if zone.occupancy.person_count > 0:
             lines.append(f"在室: {zone.occupancy.person_count}名 ({zone.occupancy.activity_summary})")
@@ -234,17 +238,41 @@ class ToolExecutor:
             lines.append(f"CO2: {env.co2}ppm{'（換気必要）' if env.is_stuffy else ''}")
         if env.illuminance is not None:
             lines.append(f"照度: {env.illuminance:.0f}lux")
+        if env.soil_moisture is not None:
+            lines.append(f"土壌水分: {env.soil_moisture:.1f}%")
+        if zone.occupancy.motion_event_count_5min > 0:
+            lines.append(f"動体検知: 直近5分で{zone.occupancy.motion_event_count_5min}回")
+        if zone.occupancy.presence_state is not None:
+            dur_min = int(zone.occupancy.presence_duration_sec / 60)
+            state_str = "在室検知中" if zone.occupancy.presence_state else "不在"
+            lines.append(f"在室センサー: {state_str} ({dur_min}分間)")
+        for dev_id, door_info in zone.occupancy.door_states.items():
+            door_label = self.world_model.get_device_label(dev_id) or dev_id
+            dur_min = int(door_info["duration_sec"] / 60)
+            state_str = "開放中" if door_info["open"] else "閉鎖中"
+            lines.append(f"ドア({door_label}): {state_str} ({dur_min}分間)")
 
         if zone.devices:
             for dev_id, dev in zone.devices.items():
-                lines.append(f"デバイス {dev.device_type}({dev_id}): {dev.power_state}")
+                label = self.world_model.get_device_label(dev_id)
+                if label:
+                    lines.append(f"デバイス {label}({dev_id}): {dev.power_state}")
+                else:
+                    lines.append(f"デバイス {dev.device_type}({dev_id}): {dev.power_state}")
 
         # Spatial metadata
         meta = zone.metadata
         if meta.area_m2 > 0:
             lines.append(f"面積: {meta.area_m2:.1f}㎡")
         if meta.adjacent_zones:
-            lines.append(f"隣接ゾーン: {', '.join(meta.adjacent_zones)}")
+            adj_names = []
+            for adj_id in meta.adjacent_zones:
+                adj_zone = self.world_model.get_zone(adj_id)
+                if adj_zone and adj_zone.metadata.display_name and adj_zone.metadata.display_name != adj_id:
+                    adj_names.append(f"{adj_zone.metadata.display_name} ({adj_id})")
+                else:
+                    adj_names.append(adj_id)
+            lines.append(f"隣接ゾーン: {', '.join(adj_names)}")
 
         # Detected persons with floor coordinates
         persons_with_pos = [p for p in zone.spatial.persons if p.floor_position_m]

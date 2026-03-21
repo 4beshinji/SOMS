@@ -1,15 +1,16 @@
 {
-  "device_id": "env_01",
-  "zone": "main",
-  "wifi_ssid": "YOUR_SSID",
-  "wifi_password": "YOUR_PASSWORD",
-  "mqtt_broker": "192.168.x.x",
+  "device_id": "env_02",
+  "zone": "meeting_room_a",
+  "wifi_ssid": "GITY Wi-Fi",
+  "wifi_password": "gity2023",
+  "mqtt_broker": "192.168.128.161",
   "mqtt_port": 1883,
+  "mqtt_user": "soms",
+  "mqtt_pass": "soms_dev_mqtt",
   "report_interval": 30,
   "board": "xiao_esp32_c6",
   "sensors": [
     {"type": "bme680", "bus": "i2c", "address": "auto"},
-    {"type": "mhz19c", "bus": "uart", "uart_id": 1},
-    {"type": "pir", "bus": "gpio", "pin": 3}
+    {"type": "mhz19c", "bus": "uart", "uart_id": 1}
   ]
 }

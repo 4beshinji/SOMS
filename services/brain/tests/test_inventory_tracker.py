@@ -262,11 +262,23 @@ class TestShoppingIntegration:
 
 
 class TestInventoryStatus:
+    def test_no_data_shelves_excluded(self, tracker):
+        """Shelves with no sensor data received should not appear."""
+        status = tracker.get_inventory_status()
+        assert len(status) == 0
+
     def test_all_zones(self, tracker):
+        """Only shelves with sensor data appear in status."""
+        # Send data to both shelves
+        for _ in range(3):
+            tracker.update_weight("kitchen", "shelf_01", "weight", 650.0)
+            tracker.update_weight("main", "shelf_02", "weight", 5200.0)
         status = tracker.get_inventory_status()
         assert len(status) == 2
 
     def test_filter_by_zone(self, tracker):
+        for _ in range(3):
+            tracker.update_weight("kitchen", "shelf_01", "weight", 650.0)
         status = tracker.get_inventory_status("kitchen")
         assert len(status) == 1
         assert status[0]["zone"] == "kitchen"
@@ -274,6 +286,28 @@ class TestInventoryStatus:
     def test_empty_zone(self, tracker):
         status = tracker.get_inventory_status("nonexistent")
         assert len(status) == 0
+
+
+class TestRegisteredItemNames:
+    def test_no_data_returns_empty(self, tracker):
+        """Without sensor data, no items are registered."""
+        assert tracker.get_registered_item_names() == set()
+
+    def test_only_live_shelves(self, tracker):
+        """Only shelves with sensor data are included."""
+        for _ in range(3):
+            tracker.update_weight("kitchen", "shelf_01", "weight", 650.0)
+        names = tracker.get_registered_item_names()
+        assert names == {"コーヒー豆"}
+        # shelf_02 has no data → excluded
+        assert "コピー用紙 A4" not in names
+
+    def test_all_live_shelves(self, tracker):
+        for _ in range(3):
+            tracker.update_weight("kitchen", "shelf_01", "weight", 650.0)
+            tracker.update_weight("main", "shelf_02", "weight", 5200.0)
+        names = tracker.get_registered_item_names()
+        assert names == {"コーヒー豆", "コピー用紙 A4"}
 
 
 class TestBarcodeRegistration:

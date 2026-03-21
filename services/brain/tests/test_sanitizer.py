@@ -1,6 +1,6 @@
 """Unit tests for brain sanitizer — input validation for tool calls."""
 import time
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -14,6 +14,16 @@ from sanitizer import Sanitizer
 def sanitizer():
     """Fresh Sanitizer instance for each test."""
     return Sanitizer()
+
+
+@pytest.fixture
+def sanitizer_with_inventory():
+    """Sanitizer with a mock inventory tracker that has registered items."""
+    s = Sanitizer()
+    tracker = MagicMock()
+    tracker.get_registered_item_names.return_value = {"コーヒー豆", "コピー用紙", "トイレットペーパー"}
+    s.set_inventory_tracker(tracker)
+    return s
 
 
 # ── Query tools (always allowed) ─────────────────────────────────
@@ -262,3 +272,54 @@ class TestDeviceCommand:
             "agent_id": "light_01", "tool_name": "toggle_light",
         })
         assert ok is True
+
+
+# ── add_shopping_item validation ─────────────────────────────────
+
+
+class TestAddShoppingItem:
+    """Validation rules for add_shopping_item with inventory whitelist."""
+
+    def test_registered_item_allowed(self, sanitizer_with_inventory):
+        ok, reason = sanitizer_with_inventory.validate_tool_call(
+            "add_shopping_item", {"name": "コーヒー豆", "quantity": 3},
+        )
+        assert ok is True
+
+    def test_unregistered_item_rejected(self, sanitizer_with_inventory):
+        ok, reason = sanitizer_with_inventory.validate_tool_call(
+            "add_shopping_item", {"name": "謎のアイテム", "quantity": 1},
+        )
+        assert ok is False
+        assert "登録されていません" in reason
+
+    def test_empty_name_rejected(self, sanitizer_with_inventory):
+        ok, reason = sanitizer_with_inventory.validate_tool_call(
+            "add_shopping_item", {"name": "", "quantity": 1},
+        )
+        assert ok is False
+        assert "空" in reason
+
+    def test_without_tracker_allows_any_item(self, sanitizer):
+        """Without inventory tracker, any item name is accepted (fallback)."""
+        ok, reason = sanitizer.validate_tool_call(
+            "add_shopping_item", {"name": "何でも追加", "quantity": 1},
+        )
+        assert ok is True
+
+    def test_quantity_out_of_range_rejected(self, sanitizer_with_inventory):
+        ok, reason = sanitizer_with_inventory.validate_tool_call(
+            "add_shopping_item", {"name": "コーヒー豆", "quantity": 101},
+        )
+        assert ok is False
+        assert "範囲外" in reason
+
+    def test_rate_limit_enforced(self, sanitizer_with_inventory):
+        for _ in range(sanitizer_with_inventory._max_shopping_per_hour):
+            sanitizer_with_inventory.record_shopping_item_added()
+
+        ok, reason = sanitizer_with_inventory.validate_tool_call(
+            "add_shopping_item", {"name": "コーヒー豆", "quantity": 1},
+        )
+        assert ok is False
+        assert "レート制限" in reason

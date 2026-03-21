@@ -37,6 +37,7 @@ class DeviceInfo:
         "last_seen", "next_wake_epoch", "capabilities", "queue_status",
         "utility_score", "_last_used",
         "_cumulative_online_sec", "_online_since", "trusted",
+        "label",
     )
 
     def __init__(self, device_id: str, device_type: str = "unknown"):
@@ -57,6 +58,7 @@ class DeviceInfo:
         self._cumulative_online_sec: float = 0.0     # total time spent online
         self._online_since: float | None = None      # current online session start
         self.trusted: bool = False                    # promoted after TRUST_THRESHOLD_SEC
+        self.label: str = ""                          # human-readable name from bridge
 
     def to_dict(self) -> dict:
         return {
@@ -181,13 +183,15 @@ class DeviceRegistry:
 
         if low_battery:
             for d in low_battery:
-                lines.append(f"⚠ 低バッテリー: {d.device_id} ({d.battery_pct}%)")
+                label_str = f" ({d.label})" if d.label else ""
+                lines.append(f"⚠ 低バッテリー: {d.device_id}{label_str} ({d.battery_pct}%)")
 
         if counts["offline"]:
             offline_devs = [d for d in devices if d.state == "offline"]
             for d in offline_devs[:5]:
                 mins_ago = int((time.time() - d.last_seen) / 60)
-                lines.append(f"✗ オフライン: {d.device_id} ({mins_ago}分前)")
+                label_str = f" ({d.label})" if d.label else ""
+                lines.append(f"✗ オフライン: {d.device_id}{label_str} ({mins_ago}分前)")
 
         # Untrusted devices are intentionally hidden from LLM to prevent
         # investigation task spam.
@@ -279,6 +283,8 @@ class DeviceRegistry:
             device.capabilities = payload["capabilities"]
         if "queue_status" in payload:
             device.queue_status = payload["queue_status"]
+        if "label" in payload and payload["label"]:
+            device.label = payload["label"]
         if "next_wake_sec" in payload:
             wake_sec = payload["next_wake_sec"]
             if wake_sec and wake_sec > 0:
