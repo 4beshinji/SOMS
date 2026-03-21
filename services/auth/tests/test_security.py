@@ -160,8 +160,16 @@ class TestStateToken:
     def test_roundtrip(self):
         nonce = "abcdef1234"
         state = create_state_token(nonce)
-        recovered = verify_state_token(state)
-        assert recovered == nonce
+        payload = verify_state_token(state)
+        assert payload["nonce"] == nonce
+
+    def test_roundtrip_with_origin(self):
+        nonce = "abcdef1234"
+        origin = "http://localhost:8007"
+        state = create_state_token(nonce, origin=origin)
+        payload = verify_state_token(state)
+        assert payload["nonce"] == nonce
+        assert payload["origin"] == origin
 
     def test_expired_state_raises(self):
         # Create a state that expired 1 minute ago

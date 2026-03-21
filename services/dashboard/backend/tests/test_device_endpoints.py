@@ -351,7 +351,7 @@ class TestDeviceIdValidation:
 
     def test_valid_device_id(self):
         """Lowercase alphanumeric + underscore → 201."""
-        db = _make_mock_db([
+        db = make_mock_db([
             MockResult([], scalar_value=None),
         ])
         db.add = lambda obj: setattr(obj, 'id', 1)
@@ -362,12 +362,12 @@ class TestDeviceIdValidation:
             "zone": "main",
             "x": 1.0,
             "y": 2.0,
-        }, headers=_auth_header())
+        }, headers=auth_header())
         assert resp.status_code == 201
 
     def test_invalid_device_id_uppercase(self):
         """Uppercase letters → 422."""
-        db = _make_mock_db()
+        db = make_mock_db()
         app = _create_app(db)
         client = TestClient(app)
         resp = client.post("/devices/positions/", json={
@@ -375,12 +375,12 @@ class TestDeviceIdValidation:
             "zone": "main",
             "x": 1.0,
             "y": 2.0,
-        }, headers=_auth_header())
+        }, headers=auth_header())
         assert resp.status_code == 422
 
     def test_invalid_device_id_spaces(self):
         """Spaces → 422."""
-        db = _make_mock_db()
+        db = make_mock_db()
         app = _create_app(db)
         client = TestClient(app)
         resp = client.post("/devices/positions/", json={
@@ -388,12 +388,12 @@ class TestDeviceIdValidation:
             "zone": "main",
             "x": 1.0,
             "y": 2.0,
-        }, headers=_auth_header())
+        }, headers=auth_header())
         assert resp.status_code == 422
 
     def test_invalid_device_id_special_chars(self):
         """Special characters → 422."""
-        db = _make_mock_db()
+        db = make_mock_db()
         app = _create_app(db)
         client = TestClient(app)
         resp = client.post("/devices/positions/", json={
@@ -401,12 +401,12 @@ class TestDeviceIdValidation:
             "zone": "main",
             "x": 1.0,
             "y": 2.0,
-        }, headers=_auth_header())
+        }, headers=auth_header())
         assert resp.status_code == 422
 
     def test_invalid_device_id_empty(self):
         """Empty string → 422."""
-        db = _make_mock_db()
+        db = make_mock_db()
         app = _create_app(db)
         client = TestClient(app)
         resp = client.post("/devices/positions/", json={
@@ -414,7 +414,7 @@ class TestDeviceIdValidation:
             "zone": "main",
             "x": 1.0,
             "y": 2.0,
-        }, headers=_auth_header())
+        }, headers=auth_header())
         assert resp.status_code == 422
 
 
