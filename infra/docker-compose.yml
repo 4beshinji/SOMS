@@ -94,7 +94,8 @@ services:
         condition: service_healthy
     volumes:
       - ../services/dashboard/backend:/app
-      - ../config:/app/config:ro
+      - ../config:/app/config
+      - ../services/zigbee2mqtt/data:/app/z2m-data:ro
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-soms}:${POSTGRES_PASSWORD:-soms_dev_password}@postgres:5432/soms
       - MQTT_BROKER=mosquitto
@@ -111,7 +112,9 @@ services:
       start_period: 15s
 
   frontend:
-    build: ../services/dashboard/frontend
+    build:
+      context: ..
+      dockerfile: services/dashboard/frontend/Dockerfile
     container_name: soms-frontend
     restart: always
     ports:
@@ -237,7 +240,9 @@ services:
 
   # --- Wallet App (Mobile PWA) ---
   wallet-app:
-    build: ../services/wallet-app
+    build:
+      context: ..
+      dockerfile: services/wallet-app/Dockerfile
     container_name: soms-wallet-app
     restart: always
     ports:
@@ -353,6 +358,60 @@ services:
       retries: 3
       start_period: 15s
 
+  # --- Zigbee2MQTT Coordinator ---
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt
+    container_name: soms-zigbee2mqtt
+    restart: always
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    ports:
+      - "${SOMS_PORT_Z2M_FRONTEND:-8008}:8080"
+    volumes:
+      - ../services/zigbee2mqtt/data:/app/data
+      - /run/udev:/run/udev:ro
+    devices:
+      - /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0:/dev/ttyUSB0
+    environment:
+      - TZ=${TZ:-Asia/Tokyo}
+    networks:
+      - soms-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # --- Zigbee2MQTT Bridge (Topic Translator) ---
+  zigbee2mqtt-bridge:
+    build: ../services/zigbee2mqtt-bridge
+    container_name: soms-z2m-bridge
+    restart: always
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      zigbee2mqtt:
+        condition: service_healthy
+    environment:
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_USER=${MQTT_USER:-soms}
+      - MQTT_PASS=${MQTT_PASS:-soms_dev_mqtt}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ../services/zigbee2mqtt-bridge/src:/app
+      - ../config:/app/config:ro
+    networks:
+      - soms-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('mosquitto',1883),5); s.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
   # --- Anomaly Detection ---
   anomaly:
     build: ../services/anomaly
@@ -383,7 +442,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-
   # --- Perception Node ---
   # Uses host networking for direct access to RTSP cameras and GPU devices
   # on the local network. Cannot use soms-net bridge (no `networks:` key).
@@ -419,7 +477,9 @@ services:
 
   # --- Admin Panel ---
   admin-frontend:
-    build: ../services/admin/frontend
+    build:
+      context: ..
+      dockerfile: services/admin/frontend/Dockerfile
     container_name: soms-admin
     restart: always
     ports:

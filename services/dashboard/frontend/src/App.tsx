@@ -1,11 +1,10 @@
 import { ErrorBoundary } from '@soms/ui';
-import { useAuth } from '@soms/auth';
 import UIPreview from './UIPreview';
+import ZoneEditor from './pages/ZoneEditor';
 import MonitorHeader from './components/MonitorHeader';
 import TaskList from './components/TaskList';
 import ShoppingPanel from './components/ShoppingPanel';
 import { useTaskManager } from './hooks/useTaskManager';
-import LoginPage from './pages/LoginPage';
 
 function Monitor() {
   const {
@@ -52,28 +51,29 @@ function Monitor() {
   );
 }
 
-export default function App() {
-  if (new URLSearchParams(window.location.search).has('preview')) {
-    return <UIPreview />;
-  }
-
-  const { isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-[var(--gray-50)]">
-        <div className="text-[var(--gray-500)]">読み込み中...</div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <LoginPage />;
-  }
-
+function AuthenticatedApp() {
   return (
     <ErrorBoundary>
       <Monitor />
     </ErrorBoundary>
   );
+}
+
+// Route by query parameter — no hooks, no conditional rendering issues
+const _params = new URLSearchParams(window.location.search);
+const _page = _params.has('preview')
+  ? 'preview'
+  : _params.has('zone-editor')
+    ? 'zone-editor'
+    : 'main';
+
+export default function App() {
+  switch (_page) {
+    case 'preview':
+      return <UIPreview />;
+    case 'zone-editor':
+      return <ZoneEditor />;
+    default:
+      return <AuthenticatedApp />;
+  }
 }

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Task, TaskReport, ZoneMultiplierInfo } from '@soms/types';
-import { authFetch } from '@soms/auth';
 import { useAudioQueue, AudioPriority } from '../audio';
 import {
   fetchTasks,
@@ -193,7 +192,7 @@ export function useTaskManager() {
     setAcceptedTaskIds(prev => new Set(prev).add(taskId));
     acceptMutation.mutate(taskId);
     enqueueFromApi(async () => {
-      const res = await authFetch('/api/voice/acceptance/random');
+      const res = await fetch('/api/voice/acceptance/random');
       if (!res.ok) return null;
       const data = await res.json();
       return data.audio_url ?? null;
@@ -220,7 +219,7 @@ export function useTaskManager() {
       return next;
     });
     enqueueFromApi(async () => {
-      const res = await authFetch('/api/voice/rejection/random');
+      const res = await fetch('/api/voice/rejection/random');
       if (!res.ok) return null;
       const data = await res.json();
       return data.audio_url ?? null;
