@@ -3,7 +3,7 @@ import os
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,15 +29,28 @@ SUPPORTED_PROVIDERS = ("slack", "github")
 @router.get("/{provider}/login")
 async def oauth_login(
     provider: str,
-    redirect_uri: str = Query(None, description="Frontend callback URL"),
+    redirect_uri: str = Query(None, description="Post-login redirect origin"),
+    request: "Request" = None,
 ):
     """Start OAuth flow — redirect user to provider's authorization page."""
     if provider not in SUPPORTED_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
 
+    # Determine where to send the user after auth completes.
+    # Priority: explicit redirect_uri param > Referer header > FRONTEND_URL default
+    origin = redirect_uri
+    if not origin and request:
+        referer = request.headers.get("referer", "")
+        if referer:
+            from urllib.parse import urlparse
+            parsed = urlparse(referer)
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+    if not origin:
+        origin = settings.FRONTEND_URL
+
     oauth_provider = get_provider(provider)
     callback_url = f"{settings.AUTH_BASE_URL}/{provider}/callback"
-    state = create_state_token(nonce=os.urandom(8).hex())
+    state = create_state_token(nonce=os.urandom(8).hex(), origin=origin)
 
     authorize_url = oauth_provider.get_authorize_url(
         redirect_uri=callback_url,
@@ -57,11 +70,12 @@ async def oauth_callback(
     if provider not in SUPPORTED_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
 
-    # Verify state
+    # Verify state and extract origin
     try:
-        verify_state_token(state)
+        state_payload = verify_state_token(state)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid or expired state")
+    frontend_origin = state_payload.get("origin", settings.FRONTEND_URL)
 
     # Exchange code for provider access token
     oauth_provider = get_provider(provider)
@@ -113,5 +127,5 @@ async def oauth_callback(
         "expires_in": expires_in,
         "user": user_json,
     })
-    redirect_url = f"{settings.FRONTEND_URL}/auth/callback#{fragment}"
+    redirect_url = f"{frontend_origin}/auth/callback#{fragment}"
     return RedirectResponse(url=redirect_url)

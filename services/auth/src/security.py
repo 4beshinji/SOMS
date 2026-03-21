@@ -45,14 +45,15 @@ def hash_refresh_token(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def create_state_token(nonce: str) -> str:
+def create_state_token(nonce: str, origin: str | None = None) -> str:
     """Create a signed state token for OAuth CSRF protection."""
     exp = datetime.now(timezone.utc) + timedelta(minutes=10)
-    payload = {"nonce": nonce, "exp": exp}
+    payload: dict = {"nonce": nonce, "exp": exp}
+    if origin:
+        payload["origin"] = origin
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
-def verify_state_token(state: str) -> str:
-    """Verify state token and return the nonce."""
-    payload = jwt.decode(state, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
-    return payload["nonce"]
+def verify_state_token(state: str) -> dict:
+    """Verify state token and return the full payload."""
+    return jwt.decode(state, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])

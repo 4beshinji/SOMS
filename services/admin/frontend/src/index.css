@@ -1,2 +1,4 @@
 @import "tailwindcss";
 @import "@soms/ui/tokens.css";
+@source "../../../../packages/ui/src";
+@source "../../../../packages/auth/src";

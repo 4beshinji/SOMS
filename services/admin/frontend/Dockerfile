@@ -1,17 +1,27 @@
+# Build Stage — context is project root (monorepo)
 FROM node:22-alpine AS build
-RUN corepack enable && corepack prepare pnpm@10.30.0 --activate
-WORKDIR /app
+WORKDIR /workspace
 
-COPY package.json pnpm-lock.yaml ./
-# Copy workspace packages needed at build time
-COPY packages/ /workspace/packages/
+# Copy workspace config + lockfile + root package.json
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-RUN pnpm install --frozen-lockfile
-COPY . .
-RUN pnpm run build
+# Copy workspace packages
+COPY packages/ packages/
 
+# Copy admin-frontend package.json for dependency resolution
+COPY services/admin/frontend/package.json services/admin/frontend/
+
+# Install pnpm and all dependencies
+RUN npm install -g pnpm@10.30.0 \
+    && pnpm install --frozen-lockfile
+
+# Copy admin-frontend source and build
+COPY services/admin/frontend/ services/admin/frontend/
+RUN pnpm --filter soms-admin run build
+
+# Production Stage
 FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /workspace/services/admin/frontend/dist /usr/share/nginx/html
+COPY services/admin/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
