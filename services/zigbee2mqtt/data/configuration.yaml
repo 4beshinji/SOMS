@@ -1,0 +1,56 @@
+homeassistant:
+  enabled: false
+mqtt:
+  base_topic: zigbee2mqtt
+  server: mqtt://mosquitto:1883
+  user: soms
+  password: soms_dev_mqtt
+serial:
+  port: /dev/ttyUSB0
+  adapter: zstack
+frontend:
+  enabled: true
+  port: 8080
+advanced:
+  log_level: info
+  network_key:
+    - 146
+    - 59
+    - 116
+    - 237
+    - 56
+    - 74
+    - 4
+    - 155
+    - 60
+    - 78
+    - 110
+    - 110
+    - 178
+    - 107
+    - 2
+    - 103
+  pan_id: 48362
+devices:
+  '0xa4c138e17e7ba03a':
+    friendly_name: '0xa4c138e17e7ba03a'
+  '0xa4c138b65ad26965':
+    friendly_name: '0xa4c138b65ad26965'
+  '0xa4c13811d0a93ed4':
+    friendly_name: '0xa4c13811d0a93ed4'
+  '0xa4c13821dd1c6e60':
+    friendly_name: '0xa4c13821dd1c6e60'
+  '0xa4c1388f90e1f7ce':
+    friendly_name: '0xa4c1388f90e1f7ce'
+  '0xa4c138fbeb32da9c':
+    friendly_name: '0xa4c138fbeb32da9c'
+  '0xa4c138cdb4a972c2':
+    friendly_name: '0xa4c138cdb4a972c2'
+  '0xa4c138df630150a6':
+    friendly_name: '0xa4c138df630150a6'
+  '0xa4c138c8ccde0851':
+    friendly_name: '0xa4c138c8ccde0851'
+  '0xa4c1388207db1b9d':
+    friendly_name: '0xa4c1388207db1b9d'
+groups: {}
+version: 5

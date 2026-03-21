@@ -50,7 +50,7 @@ docker logs -f soms-brain
 docker logs -f soms-perception
 ```
 
-Service names in docker-compose: `mosquitto`, `brain`, `postgres`, `backend`, `frontend`, `voicevox`, `voice-service`, `wallet`, `wallet-app`, `auth`, `ollama`, `mock-llm`, `perception`, `switchbot`, `admin-frontend`, `anomaly`, `wifi-pose`
+Service names in docker-compose: `mosquitto`, `brain`, `postgres`, `backend`, `frontend`, `voicevox`, `voice-service`, `wallet`, `wallet-app`, `auth`, `ollama`, `mock-llm`, `perception`, `switchbot`, `zigbee2mqtt`, `zigbee2mqtt-bridge`, `admin-frontend`
 
 ### Frontend Development
 
@@ -64,20 +64,20 @@ pnpm run lint     # ESLint
 
 ### Testing
 
-Unit tests (pytest, no running services required — **936 tests total**):
+Unit tests (pytest, no running services required — **830 tests total**):
 ```bash
 # All unit tests (run per-service to avoid conftest collisions)
-for d in services/brain/tests services/auth/tests services/voice/tests services/dashboard/backend/tests services/wallet/tests services/switchbot/tests services/perception/tests services/anomaly/tests; do echo "=== $d ===" && .venv/bin/python -m pytest "$d" -v --tb=short; done
+for d in services/brain/tests services/auth/tests services/voice/tests services/dashboard/backend/tests services/wallet/tests services/switchbot/tests services/zigbee2mqtt-bridge/tests services/perception/tests; do echo "=== $d ===" && .venv/bin/python -m pytest "$d" -v --tb=short; done
 
 # Per service
-.venv/bin/python -m pytest services/brain/tests/              # Brain: 255 tests (queue, sanitizer, sensor fusion, tools, executor, dashboard client, VLM, WiFi heatmap)
-.venv/bin/python -m pytest services/auth/tests/               # Auth: 81 tests (OAuth, JWT, token routers)
-.venv/bin/python -m pytest services/voice/tests/              # Voice: 80 tests (API endpoints, stock shared interface, rejection/acceptance/currency stock)
-.venv/bin/python -m pytest services/dashboard/backend/tests/  # Dashboard: 197 tests (JWT auth, protected endpoints, task/sensor/device/voice/shopping/inventory CRUD)
-.venv/bin/python -m pytest services/wallet/tests/             # Wallet: 58 tests (JWT auth, financial endpoints)
+.venv/bin/python -m pytest services/brain/tests/              # Brain: 189 tests (queue, sanitizer, sensor fusion, tools, executor, dashboard client)
+.venv/bin/python -m pytest services/auth/tests/               # Auth: 97 tests (OAuth, JWT, middleware)
+.venv/bin/python -m pytest services/voice/tests/              # Voice: 79 tests (API endpoints, rejection/acceptance/currency stock)
+.venv/bin/python -m pytest services/dashboard/backend/tests/  # Dashboard: 172 tests (JWT auth, protected endpoints, task/sensor/device/voice CRUD)
+.venv/bin/python -m pytest services/wallet/tests/             # Wallet: 64 tests (JWT auth, financial endpoints)
 .venv/bin/python -m pytest services/switchbot/tests/          # SwitchBot: 59 tests (config, device manager, API)
-.venv/bin/python -m pytest services/perception/tests/         # Perception: 161 tests (ArUco, ReID, tracklet, fall detection, VAD, VLM, WiFi tracking)
-.venv/bin/python -m pytest services/anomaly/tests/            # Anomaly: 45 tests (preprocessor, scorer, trainer, MQTT client)
+.venv/bin/python -m pytest services/zigbee2mqtt-bridge/tests/ # Zigbee2MQTT Bridge: 84 tests (config, devices, MQTT bridge, device manager)
+.venv/bin/python -m pytest services/perception/tests/         # Perception: 86 tests (ArUco, ReID, tracklet, fall detection)
 ```
 
 Integration tests (standalone scripts, requires running services):
@@ -131,8 +131,8 @@ python3 services/perception/test_yolo_detect.py
 | Ollama (LLM) | 11434 | soms-ollama |
 | Auth Service | 127.0.0.1:8006 (localhost only) | soms-auth |
 | SwitchBot Bridge (Webhook) | 8005 | soms-switchbot |
-| Admin Frontend | 8007 | soms-admin |
-| Anomaly Detection | 127.0.0.1:8008 (localhost only) | soms-anomaly |
+| Zigbee2MQTT Frontend | 8008 | soms-zigbee2mqtt |
+| Zigbee2MQTT Bridge | — | soms-z2m-bridge |
 | MQTT | 1883 (TCP) / 9001 (WebSocket) | soms-mqtt |
 
 ### MQTT Topic Structure
@@ -159,13 +159,6 @@ mcp/{agent_id}/response/{request_id}
 # Safety alerts (fall detection etc.)
 office/{zone}/safety/fall
 
-# Anomaly detection (prediction-based, published by anomaly service)
-office/{zone}/anomaly/{channel}
-
-# MTMC person tracking (with crime coefficient when VAD enabled)
-office/tracking/persons
-office/{zone}/tracking
-
 # Task completion report (published by backend)
 office/{zone}/task_report/{task_id}
 
@@ -183,7 +176,6 @@ Brain subscribes to `office/#` and `mcp/+/response/#`.
 - **Perception → MQTT**: Publishes detection results to broker
 - **Backend → MQTT**: Publishes task completion reports to `office/{zone}/task_report/{task_id}` (authenticated)
 - **Brain ← MQTT**: Subscribes to sensor telemetry and perception events, triggers cognitive cycles on state changes
-- **Anomaly → MQTT → Brain**: Publishes prediction-based anomaly scores to `office/{zone}/anomaly/{channel}`, Brain WorldModel routes to `anomaly_detected` events
 - **MQTT Authentication**: All MQTT clients use username/password auth (`MQTT_USER`/`MQTT_PASS`, default: `soms`/`soms_dev_mqtt`)
 
 ### Brain Service Internals (`services/brain/src/`)
@@ -224,23 +216,7 @@ Brain subscribes to `office/#` and `mcp/+/response/#`.
 - `fall_detector.py` — Geometric heuristic fall detection with furniture-aware discrimination. Uses torso angle, head position, bbox ratio, rapid transition, and ankle spread as positive signals; furniture IoU and hip-in-furniture as negative penalties. State machine: NORMAL → SUSPICIOUS (5s) → FALL_CONFIRMED → ALERT_SENT, with 120s cooldown. Integrated into `ActivityMonitor.process_results()`, publishes to `office/{zone}/safety/fall`
 - `camera_discovery.py` — Async TCP port scan + URL probe + YOLO verification for auto-discovery
 - `tracking/` — MTMC (Multi-Target Multi-Camera) person tracking: `CrossCameraTracker`, `ArUcoCalibrator` (coordinate calibration), `ReIDEmbedder` (person re-identification), `Tracklet`, `MTMCPublisher`, `Homography` (camera-to-floor transform)
-- `vad/` — Video Anomaly Detection with per-person crime coefficient (0-300), three-layer ensemble integrated with MTMC tracking
 - Monitor config in `services/perception/config/monitors.yaml` includes YOLO model paths, camera-zone mappings, tracker/ReID settings, fall detection parameters, and discovery settings
-
-#### Video Anomaly Detection (`services/perception/src/vad/`)
-
-Three-layer ensemble that reuses existing YOLO/Pose inference (no duplicate GPU work):
-
-| Layer | Module | Model | Input | Adds |
-|-------|--------|-------|-------|------|
-| L1 | `stg_nf.py` | Graph Conv + Normalizing Flow (~1K NF params) | YOLO-pose skeleton sequences | ≈0 VRAM |
-| L2 | `aed_mae.py` | Masked AutoEncoder (~150K params) | 64×64 resized frames | ~200 MB |
-| L3 | `attribute_vad.py` | Velocity + Pose + Appearance CNN (~30K params) | bbox/keypoints/crop | ~100 MB |
-
-- `ensemble.py` — **CrimeCoefficient** scorer: 6 weighted sub-scores (pose 25%, attribute 20%, trajectory 20%, scene 15%, temporal 10%, social 10%) → EMA-smoothed 0-300 score per global person ID. Severity: 0-100 Clear, 100-200 Latent, 200-250 Warning, 250-300 Critical
-- `vad_monitor.py` — `VADMonitor` hooks into ActivityMonitor pose output + CrossCameraTracker global tracks; resolves global person IDs via bbox IoU matching
-- `trainer.py` — Normal-only data collection and training for all three models (one-class learning)
-- `MTMCPublisher` includes `crime_coefficient` and `threat_level` per person when VADMonitor is attached
 
 ### SwitchBot Cloud Bridge (`services/switchbot/src/`)
 
@@ -255,6 +231,20 @@ Bridges SwitchBot Cloud API v1.1 devices into SOMS via MQTT. Uses the same telem
 - `devices/` — Device type implementations (meter, bot, curtain, plug, lock, light, motion_sensor, contact_sensor, ir_device)
 
 Config: `config/switchbot.yaml`. Env vars: `SWITCHBOT_TOKEN`, `SWITCHBOT_SECRET`.
+
+### Zigbee2MQTT Bridge (`services/zigbee2mqtt-bridge/src/`)
+
+Bridges Zigbee2MQTT devices into SOMS via MQTT topic translation. Z2M is MQTT-native so the bridge is much simpler than SwitchBot — no API client, no polling, no webhook. Uses the same telemetry format (`{"value": X}` per-channel) and MCP JSON-RPC 2.0 protocol.
+
+- `main.py` — Async entry point, signal handling, graceful shutdown
+- `config_loader.py` — YAML config with `${ENV_VAR}` expansion (same as SwitchBot)
+- `mqtt_bridge.py` — Single MQTT client: subscribes to `zigbee2mqtt/#`, routes Z2M state/availability to devices, handles MCP requests, publishes `zigbee2mqtt/{name}/set` for actuators
+- `device_manager.py` — Device creation from config + heartbeat loop (no polling — Z2M pushes state)
+- `devices/` — Device type implementations (temp_humidity, motion, contact, plug, light)
+
+Data flow: `zigbee2mqtt/{name}` → `handle_z2m_state()` → `office/{zone}/sensor/{id}/{channel}` → WorldModel
+
+Config: `config/zigbee2mqtt-bridge.yaml`. Z2M config: `services/zigbee2mqtt/data/configuration.yaml`.
 
 ### Auth Service (`services/auth/src/`)
 
@@ -274,33 +264,6 @@ OAuth-based authentication service (Slack + GitHub) with JWT token issuance. Sha
 **JWT Spec**: HS256, 15min access token (`{ sub: user_id, username, display_name, iss: "soms-auth" }`), 30-day refresh token (SHA-256 hashed, single-use rotation). Shared `JWT_SECRET` env var across auth/wallet/dashboard.
 
 **nginx routing** (wallet-app): `/api/auth/*` → auth:8000
-
-### Anomaly Detection Service (`services/anomaly/src/`)
-
-Prediction-based time series anomaly detection using Mamba SSM (primary) or Transformer (fallback). Learns normal sensor patterns from `events.hourly_aggregates` and scores deviations. Dual inference: batch (10-min loop) + realtime (MQTT raw readings).
-
-- `main.py` — FastAPI lifespan: init_db → Scorer → RealtimeDetector → MQTT → Trainer → Scheduler
-- `config.py` — `AnomalySettings`: MODEL_ARCH="auto", WINDOW_SIZE=168 (1 week), HORIZON=6 (6h), INFERENCE_INTERVAL=600 (10min), WARNING_THRESHOLD=3.0, CRITICAL_THRESHOLD=5.0
-- `database.py` — `anomaly` schema: `anomaly.models` (zone, arch, val_loss, norm_stats JSONB, is_active) + `anomaly.detections` (zone, channel, score, predicted, actual, severity, source)
-- `data/extractor.py` — Queries `events.hourly_aggregates` for per-zone time series
-- `data/preprocessor.py` — 6 channels × 3 stats + 4 temporal = 22-dim features; fill_gaps, normalize, sliding windows
-- `model/mamba_forecaster.py` — `MambaForecaster`: Linear(22,64) → 2× MambaBlock → Linear(64,36) (~50K params)
-- `model/transformer_forecaster.py` — `TransformerForecaster`: Linear(22,64) → PositionalEncoding → 2× TransformerEncoderLayer → Linear(64,36) (~70K params)
-- `model/factory.py` — Auto-selects Mamba, falls back to Transformer if `mamba-ssm` unavailable
-- `model/trainer.py` — Adam lr=0.001, early stopping patience=10, auto-promotes new model if val_loss within 110%
-- `scorer.py` — anomaly_score = |actual - predicted| / σ_train; severity: <3.0 normal, ≥3.0 warning, ≥5.0 critical; 1h cooldown per zone+channel
-- `mqtt_client.py` — Publishes to `office/{zone}/anomaly/{channel}`, subscribes to `office/+/sensor/+/+` for realtime
-- `realtime.py` — Per-zone sliding buffer, rate-limited checks (60s), raw readings → model inference
-- `scheduler.py` — 10-min batch inference loop + weekly retrain (Sunday 3:00 UTC)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Service health check |
-| GET | `/models` | List registered models |
-| POST | `/admin/train` | Trigger model training (zone, optional) |
-| GET | `/admin/anomalies` | Query detections (zone, channel, severity, hours filters) |
-
-Config: `config/anomaly.yaml`. Model store: Docker volume `soms_anomaly_models` at `/app/model_store/{zone}/{timestamp}.pt`.
 
 ### nginx Routing (`services/dashboard/frontend/nginx.conf`)
 
@@ -501,7 +464,7 @@ When working as one of multiple concurrent Claude Code workers, read these docum
 Key variables in `.env` (see `env.example`):
 
 - `LLM_API_URL` — `http://mock-llm:8000/v1` (dev) or `http://ollama:11434/v1` (Docker内部) or `http://host.docker.internal:11434/v1` (ホストOllama)
-- `LLM_MODEL` — Model name for Ollama (e.g. `qwen3.5:14b`)
+- `LLM_MODEL` — Model name for Ollama (e.g. `qwen2.5:14b`)
 - `MQTT_BROKER` / `MQTT_PORT` — Broker address (default: `mosquitto:1883`)
 - `MQTT_USER` / `MQTT_PASS` — MQTT credentials (default: `soms` / `soms_dev_mqtt`)
 - `DATABASE_URL` — `postgresql+asyncpg://user:pass@postgres:5432/soms` (Docker)

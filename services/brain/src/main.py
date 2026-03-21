@@ -564,6 +564,31 @@ class Brain:
             except Exception as e:
                 logger.error(f"Utility decay error: {e}")
 
+    async def _snapshot_loop(self):
+        """Periodically write DeviceRegistry snapshot to DB (every 10 minutes)."""
+        while True:
+            await asyncio.sleep(600)  # 10 minutes
+            try:
+                from event_store.database import get_engine
+                from sqlalchemy import text
+                engine = get_engine()
+                if engine is None:
+                    continue
+                snapshot = self.device_registry.to_snapshot()
+                async with engine.begin() as conn:
+                    await conn.execute(
+                        text("""
+                            INSERT INTO events.device_registry_snapshot (id, snapshot, updated_at)
+                            VALUES (1, :snapshot, now())
+                            ON CONFLICT (id) DO UPDATE
+                            SET snapshot = :snapshot, updated_at = now()
+                        """),
+                        {"snapshot": json.dumps(snapshot)},
+                    )
+                logger.debug("Device registry snapshot written (%d devices)", len(snapshot))
+            except Exception as e:
+                logger.error(f"Snapshot write error: {e}")
+
     async def run(self):
         self._loop = asyncio.get_running_loop()
         logger.info(f"Connecting to {MQTT_BROKER}:{MQTT_PORT}...")
@@ -636,6 +661,8 @@ class Brain:
 
             # Start periodic utility_score decay (every hour)
             asyncio.create_task(self._utility_decay_loop())
+
+            asyncio.create_task(self._snapshot_loop())
 
             logger.info("Brain is running (ReAct mode)...")
             last_cycle_time = 0.0

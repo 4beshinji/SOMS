@@ -114,6 +114,12 @@ CREATE TABLE IF NOT EXISTS events.person_tracks (
 
 CREATE INDEX IF NOT EXISTS idx_person_tracks_global_id
     ON events.person_tracks (global_id);
+
+CREATE TABLE IF NOT EXISTS events.device_registry_snapshot (
+    id          INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    snapshot    JSONB NOT NULL DEFAULT '[]',
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 

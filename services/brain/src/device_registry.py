@@ -332,6 +332,26 @@ class DeviceRegistry:
             ceiling = 2.0 - 1.5 * decay_progress  # 2.0 → 0.5
             d.utility_score = max(0.5, min(d.utility_score, ceiling))
 
+    def to_snapshot(self) -> list[dict]:
+        """Export device state for DB persistence (read by dashboard discovery API)."""
+        self._update_device_states()
+        result = []
+        for d in self.devices.values():
+            entry = {
+                "device_id": d.device_id,
+                "device_type": d.device_type,
+                "state": d.state,
+                "battery_pct": d.battery_pct,
+                "trusted": d.trusted,
+                "capabilities": d.capabilities,
+                "power_mode": d.power_mode,
+            }
+            # Use ISO format for JSON serialization
+            from datetime import datetime, timezone
+            entry["last_seen"] = datetime.fromtimestamp(d.last_seen, tz=timezone.utc).isoformat()
+            result.append(entry)
+        return result
+
     def _update_device_states(self):
         """Update all device states based on last_seen."""
         for device in self.devices.values():
