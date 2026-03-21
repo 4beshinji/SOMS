@@ -25,6 +25,9 @@ def _make_device_position(
     y=200.0,
     device_type="sensor",
     channels=None,
+    orientation_deg=None,
+    fov_deg=None,
+    detection_range_m=None,
 ):
     class FakeDevicePosition:
         pass
@@ -36,6 +39,9 @@ def _make_device_position(
     dp.y = y
     dp.device_type = device_type
     dp.channels = json.dumps(channels) if channels is not None else "[]"
+    dp.orientation_deg = orientation_deg
+    dp.fov_deg = fov_deg
+    dp.detection_range_m = detection_range_m
     dp.created_at = datetime.now(timezone.utc)
     dp.updated_at = None
     return dp
@@ -335,3 +341,155 @@ class TestDeleteDevicePosition:
         resp = client.delete("/devices/positions/cam_01", headers=auth_header())
         assert resp.status_code == 204
         assert resp.content == b""
+
+
+# ── device_id Validation ──────────────────────────────────────
+
+
+class TestDeviceIdValidation:
+    """POST /devices/positions/ — device_id format validation."""
+
+    def test_valid_device_id(self):
+        """Lowercase alphanumeric + underscore → 201."""
+        db = _make_mock_db([
+            MockResult([], scalar_value=None),
+        ])
+        db.add = lambda obj: setattr(obj, 'id', 1)
+        app = _create_app(db)
+        client = TestClient(app)
+        resp = client.post("/devices/positions/", json={
+            "device_id": "env_01",
+            "zone": "main",
+            "x": 1.0,
+            "y": 2.0,
+        }, headers=_auth_header())
+        assert resp.status_code == 201
+
+    def test_invalid_device_id_uppercase(self):
+        """Uppercase letters → 422."""
+        db = _make_mock_db()
+        app = _create_app(db)
+        client = TestClient(app)
+        resp = client.post("/devices/positions/", json={
+            "device_id": "Env_01",
+            "zone": "main",
+            "x": 1.0,
+            "y": 2.0,
+        }, headers=_auth_header())
+        assert resp.status_code == 422
+
+    def test_invalid_device_id_spaces(self):
+        """Spaces → 422."""
+        db = _make_mock_db()
+        app = _create_app(db)
+        client = TestClient(app)
+        resp = client.post("/devices/positions/", json={
+            "device_id": "env 01",
+            "zone": "main",
+            "x": 1.0,
+            "y": 2.0,
+        }, headers=_auth_header())
+        assert resp.status_code == 422
+
+    def test_invalid_device_id_special_chars(self):
+        """Special characters → 422."""
+        db = _make_mock_db()
+        app = _create_app(db)
+        client = TestClient(app)
+        resp = client.post("/devices/positions/", json={
+            "device_id": "dev-01!",
+            "zone": "main",
+            "x": 1.0,
+            "y": 2.0,
+        }, headers=_auth_header())
+        assert resp.status_code == 422
+
+    def test_invalid_device_id_empty(self):
+        """Empty string → 422."""
+        db = _make_mock_db()
+        app = _create_app(db)
+        client = TestClient(app)
+        resp = client.post("/devices/positions/", json={
+            "device_id": "",
+            "zone": "main",
+            "x": 1.0,
+            "y": 2.0,
+        }, headers=_auth_header())
+        assert resp.status_code == 422
+
+
+# ── GET /devices/discovery ────────────────────────────────────
+
+
+class _RowsResult:
+    """Mocks a SQLAlchemy result that supports .all() returning raw tuples."""
+    def __init__(self, rows=None):
+        self._rows = list(rows) if rows else []
+    def all(self):
+        return self._rows
+    def scalar_one_or_none(self):
+        return self._rows[0] if self._rows else None
+
+
+class TestDiscoveryEndpoint:
+    """GET /devices/discovery — merged device discovery."""
+
+    def test_discovery_empty(self):
+        """No config, no snapshot, no placed → empty list."""
+        from unittest.mock import patch, AsyncMock
+        db = AsyncMock()
+        db.execute = AsyncMock(side_effect=[
+            _RowsResult(),   # snapshot query → None
+            _RowsResult(),   # placed device_ids → empty
+        ])
+        app = _create_app(db)
+        client = TestClient(app)
+        with patch("routers.devices._load_bridge_configs", return_value=[]):
+            resp = client.get("/devices/discovery")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    def test_discovery_from_config(self):
+        """Bridge config devices show up with source=config."""
+        from unittest.mock import patch, AsyncMock
+        config_devs = [
+            {"device_id": "z2m_presence_01", "device_type": "presence", "zone": "main",
+             "label": "Test", "channels": ["motion"], "bridge": "zigbee2mqtt"},
+        ]
+        db = AsyncMock()
+        db.execute = AsyncMock(side_effect=[
+            _RowsResult(),   # no snapshot
+            _RowsResult(),   # no placed
+        ])
+        app = _create_app(db)
+        client = TestClient(app)
+        with patch("routers.devices._load_bridge_configs", return_value=config_devs):
+            resp = client.get("/devices/discovery")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["device_id"] == "z2m_presence_01"
+        assert data[0]["source"] == "config"
+        assert data[0]["placed"] is False
+        assert data[0]["bridge"] == "zigbee2mqtt"
+
+    def test_discovery_placed_flag(self):
+        """Devices already in device_positions get placed=True."""
+        from unittest.mock import patch, AsyncMock
+        config_devs = [
+            {"device_id": "z2m_presence_01", "device_type": "presence", "zone": "main",
+             "label": None, "channels": ["motion"], "bridge": "zigbee2mqtt"},
+        ]
+        db = AsyncMock()
+        db.execute = AsyncMock(side_effect=[
+            _RowsResult(),                                  # no snapshot
+            _RowsResult([("z2m_presence_01",)]),            # placed IDs
+        ])
+        app = _create_app(db)
+        client = TestClient(app)
+        with patch("routers.devices._load_bridge_configs", return_value=config_devs):
+            resp = client.get("/devices/discovery")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["placed"] is True

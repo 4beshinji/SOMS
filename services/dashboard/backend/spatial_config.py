@@ -37,6 +37,9 @@ class DevicePosition:
     position: list[float] = field(default_factory=lambda: [0.0, 0.0])
     type: str = "sensor"
     channels: list[str] = field(default_factory=list)
+    orientation_deg: Optional[float] = None
+    fov_deg: Optional[float] = None
+    detection_range_m: Optional[float] = None
 
 
 @dataclass
@@ -99,6 +102,9 @@ def load_spatial_config(path: str = "config/spatial.yaml") -> SpatialConfig:
             position=ddata.get("position", [0.0, 0.0]),
             type=ddata.get("type", "sensor"),
             channels=ddata.get("channels", []),
+            orientation_deg=ddata.get("orientation_deg"),
+            fov_deg=ddata.get("fov_deg"),
+            detection_range_m=ddata.get("detection_range_m"),
         )
 
     for cam_id, cdata in raw.get("cameras", {}).items():

@@ -71,6 +71,9 @@ class DevicePosition(Base):
     y = Column(Float)
     device_type = Column(String, default="sensor")
     channels = Column(String, default="[]")  # JSON array of channel names
+    orientation_deg = Column(Float, nullable=True)
+    fov_deg = Column(Float, nullable=True)
+    detection_range_m = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

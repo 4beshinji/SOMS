@@ -51,6 +51,9 @@ class PgSpatialRepository(SpatialDataRepository):
                     "position": [row.x, row.y],
                     "type": row.device_type or "sensor",
                     "channels": channels,
+                    "orientation_deg": row.orientation_deg,
+                    "fov_deg": row.fov_deg,
+                    "detection_range_m": row.detection_range_m,
                 }
         except Exception:
             logger.warning("Could not read device_positions table (may not exist yet)")
