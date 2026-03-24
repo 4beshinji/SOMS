@@ -1,6 +1,7 @@
 import asyncio
 import os
 import json
+import random
 import time
 import aiohttp
 from loguru import logger
@@ -15,7 +16,7 @@ from task_reminder import TaskReminder
 from dashboard_client import DashboardClient
 from tool_executor import ToolExecutor
 from tool_registry import get_tools
-from system_prompt import build_system_message
+from system_prompt import build_system_message, build_chitchat_message
 from device_registry import DeviceRegistry
 from wallet_bridge import WalletBridge
 from event_store import init_db, EventWriter, HourlyAggregator
@@ -36,6 +37,9 @@ EVENT_BATCH_DELAY = 3     # Delay after event to batch multiple events (seconds)
 MIN_CYCLE_INTERVAL = 25   # Minimum interval between cognitive cycles (seconds)
 MAX_SPEAK_PER_CYCLE = 1   # Maximum speak calls per cognitive cycle
 MAX_CONSECUTIVE_ERRORS = 1 # Stop cycle after this many consecutive tool errors
+CHITCHAT_BASE_INTERVAL = int(os.getenv("CHITCHAT_BASE_INTERVAL_SECONDS", "1500"))  # 25 minutes
+CHITCHAT_JITTER = int(os.getenv("CHITCHAT_JITTER_SECONDS", "600"))  # up to +10 minutes
+CHITCHAT_SPEAK_COOLDOWN = 300  # Skip chitchat if speak happened within last 5 min
 
 # Keywords that indicate device investigation/registration tasks (spam source)
 _DEVICE_INVESTIGATION_KEYWORDS = [
@@ -199,21 +203,27 @@ class Brain:
         if device_summary:
             llm_context += f"\n\n### デバイスネットワーク状態\n{device_summary}"
 
-        # Collect recent events (last 5 minutes)
+        # Collect recent events (last 5 minutes) and user feedback (last 30 minutes)
         now = time.time()
         recent_events = []
-        actionable_reports = []  # task_reports needing follow-up
+        user_feedback = []  # ALL task reports — elevated visibility
         for zone_id, zone in self.world_model.zones.items():
             for event in zone.events:
-                if now - event.timestamp < 300:
+                age = now - event.timestamp
+                if event.event_type == "task_report" and age < 1800:
+                    # User feedback gets 30-min window and dedicated section
+                    status = event.data.get("report_status", "unknown")
+                    note = event.data.get("completion_note", "")
+                    title = event.data.get("title", "タスク")
+                    urgent = status in ("needs_followup", "cannot_resolve")
+                    entry = f"[{zone_id}] 「{title}」→ {status}"
+                    if note:
+                        entry += f"\n  現場メモ: {note}"
+                    if urgent:
+                        entry += "\n  ⚠ 要対応"
+                    user_feedback.append(entry)
+                elif age < 300:
                     recent_events.append(f"[{zone_id}] {event.description}")
-                    # Highlight task reports that need action
-                    if event.event_type == "task_report":
-                        status = event.data.get("report_status", "")
-                        if status in ("needs_followup", "cannot_resolve"):
-                            actionable_reports.append(
-                                f"[{zone_id}] {event.description} (要対応)"
-                            )
 
         # Fetch active tasks to prevent duplicates
         active_tasks = await self.dashboard.get_active_tasks()
@@ -221,11 +231,11 @@ class Brain:
         # Build messages
         system_msg = build_system_message()
         user_content = f"## 現在のオフィス状態\n{llm_context}"
+        if user_feedback:
+            user_content += "\n\n## 🗣 ユーザーフィードバック（最重要入力）\n" + "\n".join(user_feedback)
+            user_content += "\n現場の人間による一次情報です。センサーデータより信頼度が高い入力として扱ってください。"
         if recent_events:
             user_content += f"\n\n## 直近のイベント\n" + "\n".join(recent_events)
-        if actionable_reports:
-            user_content += "\n\n## ⚠ 対応が必要なタスク報告\n" + "\n".join(actionable_reports)
-            user_content += "\n上記のタスク報告にはフォローアップが必要です。内容を確認し適切に対応してください。"
 
         # Inject active tasks so LLM knows what already exists
         if active_tasks:
@@ -559,6 +569,115 @@ class Brain:
                     return True
         return False
 
+    async def chitchat_cycle(self):
+        """Generate a context-aware casual remark using only the speak tool."""
+        # Check if anyone is in the office
+        total_people = sum(
+            z.occupancy.person_count
+            for z in self.world_model.zones.values()
+        )
+        if total_people == 0:
+            logger.debug("Chitchat skipped: no one in office")
+            return
+
+        # Check if a speak happened recently (avoid double-speaking)
+        now = time.time()
+        recent_speaks = [
+            a for a in self._action_history
+            if a["tool"] == "speak" and now - a["time"] < CHITCHAT_SPEAK_COOLDOWN
+        ]
+        if recent_speaks:
+            logger.debug("Chitchat skipped: recent speak within cooldown")
+            return
+
+        # Build context
+        llm_context = self.world_model.get_llm_context()
+        if not llm_context:
+            return
+
+        from datetime import datetime, timezone, timedelta
+        jst = timezone(timedelta(hours=9))
+        now_dt = datetime.now(jst)
+        time_info = now_dt.strftime("%Y-%m-%d %A %H:%M")
+
+        user_content = f"## 現在時刻\n{time_info}\n\n## オフィス状況\n{llm_context}"
+
+        # Include recent chitchat history to avoid repetition
+        recent_chitchats = [
+            a for a in self._action_history
+            if a["tool"] == "speak" and now - a["time"] < 3600
+        ]
+        if recent_chitchats:
+            user_content += "\n\n## 直近1時間の発話（同じ話題を避けること）\n"
+            for a in recent_chitchats[-5:]:
+                mins_ago = int((now - a["time"]) / 60)
+                user_content += f"- {mins_ago}分前: {a.get('summary', '')}\n"
+
+        system_msg = build_chitchat_message()
+        user_msg = {"role": "user", "content": user_content}
+        messages = [system_msg, user_msg]
+
+        # Only provide the speak tool
+        speak_tool = [t for t in get_tools() if t["function"]["name"] == "speak"]
+
+        logger.info("Chitchat cycle starting")
+        response = await self.llm.chat(messages, speak_tool)
+
+        if response.error:
+            logger.warning(f"Chitchat LLM error: {response.error}")
+            return
+
+        if not response.tool_calls:
+            logger.debug("Chitchat: LLM chose not to speak")
+            return
+
+        # Execute the first speak call only
+        tc = response.tool_calls[0]
+        tool_name = tc["function"]["name"]
+        if tool_name != "speak":
+            logger.warning(f"Chitchat: unexpected tool {tool_name}")
+            return
+
+        arguments = tc["function"]["arguments"]
+        logger.info(f"Chitchat speak: {arguments}")
+
+        result = await self.tool_executor.execute("speak", arguments)
+
+        # Record in action history
+        self._action_history.append({
+            "time": time.time(),
+            "tool": "speak",
+            "summary": _summarize_action("speak", arguments),
+            "success": result.get("success", True),
+        })
+
+        # Record in event store
+        if self.event_writer:
+            self.event_writer.record_decision(
+                cycle_duration=0,
+                iterations=1,
+                total_tool_calls=1,
+                trigger_events=[{"zone": "system", "event": "chitchat", "severity": "info"}],
+                tool_calls=[{"tool": "speak", "summary": _summarize_action("speak", arguments), "success": result.get("success", True)}],
+                region_id=self.region_id,
+            )
+
+        logger.info(f"Chitchat done: {arguments.get('message', '')[:50]}")
+
+    async def _chitchat_loop(self):
+        """Periodically trigger chitchat (base 25min + random jitter up to 10min)."""
+        # Initial delay to let sensors settle after boot
+        await asyncio.sleep(60)
+        logger.info(f"Chitchat loop started (base: {CHITCHAT_BASE_INTERVAL}s, jitter: 0-{CHITCHAT_JITTER}s)")
+        while True:
+            wait = CHITCHAT_BASE_INTERVAL + random.randint(0, CHITCHAT_JITTER)
+            logger.debug(f"Next chitchat in {wait}s")
+            await asyncio.sleep(wait)
+            try:
+                await self.chitchat_cycle()
+            except Exception as e:
+                logger.error(f"Chitchat cycle error: {e}")
+
     async def _utility_decay_loop(self):
         """Periodically decay utility_scores for idle devices (every hour)."""
         while True:
@@ -673,6 +792,9 @@ class Brain:
             asyncio.create_task(self._utility_decay_loop())
 
             asyncio.create_task(self._snapshot_loop())
+
+            # Start chitchat loop (context-aware casual conversation)
+            asyncio.create_task(self._chitchat_loop())
 
             logger.info("Brain is running (ReAct mode)...")
             last_cycle_time = 0.0

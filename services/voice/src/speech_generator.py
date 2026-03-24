@@ -1,8 +1,12 @@
+import re
 import aiohttp
 import os
 import random
 from loguru import logger
 from models import Task
+
+# Strip Qwen3.5 thinking blocks from response content
+_THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
 class SpeechGenerator:
     """Generate natural speech text from task data using LLM."""
@@ -296,9 +300,9 @@ class SpeechGenerator:
             payload = {
                 "model": self.model,
                 "messages": [
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": "/no_think\n" + prompt}
                 ],
-                "max_tokens": 100,
+                "max_tokens": 512,
                 "temperature": 0.3
             }
             
@@ -321,7 +325,10 @@ class SpeechGenerator:
                     result = await resp.json()
                     # Parse OpenAI format response
                     if "choices" in result and len(result["choices"]) > 0:
-                        return result["choices"][0]["message"]["content"].strip()
+                        text = result["choices"][0]["message"]["content"].strip()
+                        # Strip Qwen3.5 <think>...</think> blocks
+                        text = _THINK_RE.sub("", text).strip()
+                        return text
                     else:
                         raise Exception(f"Unexpected LLM response format: {result}")
                     

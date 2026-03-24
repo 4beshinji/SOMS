@@ -57,6 +57,9 @@ def _migrate_add_columns(conn):
         ("tasks", "region_id", "VARCHAR(32)", "'local'"),
         ("users", "region_id", "VARCHAR(32)", "'local'"),
         ("users", "global_user_id", "VARCHAR(200)", None),
+        ("device_positions", "orientation_deg", "DOUBLE PRECISION", None),
+        ("device_positions", "fov_deg", "DOUBLE PRECISION", None),
+        ("device_positions", "detection_range_m", "DOUBLE PRECISION", None),
     ]
     # Allowlisted identifiers — only these table/column names are permitted
     _ALLOWED_TABLES = {m[0] for m in migrations}

@@ -138,6 +138,13 @@ class SnapshotServer:
         self._cache_ttl = 30.0  # frames from monitors are fresh enough for 30s
         # camera_id -> verified working URL (memoised after first success)
         self._working_urls: dict[str, str] = {}
+        # Discovery config — set by set_discovery_config() for on-demand scans
+        self._discovery_config: dict[str, Any] | None = None
+        self._discovery_running = False
+
+    def set_discovery_config(self, discovery_config: dict[str, Any]):
+        """Store discovery config for on-demand LAN scans."""
+        self._discovery_config = discovery_config
 
     def set_discovered_url(self, camera_id: str, url: str, zone: str = ""):
         """Register a verified working URL from camera discovery."""
@@ -295,12 +302,66 @@ class SnapshotServer:
             headers={"Cache-Control": "public, max-age=5"},
         )
 
+    async def handle_discover(self, request: web.Request) -> web.Response:
+        """POST /cameras/discover — trigger LAN camera scan and return results."""
+        if self._discovery_running:
+            return web.json_response(
+                {"error": "Discovery already in progress"},
+                status=409,
+            )
+        if not self._discovery_config:
+            return web.json_response(
+                {"error": "Discovery not configured"},
+                status=501,
+            )
+
+        self._discovery_running = True
+        try:
+            from camera_discovery import CameraDiscovery
+
+            cfg = self._discovery_config
+            discovery = CameraDiscovery(
+                network=cfg.get("network", "192.168.128.0/24"),
+                timeout=cfg.get("timeout", 3.0),
+                verify_yolo=cfg.get("verify_yolo", False),
+                exclude_ips=cfg.get("exclude_ips", []),
+                zone_map=cfg.get("zone_map", {}),
+            )
+            cameras = await discovery.discover()
+
+            results = []
+            for cam in cameras:
+                # Register discovered URL in snapshot server
+                self.set_discovered_url(cam.camera_id, cam.address, cam.zone_name)
+                results.append({
+                    "camera_id": cam.camera_id,
+                    "address": cam.address,
+                    "zone": cam.zone_name,
+                    "verified": cam.verified,
+                })
+
+            logger.info("On-demand discovery found %d cameras", len(results))
+            return web.json_response({
+                "cameras": results,
+                "total": len(results),
+                "timestamp": time.time(),
+            })
+        except Exception as e:
+            logger.exception("Discovery failed")
+            return web.json_response(
+                {"error": str(e)},
+                status=500,
+            )
+        finally:
+            self._discovery_running = False
+
     # ── Lifecycle ─────────────────────────────────────────────────
 
     async def start(self):
         """Start the HTTP server (non-blocking)."""
         app = web.Application()
         app.router.add_get("/cameras", self.handle_list)
+        app.router.add_post("/cameras/discover", self.handle_discover)
         app.router.add_get("/cameras/{camera_id}/snapshot", self.handle_snapshot)
 
         runner = web.AppRunner(app)

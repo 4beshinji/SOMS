@@ -107,6 +107,32 @@ async def chat_completions(request: Request):
     if not tools:
         return _handle_voice_generation(full_text)
 
+    # Chitchat mode: system prompt contains chitchat keywords and only speak tool
+    if "雑談" in full_text or "ひとこと" in full_text:
+        import random
+        chitchat_messages = [
+            "お茶でも飲みませんか？一息つくのも大事ですよ。",
+            "今日もお疲れさまです。無理しないでくださいね。",
+            "ちょっと背伸びしてみませんか？気持ちいいですよ。",
+            "そういえば、今日は何曜日でしたっけ……あ、知ってました？",
+            "集中してますね。すごいです。でも水分補給も忘れずに。",
+            "窓の外、今どんな天気ですか？たまには外を見るのもいいですよ。",
+            "もし宝くじ当たったら何に使いますか？……ちょっと聞いてみただけです。",
+            "最近読んだ本とかありますか？おすすめがあったら教えてほしいな。",
+            "深呼吸、してみません？三秒吸って、五秒吐く。やってみましょう。",
+            "コーヒーと紅茶、今日はどっちの気分ですか？",
+        ]
+        tones = ["neutral", "caring", "humorous"]
+        return _response(
+            content="雑談します。",
+            tool_calls=[
+                _make_tool_call("speak", {
+                    "message": random.choice(chitchat_messages),
+                    "tone": random.choice(tones),
+                })
+            ]
+        )
+
     # Check if this is a follow-up with tool results
     has_tool_results = any(m.get("role") == "tool" for m in messages)
     if has_tool_results:

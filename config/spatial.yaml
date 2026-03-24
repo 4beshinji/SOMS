@@ -868,3 +868,13 @@ cameras:
     - 480
     fov_deg: 60.0
     orientation_deg: -65.0
+  cam_192_168_128_179:
+    zone: cam_192_168_128_179
+    position:
+    - 11.85
+    - 7.34
+    resolution:
+    - 640
+    - 480
+    fov_deg: 90.0
+    orientation_deg: 75.0

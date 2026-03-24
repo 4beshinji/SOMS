@@ -279,7 +279,7 @@ async def accept_task(
     task_id: int,
     body: schemas.TaskAccept,
     db: AsyncSession = Depends(get_db),
-    auth_user: AuthUser = Depends(require_auth),
+    auth_user: AuthUser | None = Depends(get_current_user),
 ):
     """Assign a task to a user."""
     # If authenticated, verify user_id matches
@@ -307,7 +307,7 @@ async def complete_task(
     task_id: int,
     body: schemas.TaskComplete = None,
     db: AsyncSession = Depends(get_db),
-    auth_user: AuthUser = Depends(require_auth),
+    auth_user: AuthUser | None = Depends(get_current_user),
 ):
     result = await db.execute(select(models.Task).filter(models.Task.id == task_id))
     task = result.scalars().first()

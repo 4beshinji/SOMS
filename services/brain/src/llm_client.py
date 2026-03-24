@@ -2,10 +2,14 @@
 import asyncio
 import os
 import json
+import re
 import aiohttp
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 from loguru import logger
+
+# Strip Qwen3.5 thinking blocks from response content
+_THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
 
 @dataclass
@@ -42,7 +46,7 @@ class LLMClient:
             "model": self.model,
             "messages": messages,
             "temperature": 0.3,
-            "max_tokens": 1024,
+            "max_tokens": 4096,
         }
 
         if tools:
@@ -81,6 +85,11 @@ class LLMClient:
         message = choices[0].get("message", {})
         finish_reason = choices[0].get("finish_reason", "stop")
         content = message.get("content")
+
+        # Strip Qwen3.5 <think>...</think> blocks from content
+        if content:
+            content = _THINK_RE.sub("", content).strip() or None
+
         tool_calls_raw = message.get("tool_calls", [])
 
         tool_calls = []
@@ -130,7 +139,7 @@ class LLMClient:
             "model": self.model,
             "messages": messages,
             "temperature": 0.3,
-            "max_tokens": 1024,
+            "max_tokens": 4096,
         }
 
         if tools:

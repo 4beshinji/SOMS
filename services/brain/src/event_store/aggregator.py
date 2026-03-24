@@ -111,6 +111,7 @@ class HourlyAggregator:
                 WHERE timestamp >= :start AND timestamp < :end
                   AND event_type = 'sensor_reading'
                   AND data->>'value' IS NOT NULL
+                  AND data->>'value' ~ '^\-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?$'
                 GROUP BY zone, data->>'channel'
             """),
             {"start": hour_start, "end": hour_end},

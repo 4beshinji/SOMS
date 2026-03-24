@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchSpatialConfig, fetchFloorplan } from '../api/spatial';
 import type { CameraConfig } from '@soms/types';
 
@@ -147,6 +147,9 @@ export default function CameraSetupPage() {
   const [bust, setBust] = useState(Date.now());
   const [showOverlay, setShowOverlay] = useState(false);
   const [snapshotServerUp, setSnapshotServerUp] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<{ total: number; ts: number } | null>(null);
+  const queryClient = useQueryClient();
 
   const configQuery = useQuery({
     queryKey: ['spatial-config'],
@@ -232,6 +235,29 @@ export default function CameraSetupPage() {
     setSelectedId(prev => (prev === id ? null : id));
   }, []);
 
+  const handleScanLan = useCallback(async () => {
+    setScanning(true);
+    setScanResult(null);
+    try {
+      const res = await fetch('/api/cameras/discover', {
+        method: 'POST',
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json() as { total: number; timestamp: number };
+      setScanResult({ total: data.total, ts: Date.now() });
+      // Refresh camera lists
+      queryClient.invalidateQueries({ queryKey: ['perception-cameras'] });
+    } catch (e) {
+      setScanResult({ total: -1, ts: Date.now() });
+    } finally {
+      setScanning(false);
+    }
+  }, [queryClient]);
+
   if (configQuery.isLoading) {
     return <div className="flex items-center justify-center h-96 text-[var(--gray-500)]">Loading...</div>;
   }
@@ -255,6 +281,33 @@ export default function CameraSetupPage() {
         >
           YOLO Overlay
         </button>
+        <button
+          onClick={handleScanLan}
+          disabled={scanning}
+          className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
+            scanning
+              ? 'bg-blue-50 text-blue-400 border-blue-200 cursor-wait'
+              : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'
+          }`}
+        >
+          {scanning ? (
+            <span className="flex items-center gap-1.5">
+              <svg className="w-3 h-3 animate-spin" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="8" />
+              </svg>
+              Scanning...
+            </span>
+          ) : 'Scan LAN'}
+        </button>
+        {scanResult && (
+          <span className={`text-[10px] px-2 py-0.5 rounded border ${
+            scanResult.total >= 0
+              ? 'bg-green-50 text-green-700 border-green-200'
+              : 'bg-red-50 text-red-700 border-red-200'
+          }`}>
+            {scanResult.total >= 0 ? `Found ${scanResult.total} cameras` : 'Scan failed'}
+          </span>
+        )}
         {!snapshotServerUp && (
           <span className="text-[10px] px-2 py-0.5 rounded bg-yellow-50 text-yellow-700 border border-yellow-200">
             Snapshot server offline — showing config only

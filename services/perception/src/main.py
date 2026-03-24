@@ -344,6 +344,10 @@ async def main():
     snap_server = SnapshotServer(port=snapshot_port)
     snap_server.load_config(monitors_yaml=config_path, spatial_yaml=spatial_path_snap)
 
+    # Pass discovery config so the snapshot server can run on-demand scans
+    if discovery_config.get("enabled", False):
+        snap_server.set_discovery_config(discovery_config)
+
     # Inject verified URLs from discovery + scheduler into snapshot server
     for name, monitor in scheduler.monitors.items():
         if hasattr(monitor, 'camera_id') and hasattr(monitor, '_image_source'):
