@@ -1,7 +1,7 @@
 export enum AudioPriority {
-  USER_ACTION = 0,
-  ANNOUNCEMENT = 1,
-  VOICE_EVENT = 2,
+  USER_ACTION = 0,     // accept/reject/complete — immediate feedback
+  VOICE_EVENT = 1,     // chitchat/speak — plays before task announcements
+  ANNOUNCEMENT = 2,    // task announcements — lower priority, delayed enqueue
 }
 
 interface QueueItem {
@@ -17,6 +17,7 @@ class AudioQueue {
   private queue: QueueItem[] = [];
   private playing = false;
   private currentAudio: HTMLAudioElement | null = null;
+  private currentUrl: string | null = null;
   private enabled = false;
   private listeners = new Set<Listener>();
 
@@ -42,6 +43,9 @@ class AudioQueue {
   /** Add a URL to the queue with a given priority. */
   enqueue = (url: string, priority: AudioPriority = AudioPriority.VOICE_EVENT) => {
     if (!this.enabled) return;
+
+    // URL-level dedup: skip if already queued or currently playing
+    if (this.currentUrl === url || this.queue.some(q => q.url === url)) return;
 
     const item: QueueItem = { url, priority };
 
@@ -98,6 +102,7 @@ class AudioQueue {
       this.currentAudio.removeAttribute('src');
       this.currentAudio = null;
     }
+    this.currentUrl = null;
     this.playing = false;
   }
 
@@ -110,9 +115,15 @@ class AudioQueue {
 
     const audio = new Audio(item.url);
     this.currentAudio = audio;
+    this.currentUrl = item.url;
 
+    // Guard against double-done: play().catch + error event can both fire on load failure
+    let settled = false;
     const done = () => {
+      if (settled) return;
+      settled = true;
       this.currentAudio = null;
+      this.currentUrl = null;
       this.playing = false;
       this.playNext();
     };

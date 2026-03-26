@@ -16,11 +16,28 @@ const DEFAULT_DISPLAY_TASKS = 10;
 const DISPLAY_TASKS_INCREMENT = 10;
 const COMPLETED_DISPLAY_SECONDS = 300; // 5 minutes
 const IGNORED_TASKS_KEY = 'soms-ignored-tasks';
+const CHITCHAT_POLL_INTERVAL = 120_000; // 2 minutes — consume from stock periodically
 
 export function useTaskManager() {
   const queryClient = useQueryClient();
 
-  const [isAudioEnabled, setIsAudioEnabled] = useState(false);
+  const [isAudioEnabled, setIsAudioEnabledRaw] = useState(false);
+  const setIsAudioEnabled = (value: boolean) => {
+    setIsAudioEnabledRaw(value);
+    if (value) {
+      // Play pre-generated chitchat from stock (instant, no LLM wait)
+      // enqueue() is called after fetch resolves — by then React has
+      // re-rendered and audioQueue.setEnabled(true) has fired.
+      fetch('/api/voice-events/chitchat-stock/random')
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok && data.audio_url) {
+            enqueue(data.audio_url, AudioPriority.VOICE_EVENT);
+          }
+        })
+        .catch(() => {});
+    }
+  };
   const [prevTaskIds, setPrevTaskIds] = useState<Set<number>>(new Set());
   const [playedVoiceEventIds, setPlayedVoiceEventIds] = useState<Set<number>>(new Set());
   const [acceptedTaskIds, setAcceptedTaskIds] = useState<Set<number>>(new Set());
@@ -130,11 +147,13 @@ export function useTaskManager() {
       initialLoadDone.current = true;
       setPrevTaskIds(currentIds);
 
+      // Delay task announcement so chitchat voice events play first
       const latest = tasks
         .filter(t => !t.is_completed && t.announcement_audio_url)
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
       if (latest) {
-        enqueue(latest.announcement_audio_url!, AudioPriority.ANNOUNCEMENT);
+        const delay = 5000 + Math.random() * 10000; // 5-15s random delay
+        setTimeout(() => enqueue(latest.announcement_audio_url!, AudioPriority.ANNOUNCEMENT), delay);
       }
       return;
     }
@@ -142,7 +161,8 @@ export function useTaskManager() {
     const newTasks = tasks.filter(t => !prevTaskIds.has(t.id) && !t.is_completed);
     for (const task of newTasks) {
       if (task.announcement_audio_url) {
-        enqueue(task.announcement_audio_url, AudioPriority.ANNOUNCEMENT);
+        const delay = 3000 + Math.random() * 7000; // 3-10s random delay
+        setTimeout(() => enqueue(task.announcement_audio_url!, AudioPriority.ANNOUNCEMENT), delay);
       }
     }
 
@@ -161,6 +181,22 @@ export function useTaskManager() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceEventsQuery.data, isAudioEnabled, enqueue]);
+
+  // Periodic chitchat stock consumption — pop from stock every 2 min while audio is on
+  useEffect(() => {
+    if (!isAudioEnabled) return;
+    const id = setInterval(() => {
+      fetch('/api/voice-events/chitchat-stock/random')
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok && data.audio_url) {
+            enqueue(data.audio_url, AudioPriority.VOICE_EVENT);
+          }
+        })
+        .catch(() => {});
+    }, CHITCHAT_POLL_INTERVAL);
+    return () => clearInterval(id);
+  }, [isAudioEnabled, enqueue]);
 
   // Sort and filter tasks
   const allFilteredTasks = tasks
