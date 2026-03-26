@@ -50,6 +50,24 @@ async def get_latest_readings(
     ]
 
 
+@router.get("/latest-by-device", response_model=list[SensorReadingResponse])
+async def get_latest_by_device(
+    repo: SensorDataRepository = Depends(get_sensor_repo),
+):
+    """Latest sensor value per device × channel (within last 24 hours)."""
+    readings = await repo.get_latest_by_device()
+    return [
+        SensorReadingResponse(
+            timestamp=r.timestamp,
+            zone=r.zone,
+            channel=r.channel,
+            value=r.value,
+            device_id=r.device_id,
+        )
+        for r in readings
+    ]
+
+
 @router.get("/time-series", response_model=TimeSeriesResponse)
 async def get_time_series(
     zone: Optional[str] = Query(None, description="Filter by zone"),

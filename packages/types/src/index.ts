@@ -217,6 +217,7 @@ export interface DevicePosition {
   orientation_deg?: number | null;
   fov_deg?: number | null;
   detection_range_m?: number | null;
+  label?: string | null;
 }
 
 export interface CameraConfig {

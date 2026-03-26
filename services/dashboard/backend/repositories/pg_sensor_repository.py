@@ -58,6 +58,32 @@ class PgSensorRepository(SensorDataRepository):
             for row in result.fetchall()
         ]
 
+    async def get_latest_by_device(self) -> list[SensorReading]:
+        result = await self._session.execute(
+            text("""
+                SELECT DISTINCT ON (source_device, data->>'channel')
+                    timestamp, zone, data->>'channel' AS channel,
+                    (data->>'value')::float AS value, source_device
+                FROM events.raw_events
+                WHERE event_type = 'sensor_reading'
+                  AND timestamp > now() - interval '24 hours'
+                  AND data->>'value' IS NOT NULL
+                  AND data->>'value' ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                  AND source_device IS NOT NULL
+                ORDER BY source_device, data->>'channel', timestamp DESC
+            """)
+        )
+        return [
+            SensorReading(
+                timestamp=row[0],
+                zone=row[1],
+                channel=row[2],
+                value=row[3],
+                device_id=row[4],
+            )
+            for row in result.fetchall()
+        ]
+
     async def get_time_series(
         self, query: TimeSeriesQuery
     ) -> list[AggregatedReading]:

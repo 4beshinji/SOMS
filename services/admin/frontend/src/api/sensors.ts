@@ -64,6 +64,12 @@ export async function fetchSensorLatest(zone?: string): Promise<SensorReading[]>
   return res.json();
 }
 
+export async function fetchSensorLatestByDevice(): Promise<SensorReading[]> {
+  const res = await authFetch('/api/sensors/latest-by-device');
+  if (!res.ok) throw new Error('Failed to fetch sensor latest by device');
+  return res.json();
+}
+
 export async function fetchSensorTimeSeries(
   zone?: string,
   channel?: string,

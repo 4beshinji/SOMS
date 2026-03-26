@@ -83,6 +83,10 @@ class SensorDataRepository(ABC):
         """Latest value per zone × channel (within last 10 minutes)."""
 
     @abstractmethod
+    async def get_latest_by_device(self) -> list[SensorReading]:
+        """Latest value per device × channel (within last 24 hours)."""
+
+    @abstractmethod
     async def get_time_series(self, query: TimeSeriesQuery) -> list[AggregatedReading]:
         """Chart-ready time series (window: raw / 1h / 1d)."""
 

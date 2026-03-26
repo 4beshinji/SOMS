@@ -1,13 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchSpatialConfig,
   fetchFloorplan,
-  fetchLiveSpatial,
   fetchHeatmap,
   fetchSpatialEvents,
   type SpatialConfig,
-  type LiveSpatialData,
   type HeatmapData,
 } from '../api/spatial';
 
@@ -103,44 +101,89 @@ function HeatmapOverlay({ config, data, fy }: { config: SpatialConfig; data: Hea
   );
 }
 
-// ── Person Dots ────────────────────────────────────────────────────
+// ── Tracking Types ────────────────────────────────────────────────
 
-function PersonLayer({ data, fy }: { data: LiveSpatialData[]; fy: number }) {
-  const persons: { x: number; y: number; trackId: number; confidence: number; zone: string }[] = [];
-  for (const snap of data) {
-    for (const p of snap.persons) {
-      if (p.floor_position_m) {
-        persons.push({ x: p.floor_position_m[0], y: p.floor_position_m[1], trackId: p.track_id ?? 0, confidence: p.confidence, zone: snap.zone });
-      }
-    }
-  }
-  return (
-    <g>
-      {persons.map((p, i) => (
-        <g key={i}>
-          <circle cx={p.x} cy={fy - p.y} r={0.35} fill="rgba(239,68,68,0.25)" stroke="none" />
-          <circle cx={p.x} cy={fy - p.y} r={0.15} fill="#ef4444" stroke="#fff" strokeWidth={0.04}>
-            <animate attributeName="r" values="0.15;0.2;0.15" dur="2s" repeatCount="indefinite" />
-          </circle>
-          <text x={p.x} y={fy - p.y - 0.4} textAnchor="middle" fontSize={0.3} fill="#dc2626" fontWeight="bold">
-            #{p.trackId}
-          </text>
-        </g>
-      ))}
-    </g>
-  );
+interface TrackedPerson {
+  global_id: number;
+  floor_x_m: number;
+  floor_y_m: number;
+  zone: string;
+  cameras: string[];
+  confidence: number;
+  duration_sec: number;
+  trail: [number, number, number][]; // [x, y, timestamp]
 }
 
-// ── Person Count Badge ─────────────────────────────────────────────
+interface TrackingLive {
+  persons: TrackedPerson[];
+  person_count: number;
+  timestamp: number;
+}
 
-function personCount(data: LiveSpatialData[]): number {
-  const ids = new Set<number>();
-  for (const snap of data) {
-    for (const p of snap.persons) {
-      ids.add(p.track_id ?? 0);
-    }
-  }
-  return ids.size;
+// Per-person color palette (10 distinct colors)
+const PERSON_COLORS = [
+  '#ef4444','#3b82f6','#10b981','#f59e0b','#8b5cf6',
+  '#ec4899','#06b6d4','#84cc16','#f97316','#6366f1',
+];
+function personColor(gid: number): string {
+  return PERSON_COLORS[gid % PERSON_COLORS.length];
+}
+
+// ── Ghost state: recently disappeared persons ─────────────────────
+
+interface GhostPerson {
+  global_id: number;
+  x: number;
+  y: number;
+  disappearedAt: number;
+}
+
+// ── Person Layer (MTMC direct from perception) ────────────────────
+
+function TrailsAndGhosts({
+  fy,
+  trailHistory,
+  ghosts,
+}: {
+  fy: number;
+  trailHistory: Map<number, [number, number, number][]>;
+  ghosts: GhostPerson[];
+}) {
+  return (
+    <g>
+      {/* Ghost persons (faded, recently disappeared) */}
+      {ghosts.map(g => {
+        const age = (Date.now() / 1000 - g.disappearedAt);
+        if (age > 8) return null;
+        const opacity = Math.max(0, 1 - age / 8);
+        return (
+          <g key={`ghost-${g.global_id}`} opacity={opacity}>
+            <circle cx={g.x} cy={fy - g.y} r={0.2} fill="none" stroke={personColor(g.global_id)} strokeWidth={0.04} strokeDasharray="0.1 0.08" />
+            <text x={g.x} y={fy - g.y - 0.35} textAnchor="middle" fontSize={0.22} fill={personColor(g.global_id)} opacity={0.6}>
+              P{g.global_id}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Trail polylines */}
+      {Array.from(trailHistory.entries()).map(([gid, trail]) => {
+        if (trail.length < 2) return null;
+        const pts = trail.map(([x, y]) => `${x},${fy - y}`).join(' ');
+        return (
+          <polyline
+            key={`trail-${gid}`}
+            points={pts}
+            fill="none"
+            stroke={personColor(gid)}
+            strokeWidth={0.06}
+            strokeOpacity={0.4}
+            strokeLinejoin="round"
+          />
+        );
+      })}
+    </g>
+  );
 }
 
 // ── Main Component ─────────────────────────────────────────────────
@@ -151,11 +194,95 @@ export default function SpatialMonitorPage() {
   });
   const [heatPeriod, setHeatPeriod] = useState('hour');
 
+  // Trail history: global_id → last N positions [x, y, timestamp]
+  const trailRef = useRef<Map<number, [number, number, number][]>>(new Map());
+  // Ghost persons: recently disappeared
+  const ghostsRef = useRef<GhostPerson[]>([]);
+  // Current active persons for rendering
+  const [activePersons, setActivePersons] = useState<TrackedPerson[]>([]);
+  // Force re-render counter
+  const [, setTick] = useState(0);
+
   const configQuery = useQuery({ queryKey: ['spatial-config'], queryFn: fetchSpatialConfig });
   const floorplanQuery = useQuery({ queryKey: ['floorplan'], queryFn: fetchFloorplan, retry: 1 });
-  const liveQuery = useQuery({ queryKey: ['spatial-live'], queryFn: () => fetchLiveSpatial(), refetchInterval: 3000, retry: 1 });
   const heatQuery = useQuery({ queryKey: ['spatial-heatmap', heatPeriod], queryFn: () => fetchHeatmap(undefined, heatPeriod), refetchInterval: 60000, enabled: layers.heatmap, retry: 1 });
   const eventsQuery = useQuery({ queryKey: ['spatial-events'], queryFn: () => fetchSpatialEvents(undefined, 30), refetchInterval: 10000, retry: 1 });
+
+  // Live tracking from perception (3s polling, bypasses DB)
+  const trackingQuery = useQuery<TrackingLive>({
+    queryKey: ['tracking-live'],
+    queryFn: async () => {
+      const res = await fetch('/api/tracking/live', { signal: AbortSignal.timeout(3000) });
+      if (!res.ok) throw new Error('tracking offline');
+      return res.json();
+    },
+    refetchInterval: 3000,
+    retry: 1,
+  });
+
+  // Update trail history and ghosts on new tracking data
+  const updateTrails = useCallback((data: TrackingLive) => {
+    const now = Date.now() / 1000;
+    const trails = trailRef.current;
+    const activeIds = new Set(data.persons.map(p => p.global_id));
+
+    // Add ghost entries for disappeared persons
+    for (const [gid, trail] of trails.entries()) {
+      if (!activeIds.has(gid) && trail.length > 0) {
+        const last = trail[trail.length - 1];
+        const existing = ghostsRef.current.find(g => g.global_id === gid);
+        if (!existing) {
+          ghostsRef.current.push({
+            global_id: gid,
+            x: last[0], y: last[1],
+            disappearedAt: now,
+          });
+        }
+      }
+    }
+    // Clean up old ghosts (>8s)
+    ghostsRef.current = ghostsRef.current.filter(g => now - g.disappearedAt < 8);
+
+    // Update trails from new data
+    for (const p of data.persons) {
+      // Remove from ghosts if reappeared
+      ghostsRef.current = ghostsRef.current.filter(g => g.global_id !== p.global_id);
+
+      let trail = trails.get(p.global_id);
+      if (!trail) {
+        trail = [];
+        trails.set(p.global_id, trail);
+      }
+      // Add current position if moved >0.3m from last point
+      const last = trail[trail.length - 1];
+      if (!last || Math.hypot(p.floor_x_m - last[0], p.floor_y_m - last[1]) > 0.3) {
+        trail.push([p.floor_x_m, p.floor_y_m, now]);
+      }
+      // Keep last 60 trail points
+      if (trail.length > 60) trail.splice(0, trail.length - 60);
+    }
+
+    // Purge trails for persons gone >30s
+    for (const [gid, trail] of trails.entries()) {
+      if (!activeIds.has(gid) && trail.length > 0) {
+        const lastTs = trail[trail.length - 1][2];
+        if (now - lastTs > 30) trails.delete(gid);
+      }
+    }
+
+    setActivePersons(data.persons);
+    setTick(t => t + 1);
+  }, []);
+
+  // Trigger trail update when tracking data changes
+  if (trackingQuery.data && trackingQuery.data.persons) {
+    // React will batch this, safe in render
+    const cached = trackingQuery.data;
+    if (activePersons !== cached.persons) {
+      // Use setTimeout to avoid render-during-render warning
+      setTimeout(() => updateTrails(cached), 0);
+    }
+  }
 
   const config = configQuery.data;
   const fy = config?.building.height_m ?? 20;
@@ -180,7 +307,7 @@ export default function SpatialMonitorPage() {
     return <div className="flex items-center justify-center h-96 text-[var(--error-600)]">Failed to load spatial config</div>;
   }
 
-  const totalPersons = personCount(liveQuery.data ?? []);
+  const totalPersons = activePersons.length;
 
   return (
     <div className="h-full flex flex-col">
@@ -310,9 +437,33 @@ export default function SpatialMonitorPage() {
               </g>
             ))}
 
-            {/* Live persons */}
-            {layers.persons && liveQuery.data && (
-              <PersonLayer data={liveQuery.data} fy={fy} />
+            {/* Live persons (direct from perception MTMC tracker) */}
+            {layers.persons && (
+              <>
+                <TrailsAndGhosts fy={fy} trailHistory={trailRef.current} ghosts={ghostsRef.current} />
+                {/* Render active person dots directly here for reactivity */}
+                {activePersons.map(p => {
+                  const color = personColor(p.global_id);
+                  return (
+                    <g key={`ap-${p.global_id}`}>
+                      <circle cx={p.floor_x_m} cy={fy - p.floor_y_m} r={0.35}
+                        fill={color} fillOpacity={0.15} stroke={color} strokeWidth={0.03} strokeOpacity={0.4} />
+                      <circle cx={p.floor_x_m} cy={fy - p.floor_y_m} r={0.18}
+                        fill={color} stroke="#fff" strokeWidth={0.04}>
+                        <animate attributeName="r" values="0.18;0.22;0.18" dur="1.5s" repeatCount="indefinite" />
+                      </circle>
+                      <text x={p.floor_x_m} y={fy - p.floor_y_m - 0.45}
+                        textAnchor="middle" fontSize={0.28} fill={color} fontWeight="bold">
+                        P{p.global_id}
+                      </text>
+                      <text x={p.floor_x_m} y={fy - p.floor_y_m + 0.55}
+                        textAnchor="middle" fontSize={0.2} fill={color} fillOpacity={0.7}>
+                        {Math.round(p.confidence * 100)}%{p.cameras.length > 1 ? ` ${p.cameras.length}cam` : ''}{p.duration_sec > 10 ? ` ${Math.round(p.duration_sec)}s` : ''}
+                      </text>
+                    </g>
+                  );
+                })}
+              </>
             )}
           </svg>
 
@@ -366,9 +517,7 @@ export default function SpatialMonitorPage() {
             <h3 className="text-xs font-semibold text-[var(--gray-700)] mb-2">Zone Occupancy</h3>
             <div className="space-y-1">
               {zoneList.map(z => {
-                const count = (liveQuery.data ?? [])
-                  .filter(s => s.zone === z.id)
-                  .reduce((sum, s) => sum + s.persons.length, 0);
+                const count = activePersons.filter(p => p.zone === z.id).length;
                 return (
                   <div key={z.id} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5">
