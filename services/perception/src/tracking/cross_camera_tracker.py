@@ -50,6 +50,13 @@ class CrossCameraTracker:
         wifi_spatial_weight: float = 0.7,
         wifi_temporal_weight: float = 0.3,
         wifi_spatial_gate_m: float = 8.0,
+        min_hits_for_global: int = 3,
+        min_age_s_for_global: float = 2.0,
+        reid_match_threshold: float = 0.55,
+        merge_check_interval_s: float = 5.0,
+        merge_reid_threshold: float = 0.6,
+        merge_spatial_gate_m: float = 3.0,
+        embedding_alpha: float = 0.15,
     ):
         self._zone_polygons = zone_polygons
         self._reid_weight = reid_weight
@@ -63,6 +70,13 @@ class CrossCameraTracker:
         self._wifi_spatial_weight = wifi_spatial_weight
         self._wifi_temporal_weight = wifi_temporal_weight
         self._wifi_spatial_gate = wifi_spatial_gate_m
+        self._min_hits = min_hits_for_global
+        self._min_age = min_age_s_for_global
+        self._reid_match_threshold = reid_match_threshold
+        self._merge_interval = merge_check_interval_s
+        self._merge_reid_threshold = merge_reid_threshold
+        self._merge_spatial_gate = merge_spatial_gate_m
+        self._embedding_alpha = embedding_alpha
 
         # Active tracklets: (camera_id, local_track_id) -> Tracklet
         self._tracklets: dict[tuple[str, int], Tracklet] = {}
@@ -75,6 +89,8 @@ class CrossCameraTracker:
         self._embedding_history: deque[tuple[int, np.ndarray]] = deque(
             maxlen=_MAX_EMBEDDING_HISTORY
         )
+
+        self._last_merge_check = 0.0
 
     def update_camera(
         self, camera_id: str, detections: list[TrackedPerson]
@@ -98,6 +114,7 @@ class CrossCameraTracker:
                 self._tracklets[key] = Tracklet(
                     camera_id=camera_id,
                     local_track_id=det.track_id,
+                    embedding_alpha=self._embedding_alpha,
                 )
 
             tracklet = self._tracklets[key]
@@ -107,6 +124,12 @@ class CrossCameraTracker:
 
         # Try to assign unassigned tracklets to global tracks
         self._associate_tracklets(now)
+
+        # Merge duplicate global tracks
+        self._merge_global_tracks(now)
+
+        # Refine positions using multi-camera triangulation
+        self._refine_positions(now)
 
         # Expire old tracklets and global tracks
         self._cleanup(now)
@@ -124,9 +147,11 @@ class CrossCameraTracker:
         active_globals = list(self._global_tracks.values())
 
         if not active_globals:
-            # No existing globals — create new ones for all unassigned
+            # No existing globals — try re-ID from history, then create new
             for tracklet in unassigned:
-                self._create_global_track(tracklet, now)
+                reidentified = self._try_reidentify(tracklet)
+                if not reidentified and self._is_confirmed(tracklet, now):
+                    self._create_global_track(tracklet, now)
             return
 
         # Build cost matrix: rows=unassigned tracklets, cols=global tracks
@@ -158,12 +183,12 @@ class CrossCameraTracker:
                 self._assign_to_global(tracklet, gtrack)
                 matched_tracklets.add(id(tracklet))
 
-        # Create new global tracks for unmatched tracklets
+        # Create new global tracks for unmatched tracklets (after confirmation)
         for tracklet in unassigned:
             if id(tracklet) not in matched_tracklets and tracklet.global_id is None:
                 # Try re-identification from history
                 reidentified = self._try_reidentify(tracklet)
-                if not reidentified:
+                if not reidentified and self._is_confirmed(tracklet, now):
                     self._create_global_track(tracklet, now)
 
     def _is_wifi_tracklet(self, tracklet: Tracklet) -> bool:
@@ -272,8 +297,7 @@ class CrossCameraTracker:
                 best_sim = sim
                 best_gid = gid
 
-        # High threshold for re-identification
-        if best_sim > 0.7 and best_gid is not None:
+        if best_sim > self._reid_match_threshold and best_gid is not None:
             # Re-create global track with old ID
             if best_gid not in self._global_tracks:
                 floor_pos = tracklet.latest_floor_position or [0.0, 0.0]
@@ -296,6 +320,88 @@ class CrossCameraTracker:
 
         return False
 
+    def _is_confirmed(self, tracklet: Tracklet, now: float) -> bool:
+        """Check if tracklet has enough evidence to warrant a global ID."""
+        if self._is_wifi_tracklet(tracklet):
+            return True
+        hit_count = len(tracklet.detections)
+        if not tracklet.detections:
+            return False
+        age = max(0.0, now - tracklet.detections[0].timestamp)
+        return hit_count >= self._min_hits and age >= self._min_age
+
+    def _merge_global_tracks(self, now: float):
+        """Check if any two active global tracks are the same person and merge."""
+        if now - self._last_merge_check < self._merge_interval:
+            return
+        self._last_merge_check = now
+
+        active = [g for g in self._global_tracks.values()
+                  if g.avg_embedding is not None]
+        if len(active) < 2:
+            return
+
+        merged_any = True
+        while merged_any:
+            merged_any = False
+            best_sim = 0.0
+            best_pair = None
+
+            for i in range(len(active)):
+                for j in range(i + 1, len(active)):
+                    ga, gb = active[i], active[j]
+                    # Same person can't be in two places on one camera
+                    if set(ga.tracklets.keys()) & set(gb.tracklets.keys()):
+                        continue
+                    # Spatial gate
+                    if (ga.floor_position != [0.0, 0.0]
+                            and gb.floor_position != [0.0, 0.0]):
+                        dist = floor_distance(ga.floor_position, gb.floor_position)
+                        if dist > self._merge_spatial_gate:
+                            continue
+                    # ReID similarity
+                    sim = float(np.dot(ga.avg_embedding, gb.avg_embedding))
+                    if sim > best_sim:
+                        best_sim = sim
+                        best_pair = (ga, gb)
+
+            if best_pair and best_sim > self._merge_reid_threshold:
+                keep, absorb = best_pair
+                # Keep the older (lower ID) track
+                if keep.global_id > absorb.global_id:
+                    keep, absorb = absorb, keep
+                self._do_merge(keep, absorb)
+                active = [g for g in self._global_tracks.values()
+                          if g.avg_embedding is not None]
+                merged_any = True
+
+    def _do_merge(self, keep: GlobalTrack, absorb: GlobalTrack):
+        """Merge 'absorb' into 'keep', transferring all tracklets."""
+        logger.info(
+            "Merging global tracks: %d <- %d",
+            keep.global_id, absorb.global_id,
+        )
+        for cam_id, tracklet in absorb.tracklets.items():
+            tracklet.global_id = keep.global_id
+            if cam_id not in keep.tracklets:
+                keep.tracklets[cam_id] = tracklet
+            elif tracklet.last_seen > keep.tracklets[cam_id].last_seen:
+                keep.tracklets[cam_id] = tracklet
+
+        keep.first_seen = min(keep.first_seen, absorb.first_seen)
+        keep.update_position()
+        keep.update_embedding()
+
+        # Update all tracklet references
+        for key, t in self._tracklets.items():
+            if t.global_id == absorb.global_id:
+                t.global_id = keep.global_id
+
+        del self._global_tracks[absorb.global_id]
+
+        if absorb.avg_embedding is not None:
+            self._embedding_history.append((keep.global_id, absorb.avg_embedding))
+
     def _resolve_zone(self, floor_xy: list[float]) -> str:
         """Determine which zone a floor point belongs to."""
         if floor_xy == [0.0, 0.0]:
@@ -304,6 +410,61 @@ class CrossCameraTracker:
             if point_in_zone(floor_xy, polygon):
                 return zone_id
         return ""
+
+    def _refine_positions(self, now: float):
+        """
+        Refine global track positions using multi-camera triangulation.
+
+        When a person is seen by 2+ cameras simultaneously, ray intersection
+        gives a much better position estimate than single-camera projection.
+        """
+        from tracking.camera_projector import CameraProjector
+
+        proj = CameraProjector.get_instance()
+        recency_window = 2.0  # seconds
+
+        for gtrack in self._global_tracks.values():
+            # Collect tracklets with recent detections
+            recent = [
+                t for t in gtrack.tracklets.values()
+                if t.detections and now - t.last_seen < recency_window
+            ]
+
+            if len(recent) >= 2:
+                # Sort by recency (most recent first)
+                recent.sort(key=lambda t: t.last_seen, reverse=True)
+                t_a, t_b = recent[0], recent[1]
+                det_a = t_a.detections[-1]
+                det_b = t_b.detections[-1]
+
+                bearing_a = proj.compute_bearing(det_a.camera_id, det_a.foot_px[0])
+                bearing_b = proj.compute_bearing(det_b.camera_id, det_b.foot_px[0])
+                pos_a = proj.get_camera_position(det_a.camera_id)
+                pos_b = proj.get_camera_position(det_b.camera_id)
+
+                if all(v is not None for v in [bearing_a, bearing_b, pos_a, pos_b]):
+                    tri_pos = CameraProjector.triangulate(
+                        pos_a, bearing_a, pos_b, bearing_b
+                    )
+                    if tri_pos:
+                        gtrack.floor_position = tri_pos
+                        gtrack.zone_id = self._resolve_zone(tri_pos)
+                        continue
+
+            # Fallback: best single-camera position (skip [0,0])
+            best_ts = 0.0
+            for tracklet in gtrack.tracklets.values():
+                pos = tracklet.latest_floor_position
+                if (
+                    pos
+                    and pos != [0.0, 0.0]
+                    and tracklet.last_seen > best_ts
+                ):
+                    best_ts = tracklet.last_seen
+                    gtrack.floor_position = pos
+
+            if gtrack.floor_position != [0.0, 0.0]:
+                gtrack.zone_id = self._resolve_zone(gtrack.floor_position)
 
     def _cleanup(self, now: float):
         """Expire old tracklets and global tracks."""

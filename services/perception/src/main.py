@@ -156,12 +156,19 @@ async def main():
         logger.info(f"=== Discovery Complete: {len(discovery_results)} cameras added ===")
 
     # --- Tracking Pipeline ---
+    cross_tracker = None
     tracking_config = config.get("tracking", {})
     if tracking_config.get("enabled", False):
         logger.info("=== Tracking Pipeline Starting ===")
 
         # Load spatial config (ArUco markers + zone polygons)
-        spatial_path = Path(__file__).parent.parent.parent.parent / "config" / "spatial.yaml"
+        # Try Docker mount path first, then relative path for host development
+        spatial_path = Path(os.environ.get(
+            "SPATIAL_CONFIG_PATH",
+            "/config/spatial.yaml",
+        ))
+        if not spatial_path.exists():
+            spatial_path = Path(__file__).parent.parent.parent.parent / "config" / "spatial.yaml"
         spatial_config = {}
         zone_polygons = {}
         aruco_markers = {}
@@ -193,6 +200,11 @@ async def main():
             cache_path=calib_config.get("cache_path"),
         )
 
+        # Initialize camera-geometry projector (ArUco-free fallback)
+        from tracking.camera_projector import CameraProjector
+
+        CameraProjector.get_instance(cameras_config)
+
         # Initialize ReID embedder
         from tracking.reid_embedder import ReIDEmbedder
 
@@ -213,6 +225,13 @@ async def main():
             temporal_gate_s=assoc.get("temporal_gate_s", 30.0),
             tracklet_timeout_s=assoc.get("tracklet_timeout_s", 60.0),
             global_track_timeout_s=assoc.get("global_track_timeout_s", 300.0),
+            min_hits_for_global=assoc.get("min_hits_for_global", 3),
+            min_age_s_for_global=assoc.get("min_age_s_for_global", 2.0),
+            reid_match_threshold=assoc.get("reid_match_threshold", 0.55),
+            merge_check_interval_s=assoc.get("merge_check_interval_s", 5.0),
+            merge_reid_threshold=assoc.get("merge_reid_threshold", 0.6),
+            merge_spatial_gate_m=assoc.get("merge_spatial_gate_m", 3.0),
+            embedding_alpha=tracking_config.get("embedding_alpha", 0.15),
         )
 
         # Create per-camera TrackingMonitors
@@ -255,6 +274,9 @@ async def main():
                 model_path=yolo_config.get("model", "yolo11s.pt"),
                 tracker_config=tracker_cfg_path,
                 image_source=source,
+                min_crop_height=tracking_config.get("min_crop_height_px", 50),
+                min_crop_width=tracking_config.get("min_crop_width_px", 25),
+                min_reid_confidence=tracking_config.get("min_reid_confidence", 0.4),
             )
             scheduler.register_monitor(f"tracking_{cam_id}", track_monitor)
 
@@ -340,13 +362,19 @@ async def main():
 
     # --- Snapshot HTTP Server ---
     snapshot_port = int(os.environ.get("SNAPSHOT_PORT", "8019"))
-    spatial_path_snap = Path(__file__).parent.parent.parent.parent / "config" / "spatial.yaml"
+    spatial_path_snap = Path(os.environ.get("SPATIAL_CONFIG_PATH", "/config/spatial.yaml"))
+    if not spatial_path_snap.exists():
+        spatial_path_snap = Path(__file__).parent.parent.parent.parent / "config" / "spatial.yaml"
     snap_server = SnapshotServer(port=snapshot_port)
     snap_server.load_config(monitors_yaml=config_path, spatial_yaml=spatial_path_snap)
 
     # Pass discovery config so the snapshot server can run on-demand scans
     if discovery_config.get("enabled", False):
         snap_server.set_discovery_config(discovery_config)
+
+    # Pass cross-camera tracker for live tracking API
+    if cross_tracker is not None:
+        snap_server.set_tracker(cross_tracker)
 
     # Inject verified URLs from discovery + scheduler into snapshot server
     for name, monitor in scheduler.monitors.items():

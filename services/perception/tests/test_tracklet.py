@@ -45,7 +45,7 @@ class TestTracklet:
         assert t.avg_embedding is not emb
 
     def test_update_embedding_ema(self):
-        """Subsequent detections use exponential moving average (alpha=0.3)."""
+        """Subsequent detections use exponential moving average (alpha=0.15)."""
         from tracking.tracklet import Tracklet
 
         emb1 = make_embedding(seed=1)
@@ -64,7 +64,7 @@ class TestTracklet:
         t.update_embedding()
 
         # Expected: alpha * new + (1-alpha) * old, then re-normalized
-        expected = 0.3 * emb2 + 0.7 * emb1
+        expected = 0.15 * emb2 + 0.85 * emb1
         expected /= np.linalg.norm(expected)
 
         assert t.avg_embedding is not None

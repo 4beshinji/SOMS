@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import yaml
 from ultralytics.trackers import BOTSORT
 
 from monitors.base import MonitorBase
@@ -23,12 +24,12 @@ from tracking.reid_embedder import ReIDEmbedder
 
 logger = logging.getLogger(__name__)
 
-# Default BOTSORT parameters (matches ultralytics/cfg/trackers/botsort.yaml)
+# Default BOTSORT parameters — sane defaults for low-quality cameras
 _DEFAULT_BOTSORT_ARGS = SimpleNamespace(
     tracker_type="botsort",
-    track_high_thresh=0.25,
+    track_high_thresh=0.5,
     track_low_thresh=0.1,
-    new_track_thresh=0.25,
+    new_track_thresh=0.6,
     track_buffer=30,
     match_thresh=0.8,
     fuse_score=True,
@@ -38,6 +39,17 @@ _DEFAULT_BOTSORT_ARGS = SimpleNamespace(
     with_reid=False,
     model="auto",
 )
+
+
+def _load_tracker_args(path: str | None) -> SimpleNamespace:
+    """Load BoT-SORT config from YAML, merging with defaults."""
+    defaults = dict(vars(_DEFAULT_BOTSORT_ARGS))
+    if path and Path(path).exists():
+        with open(path) as f:
+            cfg = yaml.safe_load(f) or {}
+        defaults.update(cfg)
+        logger.info("BoT-SORT config loaded from %s", path)
+    return SimpleNamespace(**defaults)
 
 
 class TrackingMonitor(MonitorBase):
@@ -51,6 +63,9 @@ class TrackingMonitor(MonitorBase):
         model_path: str = "yolo11s.pt",
         tracker_config: str | None = None,
         image_source=None,
+        min_crop_height: int = 50,
+        min_crop_width: int = 25,
+        min_reid_confidence: float = 0.4,
     ):
         super().__init__(
             name=f"Tracking_{camera_id}",
@@ -64,12 +79,16 @@ class TrackingMonitor(MonitorBase):
         self._cross_tracker = cross_camera_tracker
         self._publisher = StatePublisher.get_instance()
         self._reid = ReIDEmbedder.get_instance()
+        self._min_crop_height = min_crop_height
+        self._min_crop_width = min_crop_width
+        self._min_reid_conf = min_reid_confidence
 
         # Shared YOLO singleton — no extra GPU memory per camera
         self._yolo = YOLOInference.get_instance(model_path)
 
         # Lightweight per-camera tracker (CPU only, ~few MB each)
-        self._botsort = BOTSORT(_DEFAULT_BOTSORT_ARGS, frame_rate=1)
+        tracker_args = _load_tracker_args(tracker_config)
+        self._botsort = BOTSORT(tracker_args, frame_rate=1)
         logger.info("TrackingMonitor %s: shared YOLO + per-camera BOTSORT", camera_id)
 
     async def analyze(self, image: np.ndarray):
@@ -110,9 +129,27 @@ class TrackingMonitor(MonitorBase):
 
             bbox_f = [float(x1), float(y1), float(x2), float(y2)]
             foot_px = foot_from_bbox(bbox_f)
-            foot_floor = pixel_to_floor(self.camera_id, foot_px) or [0.0, 0.0]
 
-            embedding = embeddings[i] if i < len(embeddings) else np.zeros(512)
+            # Try ArUco homography first, fall back to camera-geometry projection
+            foot_floor = pixel_to_floor(self.camera_id, foot_px)
+            if foot_floor is None:
+                from tracking.camera_projector import CameraProjector
+                foot_floor = CameraProjector.get_instance().project(
+                    self.camera_id, foot_px, bbox_f,
+                )
+            if foot_floor is None:
+                foot_floor = [0.0, 0.0]
+
+            # Quality gate: skip ReID for tiny or low-confidence crops
+            bbox_h = y2 - y1
+            bbox_w = x2 - x1
+            if (bbox_h >= self._min_crop_height
+                    and bbox_w >= self._min_crop_width
+                    and conf >= self._min_reid_conf
+                    and i < len(embeddings)):
+                embedding = embeddings[i]
+            else:
+                embedding = np.zeros(512)
 
             persons.append(TrackedPerson(
                 track_id=track_id,

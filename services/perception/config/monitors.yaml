@@ -47,6 +47,36 @@ monitors:
     zone_name: zone_gu4bzs
     enabled: true
 
+  - name: activity_cam_167
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_167
+    zone_name: cam_192_168_128_167
+    enabled: true
+
+  - name: activity_cam_168
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_168
+    zone_name: cam_192_168_128_168
+    enabled: true
+
+  - name: activity_cam_171
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_171
+    zone_name: cam_192_168_128_171
+    enabled: true
+
+  - name: activity_cam_174
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_174
+    zone_name: cam_192_168_128_174
+    enabled: true
+
+  - name: activity_cam_179
+    type: ActivityMonitor
+    camera_id: cam_192_168_128_179
+    zone_name: cam_192_168_128_179
+    enabled: true
+
 discovery:
   enabled: true
   network: "192.168.128.0/24"
@@ -65,6 +95,11 @@ discovery:
     - "192.168.128.164"
     - "192.168.128.166"
     - "192.168.128.175"
+    - "192.168.128.167"
+    - "192.168.128.168"
+    - "192.168.128.171"
+    - "192.168.128.174"
+    - "192.168.128.179"
   zone_map:
     "192.168.128.172": "zone_6wpk8l"
     "192.168.128.173": "meeting_room_b"
@@ -74,6 +109,11 @@ discovery:
     "192.168.128.164": "cam_192_168_128_164"
     "192.168.128.166": "cam_192_168_128_166"
     "192.168.128.175": "zone_gu4bzs"
+    "192.168.128.167": "cam_192_168_128_167"
+    "192.168.128.168": "cam_192_168_128_168"
+    "192.168.128.171": "cam_192_168_128_171"
+    "192.168.128.174": "cam_192_168_128_174"
+    "192.168.128.179": "cam_192_168_128_179"
 
 fall_detection:
   enabled: true
@@ -114,6 +154,10 @@ tracking:
   tracker: botsort.yaml
   reid_model: osnet_x0_5
   publish_interval_sec: 0.5
+  min_crop_height_px: 50
+  min_crop_width_px: 25
+  min_reid_confidence: 0.4
+  embedding_alpha: 0.15
   calibration:
     auto_calibrate: true
     cache_path: /app/config/calibration_cache.json
@@ -128,6 +172,12 @@ tracking:
     temporal_gate_s: 30.0
     tracklet_timeout_s: 60.0
     global_track_timeout_s: 300.0
+    min_hits_for_global: 3
+    min_age_s_for_global: 2.0
+    reid_match_threshold: 0.55
+    merge_check_interval_s: 5.0
+    merge_reid_threshold: 0.6
+    merge_spatial_gate_m: 3.0
   cameras:
     - camera_id: cam_192_168_128_162
       zone_name: cam_192_168_128_162

@@ -39,6 +39,7 @@ class Tracklet:
     )
     last_seen: float = 0.0
     avg_embedding: Optional[np.ndarray] = None
+    embedding_alpha: float = 0.15
 
     def update_embedding(self):
         """Exponential moving average of ReID embeddings."""
@@ -48,7 +49,7 @@ class Tracklet:
         if self.avg_embedding is None:
             self.avg_embedding = latest.copy()
         else:
-            alpha = 0.3
+            alpha = self.embedding_alpha
             self.avg_embedding = alpha * latest + (1 - alpha) * self.avg_embedding
             # Re-normalize to unit vector
             norm = np.linalg.norm(self.avg_embedding)
@@ -74,13 +75,19 @@ class GlobalTrack:
     avg_embedding: Optional[np.ndarray] = None
 
     def update_position(self):
-        """Update floor position from most recent tracklet detection."""
+        """Update floor position from most recent tracklet detection.
+
+        Skips [0.0, 0.0] positions (uncalibrated/failed projection) and
+        prefers valid positions from any tracklet over the default origin.
+        """
         best_ts = 0.0
         for tracklet in self.tracklets.values():
-            if tracklet.last_seen > best_ts and tracklet.latest_floor_position:
+            pos = tracklet.latest_floor_position
+            if pos and pos != [0.0, 0.0] and tracklet.last_seen > best_ts:
                 best_ts = tracklet.last_seen
-                self.floor_position = tracklet.latest_floor_position
-        self.last_seen = best_ts
+                self.floor_position = pos
+        if best_ts > 0:
+            self.last_seen = best_ts
 
     def update_embedding(self):
         """Average embeddings from all active tracklets."""

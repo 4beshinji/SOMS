@@ -29,6 +29,8 @@ class TestCrossCameraWifi:
             wifi_spatial_weight=0.7,
             wifi_temporal_weight=0.3,
             wifi_spatial_gate_m=8.0,
+            min_hits_for_global=1,
+            min_age_s_for_global=0.0,
         )
         defaults.update(kwargs)
         return CrossCameraTracker(**defaults)
