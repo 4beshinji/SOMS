@@ -163,8 +163,8 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       - VOICEVOX_URL=http://voicevox:50021
-      - LLM_API_URL=${LLM_API_URL:-http://mock-llm:8000/v1}
-      - LLM_MODEL=${LLM_MODEL}
+      - LLM_API_URL=${VOICE_LLM_API_URL:-http://ollama:11434/v1}
+      - LLM_MODEL=${VOICE_LLM_MODEL:-gpt-oss:20b}
     volumes:
       - ../services/voice/src:/app
       - soms_audio_data:/app/audio
@@ -473,6 +473,9 @@ services:
       - video
     security_opt:
       - seccomp:unconfined
+    volumes:
+      - ../services/perception/src:/app/src
+      - ../config:/config:ro
     environment:
       - MQTT_BROKER=localhost
       - MQTT_PORT=1883

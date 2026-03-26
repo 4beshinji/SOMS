@@ -300,18 +300,18 @@ class SpeechGenerator:
             payload = {
                 "model": self.model,
                 "messages": [
-                    {"role": "user", "content": "/no_think\n" + prompt}
+                    {"role": "user", "content": prompt}
                 ],
-                "max_tokens": 512,
+                "max_tokens": 2048,
                 "temperature": 0.3
             }
-            
+
             # Ensure URL ends with /chat/completions if not already
             api_endpoint = self.llm_api_url
             if not api_endpoint.endswith("/chat/completions"):
                 api_endpoint = f"{api_endpoint.rstrip('/')}/chat/completions"
 
-            timeout = aiohttp.ClientTimeout(total=30)
+            timeout = aiohttp.ClientTimeout(total=60)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(
                     api_endpoint,
