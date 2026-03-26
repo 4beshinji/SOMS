@@ -110,12 +110,15 @@ async def main():
     discovery_config = config.get("discovery", {})
     if discovery_config.get("enabled", False):
         logger.info("=== Camera Discovery Starting ===")
+        scan_range_cfg = discovery_config.get("scan_range")
+        scan_range = tuple(scan_range_cfg) if scan_range_cfg else None
         discovery = CameraDiscovery(
             network=discovery_config.get("network", "192.168.128.0/24"),
             timeout=discovery_config.get("timeout", 3.0),
             verify_yolo=discovery_config.get("verify_yolo", True),
             exclude_ips=discovery_config.get("exclude_ips", []),
             zone_map=discovery_config.get("zone_map", {}),
+            scan_range=scan_range,
         )
 
         cameras = await discovery.discover()

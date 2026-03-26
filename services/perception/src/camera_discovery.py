@@ -27,6 +27,10 @@ _CANDIDATE_URLS: List[str] = [
 # Ports to probe during the initial TCP scan
 _SCAN_PORTS = [80, 81, 554, 8554]
 
+# OpenCV timeout for VideoCapture (milliseconds)
+_CV2_OPEN_TIMEOUT_MS = 5000
+_CV2_READ_TIMEOUT_MS = 5000
+
 
 class CameraDiscovery:
     """Three-stage camera discovery: port scan → URL probe → YOLO verify."""
@@ -38,16 +42,31 @@ class CameraDiscovery:
         verify_yolo: bool = True,
         exclude_ips: Optional[List[str]] = None,
         zone_map: Optional[Dict[str, str]] = None,
+        scan_range: Optional[tuple[int, int]] = None,
     ):
         self.network = ipaddress.ip_network(network, strict=False)
         self.timeout = timeout
         self.verify_yolo = verify_yolo
         self.exclude_ips = set(exclude_ips or [])
         self.zone_map = zone_map or {}
+        self.scan_range = scan_range
+
+    def _in_scan_range(self, ip: str) -> bool:
+        """Check if an IP's last octet falls within scan_range."""
+        if self.scan_range is None:
+            return True
+        last_octet = int(ip.rsplit(".", 1)[1])
+        return self.scan_range[0] <= last_octet <= self.scan_range[1]
 
     async def discover(self) -> List[CameraInfo]:
         """Run full discovery pipeline. Returns list of discovered cameras."""
-        logger.info(f"[Discovery] Scanning {self.network} ...")
+        if self.scan_range:
+            logger.info(
+                "[Discovery] Scanning %s (range .%d–.%d) ...",
+                self.network, self.scan_range[0], self.scan_range[1],
+            )
+        else:
+            logger.info(f"[Discovery] Scanning {self.network} ...")
 
         # Stage 1: async TCP port scan
         reachable = await self._port_scan()
@@ -93,6 +112,8 @@ class CameraDiscovery:
             ip = str(host)
             if ip in self.exclude_ips:
                 continue
+            if not self._in_scan_range(ip):
+                continue
             for port in _SCAN_PORTS:
                 tasks.append(_check(ip, port))
 
@@ -105,11 +126,18 @@ class CameraDiscovery:
     async def _url_probe(self, reachable: Dict[str, List[int]]) -> List[CameraInfo]:
         loop = asyncio.get_event_loop()
         cameras: List[CameraInfo] = []
+        probe_timeout = self.timeout + _CV2_OPEN_TIMEOUT_MS / 1000.0 + 2.0
 
         async def _probe_ip(ip: str):
-            result = await loop.run_in_executor(None, self._probe_ip_sync, ip)
-            if result is not None:
-                cameras.append(result)
+            try:
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(None, self._probe_ip_sync, ip),
+                    timeout=probe_timeout,
+                )
+                if result is not None:
+                    cameras.append(result)
+            except asyncio.TimeoutError:
+                logger.warning("[Discovery] URL probe timed out for %s", ip)
 
         await asyncio.gather(*[_probe_ip(ip) for ip in reachable])
         return cameras
@@ -119,8 +147,11 @@ class CameraDiscovery:
         for url_template in _CANDIDATE_URLS:
             url = url_template.format(ip=ip)
             try:
-                cap = cv2.VideoCapture(url)
+                cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+                cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, _CV2_OPEN_TIMEOUT_MS)
+                cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, _CV2_READ_TIMEOUT_MS)
                 if not cap.isOpened():
+                    cap.release()
                     continue
                 ret, frame = cap.read()
                 cap.release()
@@ -144,10 +175,18 @@ class CameraDiscovery:
     # ------------------------------------------------------------------
     async def _yolo_verify(self, cameras: List[CameraInfo]) -> List[CameraInfo]:
         loop = asyncio.get_event_loop()
+        verify_timeout = _CV2_OPEN_TIMEOUT_MS / 1000.0 + _CV2_READ_TIMEOUT_MS / 1000.0 + 5.0
 
         async def _verify(cam: CameraInfo):
-            verified = await loop.run_in_executor(None, self._verify_sync, cam)
-            cam.verified = verified
+            try:
+                verified = await asyncio.wait_for(
+                    loop.run_in_executor(None, self._verify_sync, cam),
+                    timeout=verify_timeout,
+                )
+                cam.verified = verified
+            except asyncio.TimeoutError:
+                logger.warning("[Discovery] YOLO verify timed out for %s", cam.camera_id)
+                cam.verified = False
 
         await asyncio.gather(*[_verify(c) for c in cameras])
         return cameras
@@ -155,8 +194,11 @@ class CameraDiscovery:
     def _verify_sync(self, cam: CameraInfo) -> bool:
         """Grab one frame and run YOLO — returns True if any object detected."""
         try:
-            cap = cv2.VideoCapture(cam.address)
+            cap = cv2.VideoCapture(cam.address, cv2.CAP_FFMPEG)
+            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, _CV2_OPEN_TIMEOUT_MS)
+            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, _CV2_READ_TIMEOUT_MS)
             if not cap.isOpened():
+                cap.release()
                 return False
             ret, frame = cap.read()
             cap.release()

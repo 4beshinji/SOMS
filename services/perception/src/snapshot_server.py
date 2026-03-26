@@ -101,13 +101,17 @@ class SnapshotServer:
     # Class-level frame caches — written by monitors, read by HTTP handler
     _frame_cache: dict[str, tuple[float, bytes]] = {}
     _annotated_cache: dict[str, tuple[float, bytes]] = {}
+    # Persistent cache — never expires, used when camera goes offline
+    _last_good_cache: dict[str, tuple[float, bytes]] = {}
 
     @classmethod
     def cache_frame(cls, camera_id: str, frame: np.ndarray):
         """Called by monitors to cache the latest frame as JPEG."""
         ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if ok:
-            cls._frame_cache[camera_id] = (time.time(), buf.tobytes())
+            entry = (time.time(), buf.tobytes())
+            cls._frame_cache[camera_id] = entry
+            cls._last_good_cache[camera_id] = entry
 
     @classmethod
     def cache_annotated(cls, camera_id: str, frame: np.ndarray, detections: list):
@@ -141,10 +145,16 @@ class SnapshotServer:
         # Discovery config — set by set_discovery_config() for on-demand scans
         self._discovery_config: dict[str, Any] | None = None
         self._discovery_running = False
+        # Cross-camera tracker reference for live tracking API
+        self._tracker: Any | None = None
 
     def set_discovery_config(self, discovery_config: dict[str, Any]):
         """Store discovery config for on-demand LAN scans."""
         self._discovery_config = discovery_config
+
+    def set_tracker(self, tracker):
+        """Store reference to CrossCameraTracker for live tracking API."""
+        self._tracker = tracker
 
     def set_discovered_url(self, camera_id: str, url: str, zone: str = ""):
         """Register a verified working URL from camera discovery."""
@@ -271,36 +281,89 @@ class SnapshotServer:
 
         # 2) Fallback: on-demand grab (slow, only when monitor isn't running)
         urls = info.get("urls", [])
-        if not urls:
-            raise web.HTTPServiceUnavailable(
-                text=f"No cached frame or stream URL for {camera_id}"
-            )
-
-        loop = asyncio.get_event_loop()
-        ordered = []
-        working = self._working_urls.get(camera_id)
-        if working:
-            ordered.append(working)
-        ordered.extend(u for u in urls if u != working)
-
         jpeg_bytes = None
-        for url in ordered:
-            jpeg_bytes = await loop.run_in_executor(_POOL, _grab_frame, url)
-            if jpeg_bytes:
-                self._working_urls[camera_id] = url
-                break
+        if urls:
+            loop = asyncio.get_event_loop()
+            ordered = []
+            working = self._working_urls.get(camera_id)
+            if working:
+                ordered.append(working)
+            ordered.extend(u for u in urls if u != working)
 
-        if not jpeg_bytes:
-            raise web.HTTPServiceUnavailable(
-                text=f"Could not capture frame from {camera_id}"
+            for url in ordered:
+                jpeg_bytes = await loop.run_in_executor(_POOL, _grab_frame, url)
+                if jpeg_bytes:
+                    self._working_urls[camera_id] = url
+                    break
+
+        if jpeg_bytes:
+            entry = (time.time(), jpeg_bytes)
+            self._frame_cache[camera_id] = entry
+            self._last_good_cache[camera_id] = entry
+            return web.Response(
+                body=jpeg_bytes,
+                content_type="image/jpeg",
+                headers={"Cache-Control": "public, max-age=5"},
             )
 
-        self._frame_cache[camera_id] = (time.time(), jpeg_bytes)
-        return web.Response(
-            body=jpeg_bytes,
-            content_type="image/jpeg",
-            headers={"Cache-Control": "public, max-age=5"},
+        # 3) Last known good frame (stale but better than nothing)
+        last_good = self._last_good_cache.get(camera_id)
+        if last_good:
+            return web.Response(
+                body=last_good[1],
+                content_type="image/jpeg",
+                headers={"Cache-Control": "public, max-age=5"},
+            )
+
+        raise web.HTTPServiceUnavailable(
+            text=f"No frame available for {camera_id}"
         )
+
+    async def handle_tracking_live(self, request: web.Request) -> web.Response:
+        """GET /tracking/live — return current global tracks from MTMC tracker."""
+        if self._tracker is None:
+            return web.json_response(
+                {"persons": [], "person_count": 0, "timestamp": time.time()},
+            )
+
+        tracks = self._tracker.get_global_tracks()
+        now = time.time()
+        persons = []
+        for t in tracks:
+            # Include recent trail from tracklet detections
+            trail: list[list[float]] = []
+            for tracklet in t.tracklets.values():
+                for det in tracklet.detections:
+                    pos = det.foot_floor
+                    if pos and pos != [0.0, 0.0]:
+                        trail.append([round(pos[0], 2), round(pos[1], 2), round(det.timestamp, 2)])
+
+            # Sort trail by time, deduplicate close positions
+            trail.sort(key=lambda p: p[2])
+
+            persons.append({
+                "global_id": t.global_id,
+                "floor_x_m": t.floor_position[0],
+                "floor_y_m": t.floor_position[1],
+                "zone": t.zone_id,
+                "cameras": t.camera_ids,
+                "confidence": max(
+                    (
+                        tk.detections[-1].confidence
+                        for tk in t.tracklets.values()
+                        if tk.detections
+                    ),
+                    default=0.0,
+                ),
+                "duration_sec": round(t.duration_sec, 1),
+                "trail": trail[-30:],  # Last 30 position samples
+            })
+
+        return web.json_response({
+            "persons": persons,
+            "person_count": len(persons),
+            "timestamp": now,
+        })
 
     async def handle_discover(self, request: web.Request) -> web.Response:
         """POST /cameras/discover — trigger LAN camera scan and return results."""
@@ -320,12 +383,15 @@ class SnapshotServer:
             from camera_discovery import CameraDiscovery
 
             cfg = self._discovery_config
+            scan_range_cfg = cfg.get("scan_range")
+            scan_range = tuple(scan_range_cfg) if scan_range_cfg else None
             discovery = CameraDiscovery(
                 network=cfg.get("network", "192.168.128.0/24"),
                 timeout=cfg.get("timeout", 3.0),
                 verify_yolo=cfg.get("verify_yolo", False),
                 exclude_ips=cfg.get("exclude_ips", []),
                 zone_map=cfg.get("zone_map", {}),
+                scan_range=scan_range,
             )
             cameras = await discovery.discover()
 
@@ -363,6 +429,7 @@ class SnapshotServer:
         app.router.add_get("/cameras", self.handle_list)
         app.router.add_post("/cameras/discover", self.handle_discover)
         app.router.add_get("/cameras/{camera_id}/snapshot", self.handle_snapshot)
+        app.router.add_get("/tracking/live", self.handle_tracking_live)
 
         runner = web.AppRunner(app)
         await runner.setup()

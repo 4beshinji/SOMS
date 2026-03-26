@@ -80,6 +80,7 @@ monitors:
 discovery:
   enabled: true
   network: "192.168.128.0/24"
+  scan_range: [160, 200]
   timeout: 3.0
   verify_yolo: false
   default_interval_sec: 30.0
