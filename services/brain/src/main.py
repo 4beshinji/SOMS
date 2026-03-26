@@ -24,6 +24,7 @@ from spatial_config import load_spatial_config
 from federation_config import load_federation_config, get_region_id
 from inventory_tracker import InventoryTracker
 from calibration_manager import CalibrationManager
+from chitchat import WeatherFetcher, NewsFetcher
 
 load_dotenv()
 
@@ -40,6 +41,8 @@ MAX_CONSECUTIVE_ERRORS = 1 # Stop cycle after this many consecutive tool errors
 CHITCHAT_BASE_INTERVAL = int(os.getenv("CHITCHAT_BASE_INTERVAL_SECONDS", "1500"))  # 25 minutes
 CHITCHAT_JITTER = int(os.getenv("CHITCHAT_JITTER_SECONDS", "600"))  # up to +10 minutes
 CHITCHAT_SPEAK_COOLDOWN = 300  # Skip chitchat if speak happened within last 5 min
+CHITCHAT_STOCK_TARGET = int(os.getenv("CHITCHAT_STOCK_TARGET", "8"))
+CHITCHAT_STOCK_INTERVAL = 180  # seconds between stock generation attempts
 
 # Keywords that indicate device investigation/registration tasks (spam source)
 _DEVICE_INVESTIGATION_KEYWORDS = [
@@ -111,6 +114,9 @@ class Brain:
 
         # Action history for LLM context (Layer 5)
         self._action_history: list[dict] = []
+
+        # Prevent concurrent chitchat generation (stock loop vs live loop)
+        self._chitchat_lock = asyncio.Lock()
 
     def on_connect(self, client, userdata, flags, rc, properties=None):
         logger.info(f"Connected to MQTT Broker with result code {rc}")
@@ -569,18 +575,85 @@ class Brain:
                     return True
         return False
 
+    # ── Chitchat text generation (shared by live cycle & stock) ────
+
+    async def _build_chitchat_context(self) -> str | None:
+        """Build LLM user content for chitchat (weather, news, history)."""
+        llm_context = self.world_model.get_llm_context()
+        if not llm_context:
+            return None
+
+        from datetime import datetime, timezone, timedelta
+        jst = timezone(timedelta(hours=9))
+        now_dt = datetime.now(jst)
+        time_info = now_dt.strftime("%Y-%m-%d %A %H:%M")
+
+        content = f"## 現在時刻\n{time_info}\n\n## オフィス状況\n{llm_context}"
+
+        weather = await self.weather_fetcher.get_summary()
+        if weather:
+            content += f"\n\n## 天気情報\n{weather}"
+
+        news = await self.news_fetcher.get_summary()
+        if news:
+            content += f"\n\n## 最新ニュース\n{news}"
+
+        now = time.time()
+        recent = [
+            a for a in self._action_history
+            if a["tool"] == "speak" and now - a["time"] < 3600
+        ]
+        if recent:
+            content += "\n\n## 直近1時間の発話（同じ話題を避けること）\n"
+            for a in recent[-5:]:
+                content += f"- {int((now - a['time']) / 60)}分前: {a.get('summary', '')}\n"
+
+        return content
+
+    async def _generate_chitchat_text(self) -> dict | None:
+        """Call LLM to generate a speak tool call. Returns arguments dict or None."""
+        content = await self._build_chitchat_context()
+        if not content:
+            return None
+
+        messages = [
+            build_chitchat_message(),
+            {"role": "user", "content": content},
+        ]
+        speak_tool = [t for t in get_tools() if t["function"]["name"] == "speak"]
+
+        response = await self.llm.chat(messages, speak_tool)
+        if response.error:
+            logger.warning(f"Chitchat LLM error: {response.error}")
+            return None
+        if not response.tool_calls:
+            return None
+
+        tc = response.tool_calls[0]
+        if tc["function"]["name"] != "speak":
+            return None
+        return tc["function"]["arguments"]
+
+    # ── Live chitchat cycle (periodic, idle people only) ─────────
+
     async def chitchat_cycle(self):
         """Generate a context-aware casual remark using only the speak tool."""
-        # Check if anyone is in the office
-        total_people = sum(
-            z.occupancy.person_count
-            for z in self.world_model.zones.values()
-        )
-        if total_people == 0:
-            logger.debug("Chitchat skipped: no one in office")
+        # Check if anyone idle (not focused) is in the office
+        idle_zones = []
+        for zone_id, z in self.world_model.zones.items():
+            if z.occupancy.person_count > 0 and z.occupancy.activity_class in (
+                "idle", "low", "unknown",
+            ):
+                idle_zones.append(zone_id)
+
+        if not idle_zones:
+            total = sum(z.occupancy.person_count for z in self.world_model.zones.values())
+            if total == 0:
+                logger.debug("Chitchat skipped: no one in office")
+            else:
+                logger.debug("Chitchat skipped: everyone is focused")
             return
 
-        # Check if a speak happened recently (avoid double-speaking)
         now = time.time()
         recent_speaks = [
             a for a in self._action_history
@@ -590,79 +663,121 @@ class Brain:
             logger.debug("Chitchat skipped: recent speak within cooldown")
             return
 
-        # Build context
-        llm_context = self.world_model.get_llm_context()
-        if not llm_context:
-            return
+        # Lock prevents concurrent generation with stock loop (avoids similar content)
+        async with self._chitchat_lock:
+            arguments = await self._generate_chitchat_text()
+            if not arguments:
+                return
 
-        from datetime import datetime, timezone, timedelta
-        jst = timezone(timedelta(hours=9))
-        now_dt = datetime.now(jst)
-        time_info = now_dt.strftime("%Y-%m-%d %A %H:%M")
+            logger.info(f"Chitchat speak: {arguments}")
+            result = await self.tool_executor.execute("speak", arguments)
 
-        user_content = f"## 現在時刻\n{time_info}\n\n## オフィス状況\n{llm_context}"
+            self._action_history.append({
+                "time": time.time(),
+                "tool": "speak",
+                "summary": _summarize_action("speak", arguments),
+                "success": result.get("success", True),
+            })
 
-        # Include recent chitchat history to avoid repetition
-        recent_chitchats = [
-            a for a in self._action_history
-            if a["tool"] == "speak" and now - a["time"] < 3600
-        ]
-        if recent_chitchats:
-            user_content += "\n\n## 直近1時間の発話（同じ話題を避けること）\n"
-            for a in recent_chitchats[-5:]:
-                mins_ago = int((now - a["time"]) / 60)
-                user_content += f"- {mins_ago}分前: {a.get('summary', '')}\n"
-
-        system_msg = build_chitchat_message()
-        user_msg = {"role": "user", "content": user_content}
-        messages = [system_msg, user_msg]
-
-        # Only provide the speak tool
-        speak_tool = [t for t in get_tools() if t["function"]["name"] == "speak"]
-
-        logger.info("Chitchat cycle starting")
-        response = await self.llm.chat(messages, speak_tool)
-
-        if response.error:
-            logger.warning(f"Chitchat LLM error: {response.error}")
-            return
-
-        if not response.tool_calls:
-            logger.debug("Chitchat: LLM chose not to speak")
-            return
-
-        # Execute the first speak call only
-        tc = response.tool_calls[0]
-        tool_name = tc["function"]["name"]
-        if tool_name != "speak":
-            logger.warning(f"Chitchat: unexpected tool {tool_name}")
-            return
-
-        arguments = tc["function"]["arguments"]
-        logger.info(f"Chitchat speak: {arguments}")
-
-        result = await self.tool_executor.execute("speak", arguments)
-
-        # Record in action history
-        self._action_history.append({
-            "time": time.time(),
-            "tool": "speak",
-            "summary": _summarize_action("speak", arguments),
-            "success": result.get("success", True),
-        })
-
-        # Record in event store
         if self.event_writer:
             self.event_writer.record_decision(
-                cycle_duration=0,
-                iterations=1,
-                total_tool_calls=1,
+                cycle_duration=0, iterations=1, total_tool_calls=1,
                 trigger_events=[{"zone": "system", "event": "chitchat", "severity": "info"}],
                 tool_calls=[{"tool": "speak", "summary": _summarize_action("speak", arguments), "success": result.get("success", True)}],
                 region_id=self.region_id,
             )
-
         logger.info(f"Chitchat done: {arguments.get('message', '')[:50]}")
+
+    # ── Chitchat stock (pre-generated audio for instant playback) ─
+
+    async def _check_chitchat_stock_level(self) -> int | None:
+        """Query current stock level from backend. Returns stock_size or None on error."""
+        dashboard_url = os.getenv("DASHBOARD_API_URL", "http://backend:8000")
+        try:
+            async with self._session.get(
+                f"{dashboard_url}/voice-events/chitchat-stock/status",
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data.get("stock_size", 0)
+        except Exception:
+            pass
+        return None
+
+    async def _refill_chitchat_stock(self):
+        """Generate one chitchat item and push to backend stock."""
+        # Check stock level BEFORE expensive LLM/synthesis calls
+        stock_level = await self._check_chitchat_stock_level()
+        if stock_level is not None and stock_level >= CHITCHAT_STOCK_TARGET:
+            logger.debug(f"Chitchat stock full ({stock_level}/{CHITCHAT_STOCK_TARGET}), skipping")
+            return
+
+        # Lock prevents concurrent generation with live chitchat (avoids similar content)
+        async with self._chitchat_lock:
+            arguments = await self._generate_chitchat_text()
+            if not arguments:
+                return
+            text = arguments.get("message", "")
+            if not text:
+                return
+
+            # Synthesize audio via Voice Service
+            voice_url = os.getenv("VOICE_SERVICE_URL", "http://voice-service:8000")
+            audio_url = None
+            try:
+                async with self._session.post(
+                    f"{voice_url}/api/voice/synthesize",
+                    json={"text": text},
+                    timeout=aiohttp.ClientTimeout(total=60),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        audio_url = data.get("audio_url")
+            except Exception as e:
+                logger.warning(f"Chitchat stock synthesis failed: {e}")
+                return
+            if not audio_url:
+                return
+
+            # Push to backend stock
+            dashboard_url = os.getenv("DASHBOARD_API_URL", "http://backend:8000")
+            svc_token = os.getenv("INTERNAL_SERVICE_TOKEN", "")
+            headers = {"X-Service-Token": svc_token} if svc_token else {}
+            try:
+                async with self._session.post(
+                    f"{dashboard_url}/voice-events/chitchat-stock",
+                    json={"message": text, "audio_url": audio_url, "tone": arguments.get("tone", "neutral")},
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=5),
+                ) as resp:
+                    data = await resp.json()
+                    if data.get("ok"):
+                        logger.info(f"Chitchat stock +1 ({data.get('stock_size')}/{CHITCHAT_STOCK_TARGET}): {text[:40]}")
+                    else:
+                        logger.debug(f"Chitchat stock push: {data.get('reason')}")
+            except Exception as e:
+                logger.warning(f"Chitchat stock push failed: {e}")
+                return
+
+            # Record in action history to avoid topic repetition
+            self._action_history.append({
+                "time": time.time(),
+                "tool": "speak",
+                "summary": f"stock: {text[:30]}",
+                "success": True,
+            })
+
+    async def _chitchat_stock_loop(self):
+        """Background loop to keep chitchat stock filled."""
+        await asyncio.sleep(90)  # Let Brain settle
+        logger.info("Chitchat stock loop started (target: %d)", CHITCHAT_STOCK_TARGET)
+        while True:
+            try:
+                await self._refill_chitchat_stock()
+            except Exception as e:
+                logger.error(f"Chitchat stock error: {e}")
+            await asyncio.sleep(CHITCHAT_STOCK_INTERVAL)
 
     async def _chitchat_loop(self):
         """Periodically trigger chitchat (base 25min + random jitter up to 10min)."""
@@ -751,6 +866,7 @@ class Brain:
         connector = aiohttp.TCPConnector(ttl_dns_cache=30)
         async with aiohttp.ClientSession(connector=connector) as session:
             # Initialize components with shared session
+            self._session = session
             self.llm = LLMClient(api_url=LLM_API_URL, session=session)
             self.dashboard = DashboardClient(session=session)
             self.task_reminder = TaskReminder(session=session)
@@ -767,6 +883,11 @@ class Brain:
                 calibration_manager=self.calibration_manager,
             )
             self.wallet_bridge = WalletBridge(session, self.device_registry)
+            self.weather_fetcher = WeatherFetcher(
+                location=os.getenv("CHITCHAT_WEATHER_LOCATION", "Maebashi"),
+                session=session,
+            )
+            self.news_fetcher = NewsFetcher(session=session)
             logger.info("All components initialized with shared HTTP session")
 
             # Load inventory items from API (supplements YAML config)
@@ -795,6 +916,8 @@ class Brain:
 
             # Start chitchat loop (context-aware casual conversation)
             asyncio.create_task(self._chitchat_loop())
+            # Start chitchat stock pre-generation loop
+            asyncio.create_task(self._chitchat_stock_loop())
 
             logger.info("Brain is running (ReAct mode)...")
             last_cycle_time = 0.0
