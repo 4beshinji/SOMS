@@ -54,6 +54,10 @@ class TaskReminder:
                     if task.get('is_completed'):
                         continue
 
+                    # Skip admin tasks (no voice reminders for system tasks)
+                    if task.get('audience', 'user') == 'admin':
+                        continue
+
                     # Check if task is old enough
                     created_at = datetime.fromisoformat(task['created_at'].replace('Z', '+00:00'))
                     if created_at > reminder_threshold:

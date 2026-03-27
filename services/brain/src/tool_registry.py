@@ -35,6 +35,11 @@ TOOLS = [
                     "task_types": {
                         "type": "string",
                         "description": "タスク種別をカンマ区切りで（例: environment,urgent）"
+                    },
+                    "audience": {
+                        "type": "string",
+                        "enum": ["user", "admin"],
+                        "description": "タスクの対象者。user: オフィス利用者向け（換気、清掃、補充など）、admin: システム管理者向け（センサー確認、デバイス診断など）。デフォルトはuser。"
                     }
                 },
                 "required": ["title", "description"]

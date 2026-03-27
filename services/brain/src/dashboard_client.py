@@ -35,7 +35,8 @@ class DashboardClient:
         expires_in_minutes: int = None,
         urgency: int = 2,
         zone: str = None,
-        announce: bool = None
+        announce: bool = None,
+        audience: str = "user",
     ):
         """
         Create a new task in the dashboard.
@@ -56,7 +57,7 @@ class DashboardClient:
             task_types = ["general"]
 
         if announce is None:
-            announce = self.enable_voice
+            announce = self.enable_voice and audience != "admin"
 
         # Determine expiration if not provided
         if expires_in_minutes is None:
@@ -82,7 +83,8 @@ class DashboardClient:
             "expires_at": expires_at,
             "location": zone or "Office",
             "urgency": urgency,
-            "zone": zone
+            "zone": zone,
+            "audience": audience,
         }
 
         # Generate dual voice if enabled (before task creation)

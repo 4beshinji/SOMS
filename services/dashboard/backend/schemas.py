@@ -27,6 +27,9 @@ class TaskBase(BaseModel):
     # Federation
     region_id: str = "local"
 
+    # Audience targeting
+    audience: str = "user"  # "user" or "admin"
+
 class TaskCreate(TaskBase):
     pass
 

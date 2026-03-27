@@ -42,6 +42,7 @@ export interface Task {
   min_people_required?: number;
   expires_at?: string;
   is_queued?: boolean;
+  audience?: 'user' | 'admin';
 }
 
 export interface PurchaseHistory {

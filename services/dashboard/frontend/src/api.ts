@@ -11,7 +11,7 @@ export type {
 };
 
 export const fetchTasks = async (): Promise<Task[]> => {
-  const res = await fetch('/api/tasks/');
+  const res = await fetch('/api/tasks/?audience=user');
   if (!res.ok) throw new Error('Failed to fetch tasks');
   const data = await res.json();
   if (!Array.isArray(data)) throw new Error('Invalid tasks response: expected array');

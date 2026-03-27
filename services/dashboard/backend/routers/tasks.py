@@ -101,6 +101,25 @@ def _classify_task(title: str, description: str = "") -> set[str]:
     return {cat for cat, keywords in _TASK_CATEGORIES.items() if any(kw in text for kw in keywords)}
 
 
+# Server-side audience inference (fallback when LLM doesn't set audience)
+_ADMIN_KEYWORDS = [
+    "センサー", "デバイス", "バッテリー", "ネットワーク", "オフライン",
+    "通信", "診断", "キャリブレーション", "ファームウェア", "未登録",
+    "システム", "ログ", "再起動",
+]
+_ADMIN_TASK_TYPES = {"device_check", "system", "network", "diagnostic"}
+
+
+def _infer_audience(title: str, description: str, task_types: list[str] | None) -> str:
+    """Infer audience from task content. Returns 'admin' if system-related, else 'user'."""
+    text = f"{title} {description}".lower()
+    if any(kw in text for kw in _ADMIN_KEYWORDS):
+        return "admin"
+    if task_types and _ADMIN_TASK_TYPES & set(task_types):
+        return "admin"
+    return "user"
+
+
 router = APIRouter(
     prefix="/tasks",
     tags=["tasks"]
@@ -119,11 +138,14 @@ async def _get_or_create_system_stats(db: AsyncSession) -> models.SystemStats:
     return stats
 
 @router.get("/", response_model=List[schemas.Task])
-async def read_tasks(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
+async def read_tasks(skip: int = 0, limit: int = 100, audience: Optional[str] = None, db: AsyncSession = Depends(get_db)):
     # Filter out expired tasks
     query = select(models.Task).filter(
         (models.Task.expires_at == None) | (models.Task.expires_at > func.now())
-    ).offset(skip).limit(limit)
+    )
+    if audience:
+        query = query.filter(models.Task.audience == audience)
+    query = query.offset(skip).limit(limit)
     result = await db.execute(query)
     tasks_db = result.scalars().all()
     
@@ -173,6 +195,7 @@ def _task_to_response(task_model: models.Task) -> schemas.Task:
         report_status=task_model.report_status,
         completion_note=task_model.completion_note,
         region_id=task_model.region_id or "local",
+        audience=getattr(task_model, "audience", None) or "user",
     )
 
 @router.post("/", response_model=schemas.Task)
@@ -209,6 +232,13 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
                     )
                     break
 
+    # Resolve audience: use server-side inference as fallback
+    resolved_audience = task.audience
+    if resolved_audience == "user":
+        inferred = _infer_audience(task.title, task.description or "", task.task_type)
+        if inferred == "admin":
+            resolved_audience = "admin"
+
     if existing_task:
         # Update existing task in place (preserve ID to prevent repeated audio)
         old_title = existing_task.title
@@ -222,6 +252,7 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
         existing_task.zone = task.zone
         existing_task.min_people_required = task.min_people_required
         existing_task.estimated_duration = task.estimated_duration
+        existing_task.audience = resolved_audience
         # Update voice data only if new data is provided
         if task.announcement_audio_url:
             existing_task.announcement_audio_url = task.announcement_audio_url
@@ -258,6 +289,7 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
         completion_audio_url=getattr(task, 'completion_audio_url', None),
         completion_text=getattr(task, 'completion_text', None),
         region_id=REGION_ID,
+        audience=resolved_audience,
     )
     db.add(new_task)
 

@@ -57,6 +57,7 @@ def _migrate_add_columns(conn):
         ("tasks", "region_id", "VARCHAR(32)", "'local'"),
         ("users", "region_id", "VARCHAR(32)", "'local'"),
         ("users", "global_user_id", "VARCHAR(200)", None),
+        ("tasks", "audience", "VARCHAR(16)", "'user'"),
         ("device_positions", "orientation_deg", "DOUBLE PRECISION", None),
         ("device_positions", "fov_deg", "DOUBLE PRECISION", None),
         ("device_positions", "detection_range_m", "DOUBLE PRECISION", None),

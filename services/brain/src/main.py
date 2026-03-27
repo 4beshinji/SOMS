@@ -252,7 +252,8 @@ class Brain:
                 task_type = t.get("task_type", [])
                 zone_str = f" [{zone}]" if zone else ""
                 type_str = f" ({','.join(task_type)})" if task_type else ""
-                user_content += f"- {title}{zone_str}{type_str}\n"
+                audience_tag = " [管理者向け]" if t.get("audience") == "admin" else ""
+                user_content += f"- {title}{zone_str}{type_str}{audience_tag}\n"
             user_content += "上記タスクと同じ目的のタスクを新規作成しないでください。"
         else:
             user_content += "\n\n## 現在のアクティブタスク\nなし"

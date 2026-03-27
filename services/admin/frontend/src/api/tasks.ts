@@ -18,3 +18,19 @@ export async function dispatchTask(taskId: number): Promise<Task> {
   if (!res.ok) throw new Error('Failed to dispatch task');
   return res.json();
 }
+
+export async function fetchAdminTasks(): Promise<Task[]> {
+  const res = await authFetch('/api/tasks/?audience=admin');
+  if (!res.ok) throw new Error('Failed to fetch admin tasks');
+  return res.json();
+}
+
+export async function completeAdminTask(taskId: number): Promise<Task> {
+  const res = await authFetch(`/api/tasks/${taskId}/complete`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ report_status: 'resolved' }),
+  });
+  if (!res.ok) throw new Error('Failed to complete task');
+  return res.json();
+}

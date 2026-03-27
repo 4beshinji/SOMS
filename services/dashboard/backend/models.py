@@ -45,6 +45,9 @@ class Task(Base):
     # Federation
     region_id = Column(String(32), default="local")
 
+    # Audience targeting
+    audience = Column(String(16), default="user")  # "user" or "admin"
+
 class VoiceEvent(Base):
     __tablename__ = "voice_events"
     id = Column(Integer, primary_key=True, index=True)
