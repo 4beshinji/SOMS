@@ -48,6 +48,8 @@ class DevicePositionOut(BaseModel):
     orientation_deg: float | None = None
     fov_deg: float | None = None
     detection_range_m: float | None = None
+    label: str | None = None
+    context: str | None = None
 
 
 class CreateDevicePositionIn(BaseModel):
@@ -60,6 +62,8 @@ class CreateDevicePositionIn(BaseModel):
     orientation_deg: float | None = None
     fov_deg: float | None = None
     detection_range_m: float | None = None
+    label: str | None = None
+    context: str | None = None
 
     @field_validator("device_id")
     @classmethod
@@ -79,6 +83,8 @@ class UpdateDevicePositionIn(BaseModel):
     orientation_deg: float | None = None
     fov_deg: float | None = None
     detection_range_m: float | None = None
+    label: str | None = None
+    context: str | None = None
 
 
 def _to_out(row: DevicePosition) -> DevicePositionOut:
@@ -97,6 +103,8 @@ def _to_out(row: DevicePosition) -> DevicePositionOut:
         orientation_deg=row.orientation_deg,
         fov_deg=row.fov_deg,
         detection_range_m=row.detection_range_m,
+        label=row.label,
+        context=row.context,
     )
 
 
@@ -134,6 +142,8 @@ async def create_device_position(
         orientation_deg=body.orientation_deg,
         fov_deg=body.fov_deg,
         detection_range_m=body.detection_range_m,
+        label=body.label,
+        context=body.context,
     )
     db.add(row)
     await db.commit()
@@ -172,6 +182,10 @@ async def update_device_position(
         row.fov_deg = body.fov_deg
     if "detection_range_m" in body.model_fields_set:
         row.detection_range_m = body.detection_range_m
+    if "label" in body.model_fields_set:
+        row.label = body.label
+    if "context" in body.model_fields_set:
+        row.context = body.context
     await db.commit()
     await db.refresh(row)
     logger.info("Device moved: %s to (%s, %s)", device_id, body.x, body.y)

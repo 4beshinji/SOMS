@@ -77,6 +77,8 @@ class DevicePosition(Base):
     orientation_deg = Column(Float, nullable=True)
     fov_deg = Column(Float, nullable=True)
     detection_range_m = Column(Float, nullable=True)
+    label = Column(String, nullable=True)
+    context = Column(String, nullable=True)  # Natural language sensor description for LLM reports
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

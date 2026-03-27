@@ -27,6 +27,8 @@ interface DeviceItem {
   orientationDeg: number | null;
   fovDeg: number | null;
   detectionRangeM: number | null;
+  label: string;
+  context: string;
   dirty?: boolean;
   isNew?: boolean;
 }
@@ -252,6 +254,7 @@ export default function ZoneEditor() {
         deviceType: d.type || 'sensor', channels: d.channels || [],
         orientationDeg: d.orientation_deg ?? null, fovDeg: d.fov_deg ?? null,
         detectionRangeM: d.detection_range_m ?? null,
+        label: d.label || '', context: d.context || '',
       }));
       setDevices(devs);
       // Cameras from spatial config
@@ -411,6 +414,7 @@ export default function ZoneEditor() {
         orientationDeg: cat.directional ? 0 : null,
         fovDeg: cat.directional ? (cat.defaultFov ?? 90) : null,
         detectionRangeM: cat.directional ? (cat.defaultRange ?? 5) : null,
+        label: bind?.label || '', context: '',
         dirty: true, isNew: true,
       };
       setDevices(p => [...p, nd]);
@@ -536,6 +540,7 @@ export default function ZoneEditor() {
               device_id: d.id, zone: d.zone, x: d.x, y: d.y,
               device_type: d.deviceType, channels: d.channels,
               orientation_deg: d.orientationDeg, fov_deg: d.fovDeg, detection_range_m: d.detectionRangeM,
+              label: d.label || null, context: d.context || null,
             }),
           });
           if (!r.ok) throw new Error(`device ${d.id}: ${r.status}`);
@@ -545,6 +550,7 @@ export default function ZoneEditor() {
             body: JSON.stringify({
               x: d.x, y: d.y, zone: d.zone,
               orientation_deg: d.orientationDeg, fov_deg: d.fovDeg, detection_range_m: d.detectionRangeM,
+              label: d.label || null, context: d.context || null,
             }),
           });
           if (!r.ok) throw new Error(`device ${d.id}: ${r.status}`);
@@ -859,6 +865,12 @@ export default function ZoneEditor() {
                 </div>
               </div>
             </>}
+            <label style={sLabel}>Label</label>
+            <input value={selDev.label} onChange={e => setDevices(p => p.map(d => d.id === selDev.id ? { ...d, label: e.target.value, dirty: true } : d))}
+              style={sInput} placeholder="e.g. 照度センサー"/>
+            <label style={sLabel}>Context <span style={{ fontSize:10, color:'#6b7280' }}>(LLMレポート用)</span></label>
+            <textarea value={selDev.context} onChange={e => setDevices(p => p.map(d => d.id === selDev.id ? { ...d, context: e.target.value, dirty: true } : d))}
+              style={{ ...sInput, minHeight:60, resize:'vertical', fontFamily:'inherit' }} placeholder="設置場所・目的・特性の説明（日本語）"/>
             <label style={sLabel}>Channels</label>
             <input value={selDev.channels.join(', ')} readOnly style={{ ...sInput, opacity:0.6 }}/>
             <button onClick={() => delDevice(selDev.id)}

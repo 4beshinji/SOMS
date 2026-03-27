@@ -115,6 +115,24 @@ CREATE TABLE IF NOT EXISTS events.person_tracks (
 CREATE INDEX IF NOT EXISTS idx_person_tracks_global_id
     ON events.person_tracks (global_id);
 
+CREATE TABLE IF NOT EXISTS events.reports (
+    id                  BIGSERIAL PRIMARY KEY,
+    report_type         TEXT NOT NULL,
+    period_start        TIMESTAMPTZ NOT NULL,
+    period_end          TIMESTAMPTZ NOT NULL,
+    generated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    model_used          TEXT NOT NULL,
+    generation_time_sec REAL NOT NULL,
+    status              TEXT NOT NULL DEFAULT 'completed',
+    content             JSONB NOT NULL DEFAULT '{}',
+    raw_markdown        TEXT,
+    summary             TEXT,
+    region_id           TEXT NOT NULL DEFAULT 'local'
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_type_period
+    ON events.reports (report_type, period_start);
+
 CREATE TABLE IF NOT EXISTS events.device_registry_snapshot (
     id          INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
     snapshot    JSONB NOT NULL DEFAULT '[]',

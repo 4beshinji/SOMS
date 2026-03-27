@@ -28,6 +28,8 @@ def _make_device_position(
     orientation_deg=None,
     fov_deg=None,
     detection_range_m=None,
+    label=None,
+    context=None,
 ):
     class FakeDevicePosition:
         pass
@@ -42,6 +44,8 @@ def _make_device_position(
     dp.orientation_deg = orientation_deg
     dp.fov_deg = fov_deg
     dp.detection_range_m = detection_range_m
+    dp.label = label
+    dp.context = context
     dp.created_at = datetime.now(timezone.utc)
     dp.updated_at = None
     return dp

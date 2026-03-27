@@ -666,6 +666,7 @@ devices:
     channels:
     - illuminance
     label: 照度センサー
+    context: 神保さん前ソファエリアの照度センサー。自然光と照明の明るさを計測し、作業環境の快適性評価に使用
   z2m_auto_dd1c6e60:
     zone: zone_jss75e
     position:
@@ -676,6 +677,7 @@ devices:
     - temperature
     - humidity
     label: Z2M Temp&hum1
+    context: 17号沿いエリアの温湿度センサー。建物東端で外気の影響を受けやすく、季節変動の指標となる
   z2m_motion_01:
     zone: zone_4d0rct
     position:
@@ -689,6 +691,7 @@ devices:
     fov_deg: 120.0
     detection_range_m: 3.0
     label: 出入り検知センサー
+    context: エントランス天井に設置されたモーションセンサー。来客や社員の入退室を検知。FOV 120度、検知範囲3m。照度も計測
   z2m_presence_01:
     zone: zone_4d0rct
     position:
@@ -701,6 +704,7 @@ devices:
     fov_deg: 120.0
     detection_range_m: 2.5
     label: 入口滞在センサー
+    context: エントランスの在室検知センサー。入口付近の滞在を検出し、受付対応の必要性判断に使用。検知範囲2.5m
   z2m_auto_90e1f7ce:
     zone: zone_jss75e
     position:
@@ -711,6 +715,7 @@ devices:
     - temperature
     - humidity
     label: Z2M Temp&hum2
+    context: 17号沿いエリアの温湿度センサー（2台目）。Temp&hum1と組み合わせてエリア内の温湿度分布を把握
   z2m_auto_eb32da9c:
     zone: zone_kjo92k
     position:
@@ -726,6 +731,7 @@ devices:
     fov_deg: 120.0
     detection_range_m: 4.5
     label: Z2M 10GhzSensor1
+    context: 神保さん前ソファエリアの多機能センサー（10GHz mmWave）。照度・温湿度・在室をひとつで計測。検知範囲4.5mで広域カバー
   z2m_auto_b4a972c2:
     zone: zone_jss75e
     position:
@@ -735,6 +741,7 @@ devices:
     channels:
     - motion
     label: Z2M VibSensor1
+    context: 17号沿いエリアの振動センサー。機器の稼働状態や異常振動の検出に使用
   z2m_auto_630150a6:
     zone: zone_2dui7k
     position:
@@ -744,6 +751,7 @@ devices:
     channels:
     - water_leak
     label: Z2M water_leak1
+    context: 淡水栽培エリアの漏水センサー。水耕栽培設備からの水漏れを即時検知し、設備損傷を防止
   z2m_auto_ccde0851:
     zone: zone_2dui7k
     position:
@@ -754,6 +762,7 @@ devices:
     - temperature
     - humidity
     label: Z2M Soilsensor3
+    context: 淡水栽培エリアの土壌センサー（3号機）。水耕栽培の水温と水分レベルを監視。植物の生育環境管理
   z2m_auto_07db1b9d:
     zone: zone_2dui7k
     position:
@@ -764,6 +773,7 @@ devices:
     - temperature
     - humidity
     label: Z2M Soilsensor2
+    context: 淡水栽培エリアの土壌センサー（2号機）。水耕栽培の水温と水分レベルを監視。Soilsensor1,3と合わせて栽培床全体をカバー
   z2m_auto_0ced58cc:
     zone: zone_2dui7k
     position:
@@ -774,6 +784,7 @@ devices:
     - temperature
     - humidity
     label: Z2M Soilsensor1
+    context: 淡水栽培エリアの土壌センサー（1号機）。水耕栽培の水温と水分レベルを監視。栽培エリアの基準計測点
   env_02:
     zone: zone_jss75e
     position:
@@ -786,6 +797,7 @@ devices:
     - humidity
     - pressure
     - gas
+    context: 17号沿い窓際のCO2・温湿度・気圧・VOC複合環境センサー（MH-Z19C + BME680）。換気状態の把握と空気質モニタリングを担当。外気の影響を受けやすい位置
 aruco_markers: {}
 cameras:
   cam_192_168_128_178:

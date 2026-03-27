@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 from database import engine, Base
-from routers import tasks, users, voice_events, sensors, spatial, devices, shopping, inventory
+from routers import tasks, users, voice_events, sensors, spatial, devices, shopping, inventory, reports
 import models # Make sure models are registered
 
 logger = logging.getLogger(__name__)
@@ -61,6 +61,8 @@ def _migrate_add_columns(conn):
         ("device_positions", "orientation_deg", "DOUBLE PRECISION", None),
         ("device_positions", "fov_deg", "DOUBLE PRECISION", None),
         ("device_positions", "detection_range_m", "DOUBLE PRECISION", None),
+        ("device_positions", "label", "VARCHAR", None),
+        ("device_positions", "context", "TEXT", None),
     ]
     # Allowlisted identifiers — only these table/column names are permitted
     _ALLOWED_TABLES = {m[0] for m in migrations}
@@ -107,6 +109,7 @@ app.include_router(spatial.router)
 app.include_router(devices.router)
 app.include_router(shopping.router)
 app.include_router(inventory.router)
+app.include_router(reports.router)
 
 @app.get("/")
 async def root():

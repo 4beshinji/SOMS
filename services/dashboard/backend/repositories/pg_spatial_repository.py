@@ -46,7 +46,9 @@ class PgSpatialRepository(SpatialDataRepository):
                     channels = json.loads(row.channels) if row.channels else []
                 except (json.JSONDecodeError, TypeError):
                     channels = []
-                devices[row.device_id] = {
+                # Merge DB override into existing YAML entry (preserving YAML fields not in DB)
+                existing = devices.get(row.device_id, {})
+                existing.update({
                     "zone": row.zone,
                     "position": [row.x, row.y],
                     "type": row.device_type or "sensor",
@@ -54,7 +56,13 @@ class PgSpatialRepository(SpatialDataRepository):
                     "orientation_deg": row.orientation_deg,
                     "fov_deg": row.fov_deg,
                     "detection_range_m": row.detection_range_m,
-                }
+                })
+                # DB label/context override YAML values when set
+                if row.label is not None:
+                    existing["label"] = row.label
+                if row.context is not None:
+                    existing["context"] = row.context
+                devices[row.device_id] = existing
         except Exception:
             logger.warning("Could not read device_positions table (may not exist yet)")
 

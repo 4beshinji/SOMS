@@ -25,6 +25,11 @@ from federation_config import load_federation_config, get_region_id
 from inventory_tracker import InventoryTracker
 from calibration_manager import CalibrationManager
 from chitchat import WeatherFetcher, NewsFetcher
+from activity_mode import ActivityModeManager
+from rule_engine import RuleEngine
+from ollama_manager import OllamaManager
+from report_generator import ReportGenerator
+from report_scheduler import ReportScheduler
 
 load_dotenv()
 
@@ -94,6 +99,13 @@ class Brain:
         self.sanitizer.set_inventory_tracker(self.inventory_tracker)
         self.calibration_manager = CalibrationManager()
         self.event_writer: EventWriter | None = None
+
+        # Activity mode and rule engine (VRAM resource management)
+        self.activity_mode = ActivityModeManager()
+        self.rule_engine = RuleEngine()
+        self.ollama_manager: OllamaManager | None = None
+        self.report_generator: ReportGenerator | None = None
+        self.report_scheduler: ReportScheduler | None = None
 
         # Load federation configuration
         fed_config = load_federation_config("config/federation.yaml")
@@ -194,6 +206,61 @@ class Brain:
         """ReAct cognitive cycle: Think → Act → Observe → repeat."""
         cycle_start = time.time()
         total_tool_calls = 0
+
+        # --- Activity mode evaluation ---
+        mode_changed = self.activity_mode.evaluate(self.world_model)
+
+        # If transitioning from INACTIVE to NORMAL: abort report generation
+        if mode_changed and not self.activity_mode.is_inactive:
+            if self.report_scheduler:
+                await self.report_scheduler.on_activity_resumed()
+
+        # INACTIVE mode: rule-based only (VRAM may be used for reports)
+        if self.activity_mode.is_inactive:
+            # Critical rules always execute
+            for action in self.rule_engine.evaluate_critical(self.world_model):
+                logger.info("[RuleEngine] クリティカルルール実行: %s", action["tool"])
+                await self.tool_executor.execute(action["tool"], action["args"])
+                total_tool_calls += 1
+
+            # Normal rules: check if LLM escalation is appropriate
+            rule_actions = self.rule_engine.evaluate(self.world_model)
+            if rule_actions and self.activity_mode.allow_llm_call():
+                self.activity_mode.record_llm_call()
+                logger.info("[ActivityMode] ルール発火 + LLMバジェットOK — LLMエスカレーション")
+                # Fall through to normal LLM path below
+            elif rule_actions:
+                # Execute rule actions directly (LLM throttled)
+                for action in rule_actions:
+                    logger.info("[RuleEngine] ルールアクション実行: %s", action["tool"])
+                    await self.tool_executor.execute(action["tool"], action["args"])
+                    total_tool_calls += 1
+                self._record_cycle(cycle_start, total_tool_calls, [], "rule_inactive")
+                return
+            else:
+                # Nothing to do in inactive mode
+                return
+
+        # Model swap in progress: rule-based fallback
+        if self.ollama_manager and self.ollama_manager.is_swapping:
+            logger.debug("[Brain] モデルスワップ中 — ルールベースフォールバック")
+            for action in self.rule_engine.evaluate(self.world_model):
+                await self.tool_executor.execute(action["tool"], action["args"])
+                total_tool_calls += 1
+            if total_tool_calls > 0:
+                self._record_cycle(cycle_start, total_tool_calls, [], "rule_swap")
+            return
+
+        # GPU high load: rule-based fallback
+        if self.rule_engine.should_use_rules():
+            for action in self.rule_engine.evaluate(self.world_model):
+                await self.tool_executor.execute(action["tool"], action["args"])
+                total_tool_calls += 1
+            if total_tool_calls > 0:
+                self._record_cycle(cycle_start, total_tool_calls, [], "rule_gpu")
+            return
+
+        # --- Normal LLM cognitive cycle ---
 
         # Process task queue
         if self.task_queue:
@@ -769,6 +836,20 @@ class Brain:
                 "success": True,
             })
 
+    def _record_cycle(self, cycle_start: float, total_tool_calls: int,
+                       trigger_events: list, mode: str = "llm"):
+        """Record a cognitive cycle to event store (rule-based or LLM)."""
+        if self.event_writer:
+            duration = time.time() - cycle_start
+            self.event_writer.record_decision(
+                cycle_duration=duration,
+                iterations=1,
+                total_tool_calls=total_tool_calls,
+                trigger_events=[{"mode": mode}] + trigger_events,
+                tool_calls=[],
+                region_id=self.region_id,
+            )
+
     async def _chitchat_stock_loop(self):
         """Background loop to keep chitchat stock filled."""
         await asyncio.sleep(90)  # Let Brain settle
@@ -920,15 +1001,44 @@ class Brain:
             # Start chitchat stock pre-generation loop
             asyncio.create_task(self._chitchat_stock_loop())
 
-            logger.info("Brain is running (ReAct mode)...")
+            # Initialize report generation system (VRAM resource management)
+            ollama_base = LLM_API_URL.rstrip("/")
+            if ollama_base.endswith("/v1"):
+                ollama_base = ollama_base[:-3]
+            # Use OLLAMA_URL if set, otherwise derive from LLM_API_URL
+            ollama_url = os.getenv("OLLAMA_URL", ollama_base)
+            self.ollama_manager = OllamaManager(
+                session=session,
+                brain_model=os.getenv("LLM_MODEL", "qwen3.5:14b"),
+                report_model=os.getenv("REPORT_LLM_MODEL", "qwen3.5:32b"),
+                ollama_base_url=ollama_url,
+            )
+            if engine:
+                self.report_generator = ReportGenerator(
+                    engine=engine,
+                    ollama_base_url=ollama_url,
+                    report_model=os.getenv("REPORT_LLM_MODEL", "qwen3.5:32b"),
+                    spatial_config=spatial_config,
+                    session=session,
+                )
+                self.report_scheduler = ReportScheduler(
+                    report_generator=self.report_generator,
+                    activity_mode=self.activity_mode,
+                    ollama_manager=self.ollama_manager,
+                    engine=engine,
+                )
+                asyncio.create_task(self.report_scheduler.start())
+                logger.info("Report scheduler started")
+
+            logger.info("Brain is running (ReAct mode + activity mode)...")
             last_cycle_time = 0.0
 
             while True:
-                # Wait for event trigger or timeout
+                # Wait for event trigger or timeout (dynamic interval)
                 try:
                     await asyncio.wait_for(
                         self._cycle_triggered.wait(),
-                        timeout=CYCLE_INTERVAL,
+                        timeout=self.activity_mode.cycle_interval,
                     )
                     # Event triggered - wait briefly to batch multiple events
                     self._cycle_triggered.clear()
@@ -938,8 +1048,9 @@ class Brain:
 
                 # Layer 4: Rate limit — enforce minimum interval between cycles
                 elapsed = time.time() - last_cycle_time
-                if elapsed < MIN_CYCLE_INTERVAL:
-                    await asyncio.sleep(MIN_CYCLE_INTERVAL - elapsed)
+                min_interval = self.activity_mode.min_cycle_interval
+                if elapsed < min_interval:
+                    await asyncio.sleep(min_interval - elapsed)
 
                 try:
                     await self.cognitive_cycle()

@@ -42,6 +42,7 @@ class DevicePosition:
     fov_deg: Optional[float] = None
     detection_range_m: Optional[float] = None
     label: str = ""
+    context: str = ""
 
 
 @dataclass
@@ -108,6 +109,7 @@ def load_spatial_config(path: str = "config/spatial.yaml") -> SpatialConfig:
             fov_deg=ddata.get("fov_deg"),
             detection_range_m=ddata.get("detection_range_m"),
             label=ddata.get("label", ""),
+            context=ddata.get("context", ""),
         )
 
     # Cameras
