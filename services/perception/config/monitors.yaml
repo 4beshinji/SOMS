@@ -154,7 +154,7 @@ tracking:
   enabled: true
   tracker: botsort.yaml
   reid_model: osnet_x0_5
-  publish_interval_sec: 0.5
+  publish_interval_sec: 5.0
   min_crop_height_px: 50
   min_crop_width_px: 25
   min_reid_confidence: 0.4
@@ -165,11 +165,11 @@ tracking:
     aruco_dict: DICT_4X4_50
     min_markers: 4
   association:
-    reid_weight: 0.5
-    spatial_weight: 0.3
+    reid_weight: 0.7
+    spatial_weight: 0.1
     temporal_weight: 0.2
-    match_threshold: 0.5
-    spatial_gate_m: 5.0
+    match_threshold: 0.6
+    spatial_gate_m: 3.0
     temporal_gate_s: 30.0
     tracklet_timeout_s: 60.0
     global_track_timeout_s: 300.0

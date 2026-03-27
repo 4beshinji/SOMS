@@ -424,6 +424,15 @@ class CrossCameraTracker:
         recency_window = 2.0  # seconds
 
         for gtrack in self._global_tracks.values():
+            # Keep last_seen fresh from active tracklets (prevents
+            # premature expiry while person is still being tracked)
+            best_seen = max(
+                (t.last_seen for t in gtrack.tracklets.values()),
+                default=gtrack.last_seen,
+            )
+            if best_seen > gtrack.last_seen:
+                gtrack.last_seen = best_seen
+
             # Collect tracklets with recent detections
             recent = [
                 t for t in gtrack.tracklets.values()
@@ -483,6 +492,10 @@ class CrossCameraTracker:
         ]
         for gid in expired_globals:
             gtrack = self._global_tracks.pop(gid)
+            # Reset orphaned tracklets so they can be reassigned
+            for key, t in self._tracklets.items():
+                if t.global_id == gid:
+                    t.global_id = None
             # Save embedding for future re-identification
             if gtrack.avg_embedding is not None:
                 self._embedding_history.append((gid, gtrack.avg_embedding))
