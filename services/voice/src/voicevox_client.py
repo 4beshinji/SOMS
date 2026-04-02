@@ -34,9 +34,38 @@ class VoicevoxClient:
         }.get(context, cls.ANNOUNCEMENT_SPEAKERS)
         return random.choice(pool)
     
+    # Cache for speaker name resolution
+    _speaker_name_cache: dict[int, str] | None = None
+
     def __init__(self, base_url: str = "http://voicevox:50021"):
         self.base_url = base_url
         logger.info(f"VoicevoxClient initialized with base_url: {base_url}")
+
+    async def get_speaker_name(self, speaker_id: int | None = None) -> str:
+        """Resolve speaker ID to character name via VOICEVOX /speakers API."""
+        if speaker_id is None:
+            speaker_id = self.SPEAKER_ID
+
+        if self._speaker_name_cache and speaker_id in self._speaker_name_cache:
+            return self._speaker_name_cache[speaker_id]
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.base_url}/speakers") as resp:
+                    if resp.status != 200:
+                        return "VOICEVOX"
+                    speakers = await resp.json()
+
+            cache: dict[int, str] = {}
+            for speaker in speakers:
+                name = speaker.get("name", "")
+                for style in speaker.get("styles", []):
+                    cache[style["id"]] = name
+            VoicevoxClient._speaker_name_cache = cache
+            return cache.get(speaker_id, "VOICEVOX")
+        except Exception as e:
+            logger.warning(f"Failed to resolve speaker name: {e}")
+            return "VOICEVOX"
     
     async def synthesize(
         self, 

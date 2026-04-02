@@ -311,6 +311,13 @@ async def announce_task_with_completion(request: TaskAnnounceRequest):
         acceptance_stock.request_finished()
         currency_unit_stock.request_finished()
 
+@app.get("/api/voice/credit")
+async def get_voice_credit():
+    """Return voice character credit info for license compliance."""
+    name = await voice_client.get_speaker_name()
+    return {"engine": "VOICEVOX", "character": name}
+
+
 @app.get("/api/voice/rejection/random")
 async def get_random_rejection():
     """
