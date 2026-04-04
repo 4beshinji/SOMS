@@ -52,6 +52,7 @@ async def lifespan(app: FastAPI):
 
     # Wire up routers
     status.set_scheduler(scheduler)
+    status.set_mqtt_client(mqtt_client)
     admin.set_trainer(trainer)
 
     logger.info("Anomaly detection service started (arch={}, realtime={})",

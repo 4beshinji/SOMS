@@ -112,7 +112,7 @@ async def health():
     status_code = 200 if all_ok else 503
     from fastapi.responses import JSONResponse
     return JSONResponse(
-        content={"status": "healthy" if all_ok else "degraded", "checks": checks},
+        content={"status": "healthy" if all_ok else "degraded", "service": "voice", "checks": checks},
         status_code=status_code,
     )
 

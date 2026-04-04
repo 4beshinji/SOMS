@@ -20,6 +20,7 @@ import cv2
 import numpy as np
 import yaml
 from aiohttp import web
+from state_publisher import StatePublisher
 
 logger = logging.getLogger(__name__)
 
@@ -423,9 +424,25 @@ class SnapshotServer:
 
     # ── Lifecycle ─────────────────────────────────────────────────
 
+    async def handle_health(self, request: web.Request) -> web.Response:
+        """Unified health check endpoint."""
+        checks = {}
+        try:
+            publisher = StatePublisher.get_instance()
+            checks["mqtt"] = "ok" if publisher.client.is_connected() else "error: disconnected"
+        except Exception as e:
+            checks["mqtt"] = f"error: {e}"
+
+        all_ok = all(v == "ok" for v in checks.values())
+        return web.json_response(
+            {"status": "healthy" if all_ok else "degraded", "service": "perception", "checks": checks},
+            status=200 if all_ok else 503,
+        )
+
     async def start(self):
         """Start the HTTP server (non-blocking)."""
         app = web.Application()
+        app.router.add_get("/health", self.handle_health)
         app.router.add_get("/cameras", self.handle_list)
         app.router.add_post("/cameras/discover", self.handle_discover)
         app.router.add_get("/cameras/{camera_id}/snapshot", self.handle_snapshot)
