@@ -20,4 +20,8 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY config/ /app/config/
 COPY src/ /app/src/
 
+RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser -G video -d /app appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 CMD ["python", "main.py"]

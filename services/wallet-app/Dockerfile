@@ -29,5 +29,11 @@ RUN apk add --no-cache openssl && \
       -subj "/CN=soms-wallet-app"
 COPY --from=builder /workspace/services/wallet-app/dist /usr/share/nginx/html
 COPY services/wallet-app/nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80 443
+
+RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /usr/share/nginx/html \
+    && touch /var/run/nginx.pid && chown nginx:nginx /var/run/nginx.pid \
+    && chmod 644 /etc/nginx/ssl/cert.pem /etc/nginx/ssl/key.pem
+USER nginx
+
+EXPOSE 8080 8443
 CMD ["nginx", "-g", "daemon off;"]
