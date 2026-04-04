@@ -11,6 +11,7 @@ import os
 import signal
 import sys
 
+from aiohttp import web
 from config_loader import load_config
 from mqtt_bridge import MQTTBridge
 from device_manager import DeviceManager
@@ -20,6 +21,26 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("Zigbee2MQTTBridge")
+
+
+async def start_health_server(mqtt_bridge: MQTTBridge, port: int = 8080):
+    """Start lightweight aiohttp health endpoint."""
+    async def _health(request):
+        checks = {}
+        checks["mqtt"] = "ok" if mqtt_bridge._connected else "error: disconnected"
+        all_ok = all(v == "ok" for v in checks.values())
+        return web.json_response(
+            {"status": "healthy" if all_ok else "degraded", "service": "zigbee2mqtt-bridge", "checks": checks},
+            status=200 if all_ok else 503,
+        )
+
+    app = web.Application()
+    app.router.add_get("/health", _health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logger.info(f"Health server listening on :{port}")
 
 
 async def main():
@@ -50,6 +71,10 @@ async def main():
 
     # Connect MQTT (blocking retry inside)
     mqtt.connect()
+
+    # Start health check HTTP server
+    health_port = int(os.getenv("HEALTH_PORT", "8080"))
+    await start_health_server(mqtt, health_port)
 
     # Build async tasks
     tasks = [

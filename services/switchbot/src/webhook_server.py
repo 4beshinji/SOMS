@@ -57,4 +57,4 @@ class WebhookServer:
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def _health(self, request: web.Request) -> web.Response:
-        return web.json_response({"status": "healthy"})
+        return web.json_response({"status": "healthy", "service": "switchbot-webhook", "checks": {}})

@@ -7,7 +7,7 @@ app = FastAPI()
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "mock-llm"}
+    return {"status": "healthy", "service": "mock-llm", "checks": {}}
 
 
 def _make_tool_call(name: str, arguments: dict) -> dict:

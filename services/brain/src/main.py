@@ -130,6 +130,31 @@ class Brain:
         # Prevent concurrent chitchat generation (stock loop vs live loop)
         self._chitchat_lock = asyncio.Lock()
 
+    async def _start_health_server(self, port: int = 8080):
+        """Start lightweight aiohttp health endpoint."""
+        from aiohttp import web
+
+        async def _health(request):
+            checks = {}
+            checks["mqtt"] = "ok" if self.client.is_connected() else "error: disconnected"
+            if self.event_writer:
+                checks["postgres"] = "ok"
+            else:
+                checks["postgres"] = "error: not initialized"
+            all_ok = all(v == "ok" for v in checks.values())
+            return web.json_response(
+                {"status": "healthy" if all_ok else "degraded", "service": "brain", "checks": checks},
+                status=200 if all_ok else 503,
+            )
+
+        app = web.Application()
+        app.router.add_get("/health", _health)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+        logger.info(f"Health server listening on :{port}")
+
     def on_connect(self, client, userdata, flags, rc, properties=None):
         logger.info(f"Connected to MQTT Broker with result code {rc}")
         client.subscribe("mcp/+/response/#")
@@ -927,6 +952,10 @@ class Brain:
         except Exception as e:
             logger.error(f"Failed to connect to MQTT: {e}")
             return
+
+        # Start health check HTTP server
+        health_port = int(os.getenv("HEALTH_PORT", "8080"))
+        await self._start_health_server(health_port)
 
         # Initialize event store (PostgreSQL)
         try:

@@ -54,7 +54,7 @@ services:
     networks:
       - soms-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('mosquitto',1883),5); s.close()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -120,14 +120,14 @@ services:
     container_name: soms-frontend
     restart: always
     ports:
-      - "${SOMS_PORT_FRONTEND:-80}:80"
+      - "${SOMS_PORT_FRONTEND:-80}:8080"
     depends_on:
       backend:
         condition: service_healthy
     networks:
       - soms-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8080/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -248,8 +248,8 @@ services:
     container_name: soms-wallet-app
     restart: always
     ports:
-      - "${SOMS_PORT_WALLET_APP:-8004}:80"
-      - "${SOMS_PORT_WALLET_APP_HTTPS:-8443}:443"
+      - "${SOMS_PORT_WALLET_APP:-8004}:8080"
+      - "${SOMS_PORT_WALLET_APP_HTTPS:-8443}:8443"
     depends_on:
       wallet:
         condition: service_healthy
@@ -258,7 +258,7 @@ services:
     networks:
       - soms-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null --no-check-certificate https://127.0.0.1:443/ || wget -qO /dev/null http://127.0.0.1:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --no-check-certificate https://127.0.0.1:8443/ || wget -qO /dev/null http://127.0.0.1:8080/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -337,7 +337,7 @@ services:
     networks:
       - soms-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('mosquitto',1883),5); s.close()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -362,7 +362,7 @@ services:
     networks:
       - soms-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('mosquitto',1883),5); s.close()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -417,7 +417,7 @@ services:
     networks:
       - soms-net
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('mosquitto',1883),5); s.close()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -483,7 +483,7 @@ services:
       - MQTT_PASS=${MQTT_PASS:-soms_dev_mqtt}
       - HSA_OVERRIDE_GFX_VERSION=12.0.1
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('localhost',1883),5); s.close()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8019/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -497,7 +497,7 @@ services:
     container_name: soms-admin
     restart: always
     ports:
-      - "${SOMS_PORT_ADMIN:-8007}:80"
+      - "${SOMS_PORT_ADMIN:-8007}:8080"
     depends_on:
       backend:
         condition: service_healthy
@@ -510,7 +510,7 @@ services:
     networks:
       - soms-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:8080/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

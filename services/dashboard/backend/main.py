@@ -3,6 +3,7 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import inspect, text
 from database import engine, Base
 from routers import tasks, users, voice_events, sensors, spatial, devices, shopping, inventory, reports
@@ -118,4 +119,17 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "dashboard-backend"}
+    checks = {}
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        checks["postgres"] = "ok"
+    except Exception as e:
+        checks["postgres"] = f"error: {e}"
+
+    all_ok = all(v == "ok" for v in checks.values())
+    status_code = 200 if all_ok else 503
+    return JSONResponse(
+        content={"status": "healthy" if all_ok else "degraded", "service": "dashboard-backend", "checks": checks},
+        status_code=status_code,
+    )

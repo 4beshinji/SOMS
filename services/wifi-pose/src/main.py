@@ -184,12 +184,41 @@ class WifiPoseService:
         self._client.publish(f"office/{zone}/wifi-pose/{node_id}", pose_payload)
 
 
+async def start_health_server(service: WifiPoseService, port: int = 8080):
+    """Start lightweight aiohttp health endpoint."""
+    from aiohttp import web
+
+    async def _health(request):
+        checks = {}
+        if service._client and service._client.is_connected():
+            checks["mqtt"] = "ok"
+        else:
+            checks["mqtt"] = "error: disconnected"
+        all_ok = all(v == "ok" for v in checks.values())
+        return web.json_response(
+            {"status": "healthy" if all_ok else "degraded", "service": "wifi-pose", "checks": checks},
+            status=200 if all_ok else 503,
+        )
+
+    app = web.Application()
+    app.router.add_get("/health", _health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logger.info("Health server listening on :%d", port)
+
+
 async def main():
     logger.info("=== WiFi Pose Service Starting ===")
 
     config = load_config()
     service = WifiPoseService(config)
     service.start()
+
+    # Start health check HTTP server
+    health_port = int(os.environ.get("HEALTH_PORT", "8080"))
+    await start_health_server(service, health_port)
 
     logger.info("=== WiFi Pose Service Ready ===")
 
