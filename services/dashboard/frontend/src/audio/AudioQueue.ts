@@ -1,3 +1,5 @@
+import { audioAnalyser } from './AudioAnalyser';
+
 export enum AudioPriority {
   USER_ACTION = 0,     // accept/reject/complete — immediate feedback
   VOICE_EVENT = 1,     // chitchat/speak — plays before task announcements
@@ -7,6 +9,8 @@ export enum AudioPriority {
 interface QueueItem {
   url: string;
   priority: AudioPriority;
+  tone?: string;
+  motionId?: string;
 }
 
 type Listener = () => void;
@@ -20,6 +24,11 @@ class AudioQueue {
   private currentUrl: string | null = null;
   private enabled = false;
   private listeners = new Set<Listener>();
+
+  /** Whether audio is currently playing. */
+  get isPlaying(): boolean {
+    return this.playing;
+  }
 
   /** Subscribe to state changes (for useSyncExternalStore). */
   subscribe = (listener: Listener): (() => void) => {
@@ -40,14 +49,14 @@ class AudioQueue {
     this.emit();
   }
 
-  /** Add a URL to the queue with a given priority. */
-  enqueue = (url: string, priority: AudioPriority = AudioPriority.VOICE_EVENT) => {
+  /** Add a URL to the queue with a given priority, optional tone and motionId. */
+  enqueue = (url: string, priority: AudioPriority = AudioPriority.VOICE_EVENT, tone?: string, motionId?: string) => {
     if (!this.enabled) return;
 
     // URL-level dedup: skip if already queued or currently playing
     if (this.currentUrl === url || this.queue.some(q => q.url === url)) return;
 
-    const item: QueueItem = { url, priority };
+    const item: QueueItem = { url, priority, tone, motionId };
 
     // Insert in priority order (lower number = higher priority), FIFO within same priority
     let inserted = false;
@@ -114,8 +123,12 @@ class AudioQueue {
     this.emit();
 
     const audio = new Audio(item.url);
+    audio.crossOrigin = 'anonymous';
     this.currentAudio = audio;
     this.currentUrl = item.url;
+
+    // Delegate audio analysis (lip-sync + tone + motionId) to AudioAnalyser singleton
+    audioAnalyser.connectSource(audio, item.tone, item.motionId);
 
     // Guard against double-done: play().catch + error event can both fire on load failure
     let settled = false;

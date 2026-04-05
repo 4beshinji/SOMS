@@ -74,6 +74,13 @@ edge/test-edge/flash-tool/fleet.yaml
 /data/
 /models/
 /logs/
+
+# Avatar models and motions (license restrictions)
+services/dashboard/frontend/public/models/
+services/dashboard/frontend/public/motions/
+
+# User-created character personalities (private, not for distribution)
+config/characters/user/
 /infra/mosquitto/data/
 /infra/mosquitto/log/
 *.pt

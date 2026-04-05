@@ -48,6 +48,8 @@ services:
       - WALLET_SERVICE_URL=http://wallet:8000
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-soms}:${POSTGRES_PASSWORD:-soms_dev_password}@postgres:5432/soms
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
+      - CHARACTER_ID=${CHARACTER_ID:-otomachi_una}
+      - CONFIG_DIR=/app/config
     volumes:
       - ../services/brain/src:/app
       - ../config:/app/config:ro
@@ -489,6 +491,31 @@ services:
       retries: 3
       start_period: 60s
 
+  # --- Speech-to-Text (kotoba-whisper) ---
+  stt:
+    image: ghcr.io/speaches-ai/speaches:latest
+    container_name: soms-stt
+    restart: unless-stopped
+    environment:
+      - WHISPER__MODEL=${STT_MODEL:-kotoba-tech/kotoba-whisper-v2.0-faster}
+      - WHISPER__INFERENCE_DEVICE=auto
+      - UVICORN_PORT=8000
+      - HSA_OVERRIDE_GFX_VERSION=12.0.1
+    volumes:
+      - stt_models:/root/.cache/huggingface
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri/card1:/dev/dri/card1
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    networks:
+      - soms-net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
   # --- Admin Panel ---
   admin-frontend:
     build:
@@ -522,6 +549,7 @@ volumes:
   soms_pg_data:
   soms_audio_data:
   soms_anomaly_models:
+  stt_models:
   ollama_models:
 
 

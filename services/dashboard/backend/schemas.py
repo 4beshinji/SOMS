@@ -201,6 +201,28 @@ class ShoppingShareResponse(BaseModel):
 
 
 # Inventory Item Schemas (shelf sensor → item mapping)
+# Chat Schemas
+class ChatRequest(BaseModel):
+    message: str
+
+class ChatResponse(BaseModel):
+    content: str
+    audio_url: Optional[str] = None
+    tone: Optional[str] = None
+    motion_id: Optional[str] = None
+
+class ChatLogResponse(BaseModel):
+    id: int
+    user_message: str
+    assistant_message: str
+    audio_url: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# Inventory Item Schemas (shelf sensor → item mapping)
 class InventoryItemCreate(BaseModel):
     device_id: str
     channel: str = "weight"

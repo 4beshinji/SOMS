@@ -402,3 +402,12 @@ export interface UpdateDevicePositionRequest {
   fov_deg?: number | null;
   detection_range_m?: number | null;
 }
+
+// ── Chat Types ──────────────────────────────────────────────────────
+
+export interface ChatResponse {
+  content: string;
+  audio_url: string | null;
+  tone: string | null;
+  motion_id?: string | null;
+}
