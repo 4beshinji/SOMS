@@ -1,13 +1,13 @@
 import type {
   Task, TaskReport, SystemStats, SupplyStats, ZoneMultiplierInfo,
   ShoppingItem, ShoppingItemCreate, ShoppingStats, ShoppingShareResponse,
-  PurchaseHistory,
+  PurchaseHistory, ChatResponse,
 } from '@soms/types';
 
 export type {
   Task, TaskReport, SystemStats, SupplyStats, ZoneMultiplierInfo,
   ShoppingItem, ShoppingItemCreate, ShoppingStats, ShoppingShareResponse,
-  PurchaseHistory,
+  PurchaseHistory, ChatResponse,
 };
 
 export const fetchTasks = async (): Promise<Task[]> => {
@@ -123,4 +123,29 @@ export const fetchShoppingDue = async (): Promise<ShoppingItem[]> => {
   const res = await fetch('/api/shopping/due');
   if (!res.ok) throw new Error('Failed to fetch due items');
   return res.json();
+};
+
+// ── Chat ───────────────────────────────────────────────────────────
+
+export const sendChat = async (message: string): Promise<ChatResponse> => {
+  const res = await fetch('/api/chat/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  });
+  if (!res.ok) throw new Error('Chat request failed');
+  return res.json();
+};
+
+export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
+  const form = new FormData();
+  form.append('file', audioBlob, 'recording.wav');
+  form.append('language', 'ja');
+  const res = await fetch('/api/stt/v1/audio/transcriptions', {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) throw new Error('STT failed');
+  const data = await res.json();
+  return data.text;
 };

@@ -6,9 +6,10 @@ interface MonitorHeaderProps {
   supply: SupplyStats | null;
   isAudioEnabled: boolean;
   onToggleAudio: () => void;
+  children?: React.ReactNode;
 }
 
-export default function MonitorHeader({ systemStats, supply, isAudioEnabled, onToggleAudio }: MonitorHeaderProps) {
+export default function MonitorHeader({ systemStats, supply, isAudioEnabled, onToggleAudio, children }: MonitorHeaderProps) {
   return (
     <header className="bg-white border-b border-[var(--gray-200)] elevation-1">
       <div className="max-w-6xl mx-auto px-6 py-6">
@@ -53,7 +54,9 @@ export default function MonitorHeader({ systemStats, supply, isAudioEnabled, onT
             )}
           </div>
 
-          {/* Audio Toggle */}
+          {/* Extra controls */}
+          <div className="flex items-center gap-2">
+          {children}
           <button
             onClick={onToggleAudio}
             className={`p-3 rounded-full transition-all duration-300 cursor-pointer touch-action-manipulation min-w-[48px] min-h-[48px] flex items-center justify-center ${isAudioEnabled
@@ -68,6 +71,7 @@ export default function MonitorHeader({ systemStats, supply, isAudioEnabled, onT
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
             )}
           </button>
+          </div>
         </motion.div>
       </div>
     </header>

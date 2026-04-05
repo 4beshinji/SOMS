@@ -1030,6 +1030,15 @@ class Brain:
                 asyncio.create_task(self.report_scheduler.start())
                 logger.info("Report scheduler started")
 
+            # Start chat HTTP server for dashboard Q&A
+            from chat_server import create_chat_app
+            chat_port = int(os.getenv("BRAIN_CHAT_PORT", "8080"))
+            chat_app = create_chat_app(self)
+            chat_runner = aiohttp.web.AppRunner(chat_app)
+            await chat_runner.setup()
+            await aiohttp.web.TCPSite(chat_runner, "0.0.0.0", chat_port).start()
+            logger.info(f"Chat HTTP server started on :{chat_port}")
+
             logger.info("Brain is running (ReAct mode + activity mode)...")
             last_cycle_time = 0.0
 

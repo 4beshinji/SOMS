@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 from database import engine, Base
-from routers import tasks, users, voice_events, sensors, spatial, devices, shopping, inventory, reports
+from routers import tasks, users, voice_events, sensors, spatial, devices, shopping, inventory, reports, chat
 import models # Make sure models are registered
 
 logger = logging.getLogger(__name__)
@@ -110,6 +110,7 @@ app.include_router(devices.router)
 app.include_router(shopping.router)
 app.include_router(inventory.router)
 app.include_router(reports.router)
+app.include_router(chat.router)
 
 @app.get("/")
 async def root():

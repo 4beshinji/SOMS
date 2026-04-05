@@ -150,6 +150,15 @@ class InventoryItem(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+class ChatLog(Base):
+    __tablename__ = "chat_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    user_message = Column(String)
+    assistant_message = Column(String)
+    audio_url = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
