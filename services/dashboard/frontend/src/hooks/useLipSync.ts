@@ -23,6 +23,9 @@ export function useLipSync(model: AvatarModel | null) {
     } else if (prevRef.current > 0.01) {
       prevRef.current *= 0.85;
       model.setExpression('aa', prevRef.current);
+    } else if (prevRef.current > 0) {
+      prevRef.current = 0;
+      model.setExpression('aa', 0);
     }
   });
 }

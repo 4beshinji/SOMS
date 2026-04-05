@@ -29,8 +29,15 @@ export function useExpressionMapping(model: AvatarModel | null) {
     const tone = (isActive && currentTone) ? currentTone : 'neutral';
     const target = TONE_MAP[tone] ?? TONE_MAP.neutral;
 
-    // Decay previous expression if switching
-    if (prevExpression.current && prevExpression.current !== target.name) {
+    // Check if previous and new expressions share the same underlying morph
+    const sameKey =
+      prevExpression.current &&
+      prevExpression.current !== target.name &&
+      model.getExpressionKey(prevExpression.current) !== null &&
+      model.getExpressionKey(prevExpression.current) === model.getExpressionKey(target.name);
+
+    // Decay previous expression if switching (skip if same underlying morph)
+    if (prevExpression.current && prevExpression.current !== target.name && !sameKey) {
       const oldWeight = currentWeights.current[prevExpression.current] ?? 0;
       if (oldWeight > 0.01) {
         const newWeight = oldWeight * (1 - DECAY_SPEED);
@@ -42,6 +49,15 @@ export function useExpressionMapping(model: AvatarModel | null) {
         prevExpression.current = target.name;
       }
     } else {
+      // When sameKey is true, the old and new expressions share the same morph
+      // target. Transfer the accumulated weight so the blend block can decay it.
+      if (sameKey && prevExpression.current) {
+        const carried = currentWeights.current[prevExpression.current] ?? 0;
+        if (carried > 0) {
+          currentWeights.current[target.name] = carried;
+          currentWeights.current[prevExpression.current] = 0;
+        }
+      }
       prevExpression.current = target.name;
     }
 
