@@ -1,0 +1,17 @@
+[Unit]
+Description=SOMS Voicepeak Bridge Server
+After=network.target
+
+[Service]
+Type=simple
+User=sin
+WorkingDirectory=/home/sin/code/Office_as_AI_ToyBox
+Environment=VOICEPEAK_PATH=/home/sin/code/una/Voicepeak-linux64/Voicepeak/voicepeak
+Environment=VOICEPEAK_NARRATOR=Otomachi Una
+Environment=VOICEPEAK_BRIDGE_PORT=18100
+ExecStart=/home/sin/code/Office_as_AI_ToyBox/.venv/bin/python services/voice/voicepeak_bridge.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

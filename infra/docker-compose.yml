@@ -158,15 +158,15 @@ services:
     restart: always
     ports:
       - "${SOMS_PORT_VOICE:-8002}:8000"
-    depends_on:
-      voicevox:
-        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       - VOICEVOX_URL=http://voicevox:50021
       - LLM_API_URL=${VOICE_LLM_API_URL:-http://ollama:11434/v1}
       - LLM_MODEL=${VOICE_LLM_MODEL:-gpt-oss:20b}
+      - TTS_BACKEND=${TTS_BACKEND:-voicepeak}
+      - VOICEPEAK_BRIDGE_URL=${VOICEPEAK_BRIDGE_URL:-http://host.docker.internal:18100}
+      - VOICEPEAK_NARRATOR=${VOICEPEAK_NARRATOR:-Otomachi Una}
     volumes:
       - ../services/voice/src:/app
       - soms_audio_data:/app/audio

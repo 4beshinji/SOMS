@@ -25,8 +25,18 @@ from rejection_stock import RejectionStock, idle_generation_loop
 from acceptance_stock import AcceptanceStock, idle_acceptance_generation_loop
 from currency_unit_stock import CurrencyUnitStock, idle_currency_generation_loop
 
-# Initialize clients
-voice_client = VoicevoxClient()
+# Select TTS backend via TTS_BACKEND env var ("voicepeak" or "voicevox")
+_TTS_BACKEND = os.getenv("TTS_BACKEND", "voicepeak").lower()
+
+if _TTS_BACKEND == "voicepeak":
+    from voicepeak_client import VoicepeakClient
+    _vp_bridge = os.getenv("VOICEPEAK_BRIDGE_URL", "http://host.docker.internal:18100")
+    _vp_narrator = os.getenv("VOICEPEAK_NARRATOR", "Otomachi Una")
+    voice_client = VoicepeakClient(bridge_url=_vp_bridge, narrator=_vp_narrator)
+else:
+    _voicevox_url = os.getenv("VOICEVOX_URL", "http://voicevox:50021")
+    voice_client = VoicevoxClient(base_url=_voicevox_url)
+
 speech_gen = SpeechGenerator()
 
 # Currency unit stock (text-only, injected into speech_gen)
@@ -43,14 +53,30 @@ acceptance_stock = AcceptanceStock(speech_gen, voice_client)
 AUDIO_DIR = Path("/app/audio")
 AUDIO_DIR.mkdir(exist_ok=True)
 
-# VOICEVOX output format constants
-VOICEVOX_SAMPLE_RATE = 24000
-VOICEVOX_BYTES_PER_SAMPLE = 2
-
 
 def estimate_audio_duration(audio_data: bytes) -> float:
-    """Estimate audio duration in seconds from raw PCM data."""
-    return round(len(audio_data) / (VOICEVOX_SAMPLE_RATE * VOICEVOX_BYTES_PER_SAMPLE), 2)
+    """Estimate audio duration in seconds by parsing the WAV header."""
+    import struct
+    try:
+        if len(audio_data) >= 44 and audio_data[:4] == b"RIFF":
+            sample_rate = struct.unpack_from("<I", audio_data, 24)[0]
+            channels = struct.unpack_from("<H", audio_data, 22)[0]
+            bits_per_sample = struct.unpack_from("<H", audio_data, 34)[0]
+            pos = 12
+            while pos < len(audio_data) - 8:
+                chunk_id = audio_data[pos : pos + 4]
+                chunk_size = struct.unpack_from("<I", audio_data, pos + 4)[0]
+                if chunk_id == b"data":
+                    bytes_per_sample = max(1, bits_per_sample // 8)
+                    denom = sample_rate * channels * bytes_per_sample
+                    return round(chunk_size / denom, 2)
+                pos += 8 + chunk_size
+                if chunk_size % 2:
+                    pos += 1
+    except Exception:
+        pass
+    # Fallback: assume VOICEVOX 24 kHz 16-bit mono
+    return round(len(audio_data) / (24000 * 2), 2)
 
 
 @asynccontextmanager
@@ -86,18 +112,28 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """Detailed health check: VOICEVOX + LLM connectivity."""
+    """Detailed health check: TTS backend + LLM connectivity."""
     import aiohttp
+    from fastapi.responses import JSONResponse
 
     checks = {}
 
-    # VOICEVOX check
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as s:
-            async with s.get(f"{voice_client.base_url}/speakers") as resp:
-                checks["voicevox"] = "ok" if resp.status == 200 else f"status={resp.status}"
-    except Exception as e:
-        checks["voicevox"] = f"error: {e}"
+    # TTS backend check
+    if _TTS_BACKEND == "voicepeak":
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as s:
+                async with s.get(f"{voice_client.bridge_url}/health") as resp:
+                    data = await resp.json()
+                    checks["voicepeak"] = "ok" if data.get("status") == "ok" else f"bridge={data}"
+        except Exception as e:
+            checks["voicepeak"] = f"error: {e}"
+    else:
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as s:
+                async with s.get(f"{voice_client.base_url}/speakers") as resp:
+                    checks["voicevox"] = "ok" if resp.status == 200 else f"status={resp.status}"
+        except Exception as e:
+            checks["voicevox"] = f"error: {e}"
 
     # LLM check
     try:
@@ -110,7 +146,6 @@ async def health():
 
     all_ok = all(v == "ok" for v in checks.values())
     status_code = 200 if all_ok else 503
-    from fastapi.responses import JSONResponse
     return JSONResponse(
         content={"status": "healthy" if all_ok else "degraded", "checks": checks},
         status_code=status_code,
@@ -315,7 +350,8 @@ async def announce_task_with_completion(request: TaskAnnounceRequest):
 async def get_voice_credit():
     """Return voice character credit info for license compliance."""
     name = await voice_client.get_speaker_name()
-    return {"engine": "VOICEVOX", "character": name}
+    engine = "VOICEPEAK" if _TTS_BACKEND == "voicepeak" else "VOICEVOX"
+    return {"engine": engine, "character": name}
 
 
 @app.get("/api/voice/rejection/random")
