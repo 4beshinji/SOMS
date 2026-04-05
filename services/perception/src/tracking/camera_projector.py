@@ -188,6 +188,28 @@ class CameraProjector:
         depth = cam["cam_height_m"] / math.tan(angle_below_horiz)
         return max(_MIN_DEPTH_M, min(depth, _MAX_DEPTH_M))
 
+    def get_fov_center(self, camera_id: str) -> Optional[list[float]]:
+        """
+        Return the floor point at the center of the camera's FOV.
+
+        Used as a last-resort fallback when both geometry projection and
+        ArUco homography fail — places the person *somewhere* inside the
+        camera's visible area rather than at [0,0].
+        """
+        cam = self._cameras.get(camera_id)
+        if cam is None:
+            return None
+        w, h = cam["resolution"]
+        center_px = [w / 2.0, h / 2.0]
+        bearing_rad = self._compute_bearing(cam, center_px[0])
+        depth_m = self._estimate_depth(cam, center_px)
+        if depth_m is None:
+            return None
+        cx, cy = cam["position"]
+        floor_x = cx + depth_m * math.cos(bearing_rad)
+        floor_y = cy + depth_m * math.sin(bearing_rad)
+        return [round(floor_x, 2), round(floor_y, 2)]
+
     # ── Multi-camera triangulation ────────────────────────────────
 
     @staticmethod

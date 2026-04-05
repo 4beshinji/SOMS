@@ -64,6 +64,10 @@ class ActivityMonitor(MonitorBase):
         self._vlm_analyzer = vlm_analyzer
         self._prev_person_count = 0
         self._last_frame = None
+        # Set of camera IDs that have a dedicated TrackingMonitor.
+        # When set, spatial publish is skipped for these cameras to
+        # avoid overwriting richer tracking data on the same MQTT topic.
+        self._tracking_camera_ids: set[str] = set()
 
     async def analyze(self, image: np.ndarray):
         """Two-tier: detect → pose (only if persons found)."""
@@ -127,9 +131,12 @@ class ActivityMonitor(MonitorBase):
         )
 
         # Publish spatial detection data (bbox centers + classes, no raw images)
+        # Skip if a TrackingMonitor covers this camera (it publishes richer data)
         person_detections = analysis.get("person_detections", [])
         all_detections = analysis.get("all_detections", [])
-        if person_detections or all_detections:
+        if self.camera_id in self._tracking_camera_ids:
+            pass  # TrackingMonitor handles spatial publish for this camera
+        elif person_detections or all_detections:
             h, w = analysis["image_shape"][:2]
             persons_spatial = [
                 {

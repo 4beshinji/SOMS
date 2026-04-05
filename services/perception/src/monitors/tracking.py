@@ -98,7 +98,7 @@ class TrackingMonitor(MonitorBase):
         Returns list of TrackedPerson dataclass instances.
         """
         # Shared YOLO inference (person class only)
-        results = self._yolo.model(image, verbose=False, conf=0.5, classes=[0])
+        results = self._yolo.model(image, verbose=False, conf=0.3, classes=[0])
 
         # Move boxes to CPU for BOTSORT (which uses numpy internally)
         boxes = results[0].boxes.cpu() if results and results[0].boxes is not None else None
@@ -130,13 +130,15 @@ class TrackingMonitor(MonitorBase):
             bbox_f = [float(x1), float(y1), float(x2), float(y2)]
             foot_px = foot_from_bbox(bbox_f)
 
-            # Try ArUco homography first, fall back to camera-geometry projection
-            foot_floor = pixel_to_floor(self.camera_id, foot_px)
+            # Camera-geometry projection first (most reliable), then ArUco,
+            # then camera FOV center as last resort.
+            from tracking.camera_projector import CameraProjector
+            projector = CameraProjector.get_instance()
+            foot_floor = projector.project(self.camera_id, foot_px, bbox_f)
             if foot_floor is None:
-                from tracking.camera_projector import CameraProjector
-                foot_floor = CameraProjector.get_instance().project(
-                    self.camera_id, foot_px, bbox_f,
-                )
+                foot_floor = pixel_to_floor(self.camera_id, foot_px)
+            if foot_floor is None:
+                foot_floor = projector.get_fov_center(self.camera_id)
             if foot_floor is None:
                 foot_floor = [0.0, 0.0]
 

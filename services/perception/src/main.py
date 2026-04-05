@@ -232,8 +232,9 @@ async def main():
             min_age_s_for_global=assoc.get("min_age_s_for_global", 2.0),
             reid_match_threshold=assoc.get("reid_match_threshold", 0.55),
             merge_check_interval_s=assoc.get("merge_check_interval_s", 5.0),
-            merge_reid_threshold=assoc.get("merge_reid_threshold", 0.6),
-            merge_spatial_gate_m=assoc.get("merge_spatial_gate_m", 3.0),
+            merge_reid_threshold=assoc.get("merge_threshold", 0.4),
+            merge_spatial_gate_m=assoc.get("merge_spatial_gate_m", 4.0),
+            merge_spatial_coeff=assoc.get("merge_spatial_coeff", 0.5),
             embedding_alpha=tracking_config.get("embedding_alpha", 0.15),
         )
 
@@ -245,11 +246,29 @@ async def main():
             Path(__file__).parent.parent / "config" / "tracker" / tracker_cfg_name
         )
 
-        tracking_cameras = tracking_config.get("cameras", [])
-        for cam_cfg in tracking_cameras:
-            cam_id = cam_cfg["camera_id"]
-            zone = cam_cfg["zone_name"]
+        # Build unified tracking camera list: spatial.yaml cameras (auto)
+        # + monitors.yaml tracking.cameras (manual overrides)
+        tracking_cam_map: dict[str, str] = {}  # cam_id -> zone_name
 
+        # Auto-register all cameras from spatial.yaml that have position + FOV
+        for cam_id, cam_cfg in cameras_config.items():
+            if cam_cfg.get("position") and cam_cfg.get("fov_deg"):
+                zone = cam_cfg.get("zone", cam_id)
+                tracking_cam_map[cam_id] = zone
+
+        # Manual overrides from monitors.yaml tracking.cameras
+        for cam_cfg in tracking_config.get("cameras", []):
+            tracking_cam_map[cam_cfg["camera_id"]] = cam_cfg["zone_name"]
+
+        logger.info(
+            "Tracking cameras: %d total (%d from spatial.yaml, %d manual)",
+            len(tracking_cam_map),
+            len([c for c in cameras_config
+                 if cameras_config[c].get("position") and cameras_config[c].get("fov_deg")]),
+            len(tracking_config.get("cameras", [])),
+        )
+
+        for cam_id, zone in tracking_cam_map.items():
             # Create dedicated image source for tracking (don't share with activity monitor)
             source = None
             parts = cam_id.replace("cam_", "").split("_")
@@ -282,6 +301,13 @@ async def main():
                 min_reid_confidence=tracking_config.get("min_reid_confidence", 0.4),
             )
             scheduler.register_monitor(f"tracking_{cam_id}", track_monitor)
+
+        # Tell ActivityMonitors which cameras have tracking (avoid spatial topic conflict)
+        tracking_cam_ids = set(tracking_cam_map.keys())
+        for name, monitor in scheduler.monitors.items():
+            if isinstance(monitor, ActivityMonitor) and monitor.camera_id in tracking_cam_ids:
+                monitor._tracking_camera_ids = tracking_cam_ids
+                logger.info("ActivityMonitor %s: spatial publish delegated to TrackingMonitor", name)
 
         # Auto-calibrate cameras
         if calib_config.get("auto_calibrate", True):

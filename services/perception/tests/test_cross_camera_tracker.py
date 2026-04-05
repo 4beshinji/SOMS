@@ -208,7 +208,11 @@ class TestGlobalTrackMerging:
         assert len(tracker.get_global_tracks()) == 1
 
     def test_no_merge_different_persons(self):
-        """Two tracks with very different embeddings stay separate."""
+        """Two tracks with different embeddings and far apart stay separate.
+
+        At dist=5.66m, spatial_bonus ≈ 0.5/(32+0.1) ≈ 0.016.
+        Combined with low ReID sim, total score stays below threshold 0.8.
+        """
         tracker = _make_tracker(
             min_hits_for_global=1, min_age_s_for_global=0.0,
             merge_reid_threshold=0.8, merge_spatial_gate_m=10.0,
@@ -216,7 +220,10 @@ class TestGlobalTrackMerging:
 
         emb_a = make_embedding(seed=1)
         emb_b = make_embedding(seed=999)
-        self._create_two_global_tracks(tracker, emb_a=emb_a, emb_b=emb_b)
+        self._create_two_global_tracks(
+            tracker, emb_a=emb_a, emb_b=emb_b,
+            pos_a=[1.0, 1.0], pos_b=[5.0, 5.0],
+        )
 
         assert len(tracker.get_global_tracks()) == 2
 

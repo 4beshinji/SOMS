@@ -56,6 +56,7 @@ class CrossCameraTracker:
         merge_check_interval_s: float = 5.0,
         merge_reid_threshold: float = 0.6,
         merge_spatial_gate_m: float = 3.0,
+        merge_spatial_coeff: float = 0.5,
         embedding_alpha: float = 0.15,
     ):
         self._zone_polygons = zone_polygons
@@ -76,6 +77,7 @@ class CrossCameraTracker:
         self._merge_interval = merge_check_interval_s
         self._merge_reid_threshold = merge_reid_threshold
         self._merge_spatial_gate = merge_spatial_gate_m
+        self._merge_spatial_coeff = merge_spatial_coeff
         self._embedding_alpha = embedding_alpha
 
         # Active tracklets: (camera_id, local_track_id) -> Tracklet
@@ -159,14 +161,17 @@ class CrossCameraTracker:
         n_globals = len(active_globals)
         cost_matrix = np.full((n_tracklets, n_globals), 1e6, dtype=np.float64)
 
+        _STALE_THRESHOLD = 5.0  # seconds before a same-camera tracklet is replaceable
+
         for i, tracklet in enumerate(unassigned):
             for j, gtrack in enumerate(active_globals):
-                # Skip if this tracklet's camera already has an active tracklet
-                # in this global track (avoid double-counting from same camera)
+                # Same camera already in this global track?
                 if tracklet.camera_id in gtrack.tracklets:
                     existing = gtrack.tracklets[tracklet.camera_id]
                     if existing.local_track_id != tracklet.local_track_id:
-                        continue
+                        # Allow replacement only if the existing tracklet is stale
+                        if now - existing.last_seen < _STALE_THRESHOLD:
+                            continue
 
                 cost = self._compute_cost(tracklet, gtrack, now)
                 if cost is not None:
@@ -331,48 +336,78 @@ class CrossCameraTracker:
         return hit_count >= self._min_hits and age >= self._min_age
 
     def _merge_global_tracks(self, now: float):
-        """Check if any two active global tracks are the same person and merge."""
+        """Check if any two active global tracks are the same person and merge.
+
+        Uses a unified merge score that couples spatial proximity with ReID:
+            score = reid_sim + coeff / (dist² + ε)
+
+        Closer tracks need less ReID similarity; distant tracks need more.
+        """
         if now - self._last_merge_check < self._merge_interval:
             return
         self._last_merge_check = now
 
-        active = [g for g in self._global_tracks.values()
-                  if g.avg_embedding is not None]
+        _EPS = 0.1  # prevents div-by-zero, caps bonus at dist→0
+
+        active = list(self._global_tracks.values())
         if len(active) < 2:
             return
 
         merged_any = True
         while merged_any:
             merged_any = False
-            best_sim = 0.0
+            best_score = 0.0
             best_pair = None
+
+            _STALE = 5.0  # seconds
 
             for i in range(len(active)):
                 for j in range(i + 1, len(active)):
                     ga, gb = active[i], active[j]
                     # Same person can't be in two places on one camera
-                    if set(ga.tracklets.keys()) & set(gb.tracklets.keys()):
-                        continue
-                    # Spatial gate
-                    if (ga.floor_position != [0.0, 0.0]
-                            and gb.floor_position != [0.0, 0.0]):
+                    # — unless one side's tracklet is stale (BoT-SORT ID flip)
+                    shared_cams = set(ga.tracklets.keys()) & set(gb.tracklets.keys())
+                    if shared_cams:
+                        all_stale = all(
+                            min(now - ga.tracklets[c].last_seen,
+                                now - gb.tracklets[c].last_seen) >= _STALE
+                            for c in shared_cams
+                        )
+                        if not all_stale:
+                            continue
+
+                    # Spatial distance
+                    has_pos = (
+                        ga.floor_position != [0.0, 0.0]
+                        and gb.floor_position != [0.0, 0.0]
+                    )
+                    if has_pos:
                         dist = floor_distance(ga.floor_position, gb.floor_position)
                         if dist > self._merge_spatial_gate:
                             continue
+                        spatial_bonus = self._merge_spatial_coeff / (dist * dist + _EPS)
+                    else:
+                        spatial_bonus = 0.0
+
                     # ReID similarity
-                    sim = float(np.dot(ga.avg_embedding, gb.avg_embedding))
-                    if sim > best_sim:
-                        best_sim = sim
+                    if ga.avg_embedding is not None and gb.avg_embedding is not None:
+                        reid_sim = float(np.dot(ga.avg_embedding, gb.avg_embedding))
+                        reid_sim = max(0.0, reid_sim)
+                    else:
+                        reid_sim = 0.0
+
+                    score = reid_sim + spatial_bonus
+                    if score > best_score:
+                        best_score = score
                         best_pair = (ga, gb)
 
-            if best_pair and best_sim > self._merge_reid_threshold:
+            if best_pair and best_score > self._merge_reid_threshold:
                 keep, absorb = best_pair
                 # Keep the older (lower ID) track
                 if keep.global_id > absorb.global_id:
                     keep, absorb = absorb, keep
                 self._do_merge(keep, absorb)
-                active = [g for g in self._global_tracks.values()
-                          if g.avg_embedding is not None]
+                active = list(self._global_tracks.values())
                 merged_any = True
 
     def _do_merge(self, keep: GlobalTrack, absorb: GlobalTrack):

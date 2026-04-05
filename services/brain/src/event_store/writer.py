@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 class EventWriter:
     FLUSH_INTERVAL = 5  # seconds
-    SPATIAL_DEDUP_INTERVAL = 10  # seconds per zone
+    SPATIAL_DEDUP_INTERVAL = 1  # seconds per zone
 
     def __init__(self, engine: AsyncEngine):
         self._engine = engine

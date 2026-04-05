@@ -165,22 +165,25 @@ tracking:
     aruco_dict: DICT_4X4_50
     min_markers: 4
   association:
-    reid_weight: 0.7
-    spatial_weight: 0.1
-    temporal_weight: 0.2
-    match_threshold: 0.6
-    spatial_gate_m: 3.0
-    temporal_gate_s: 30.0
-    tracklet_timeout_s: 60.0
+    reid_weight: 0.2
+    spatial_weight: 0.5
+    temporal_weight: 0.3
+    match_threshold: 0.2
+    spatial_gate_m: 6.0
+    temporal_gate_s: 60.0
+    tracklet_timeout_s: 120.0
     global_track_timeout_s: 300.0
-    min_hits_for_global: 3
-    min_age_s_for_global: 2.0
-    reid_match_threshold: 0.55
-    merge_check_interval_s: 5.0
-    merge_reid_threshold: 0.6
-    merge_spatial_gate_m: 3.0
+    min_hits_for_global: 1
+    min_age_s_for_global: 0.0
+    reid_match_threshold: 0.3
+    merge_check_interval_s: 1.0
+    merge_threshold: 0.2
+    merge_spatial_gate_m: 6.0
+    merge_spatial_coeff: 1.0
   cameras:
     - camera_id: cam_192_168_128_162
       zone_name: cam_192_168_128_162
     - camera_id: cam_192_168_128_166
       zone_name: cam_192_168_128_166
+    - camera_id: cam_192_168_128_177
+      zone_name: desk_area_a
