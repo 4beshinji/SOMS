@@ -19,6 +19,12 @@ export interface AvatarModel {
   /** Get a named expression/morph weight */
   getExpression(name: string): number
 
+  /** Check if the model supports a named expression */
+  hasExpression(name: string): boolean
+
+  /** Get the underlying morph key for collision detection (null if unsupported) */
+  getExpressionKey(name: string): string | null
+
   /** Get bone by VRM humanoid bone name (e.g. 'spine', 'head', 'leftUpperArm') */
   getBone(name: string): THREE.Object3D | null
 

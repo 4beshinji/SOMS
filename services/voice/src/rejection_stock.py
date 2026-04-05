@@ -13,7 +13,7 @@ from pathlib import Path
 from loguru import logger
 
 from speech_generator import SpeechGenerator
-from voicevox_client import VoicevoxClient
+from tts_provider import TTSProvider
 
 MAX_STOCK = 100
 STOCK_DIR = Path("/app/audio/rejections")
@@ -27,9 +27,9 @@ IDLE_INTERVAL = 30
 class RejectionStock:
     """Manages pre-generated rejection voice audio stock."""
 
-    def __init__(self, speech_gen: SpeechGenerator, voice_client: VoicevoxClient):
+    def __init__(self, speech_gen: SpeechGenerator, voice_provider: TTSProvider):
         self.speech_gen = speech_gen
-        self.voice_client = voice_client
+        self.voice_provider = voice_provider
         self._entries: list[dict] = []
         self._lock = asyncio.Lock()
         # Tracks number of active voice service requests (non-rejection)
@@ -132,16 +132,14 @@ class RejectionStock:
             # 1. Generate rejection text via LLM
             text = await self.speech_gen.generate_rejection_text()
 
-            # 2. Synthesize audio via VOICEVOX (with speaker variation)
-            from voicevox_client import VoicevoxClient
-            speaker = VoicevoxClient.pick_speaker("rejection")
-            audio_data = await self.voice_client.synthesize(text, speaker_id=speaker)
+            # 2. Synthesize audio (voice="rejection" selects appropriate tone)
+            result = await self.voice_provider.synthesize(text, voice="rejection")
 
             # 3. Save audio file
             entry_id = str(uuid.uuid4())[:8]
             audio_filename = f"rejection_{entry_id}.mp3"
             audio_path = STOCK_DIR / audio_filename
-            await self.voice_client.save_audio(audio_data, audio_path)
+            await self.voice_provider.save_audio(result.audio_data, audio_path)
 
             # 4. Add to manifest
             entry = {

@@ -1,13 +1,13 @@
 import type {
   Task, TaskReport, SystemStats, SupplyStats, ZoneMultiplierInfo,
   ShoppingItem, ShoppingItemCreate, ShoppingStats, ShoppingShareResponse,
-  PurchaseHistory, ChatResponse,
+  PurchaseHistory, ChatResponse, ChatChunk,
 } from '@soms/types';
 
 export type {
   Task, TaskReport, SystemStats, SupplyStats, ZoneMultiplierInfo,
   ShoppingItem, ShoppingItemCreate, ShoppingStats, ShoppingShareResponse,
-  PurchaseHistory, ChatResponse,
+  PurchaseHistory, ChatResponse, ChatChunk,
 };
 
 export const fetchTasks = async (): Promise<Task[]> => {
@@ -136,6 +136,62 @@ export const sendChat = async (message: string): Promise<ChatResponse> => {
   if (!res.ok) throw new Error('Chat request failed');
   return res.json();
 };
+
+/** SSE streaming chat — calls onChunk for each sentence as it arrives. */
+export async function sendChatStream(
+  message: string,
+  onChunk: (chunk: ChatChunk & { index: number }) => void,
+  onDone: () => void,
+  onError?: (err: string) => void,
+): Promise<void> {
+  const res = await fetch('/api/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  });
+  if (!res.ok || !res.body) {
+    onError?.('Chat stream request failed');
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let eventType = '';
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // Parse SSE lines
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        eventType = line.slice(7).trim();
+      } else if (line.startsWith('data: ')) {
+        const raw = line.slice(6);
+        if (eventType === 'done') {
+          onDone();
+          return;
+        }
+        if (eventType === 'error') {
+          try { onError?.(JSON.parse(raw).message); } catch { onError?.(raw); }
+          return;
+        }
+        if (eventType === 'chunk') {
+          try {
+            onChunk(JSON.parse(raw));
+          } catch { /* skip malformed */ }
+        }
+        eventType = '';
+      }
+    }
+  }
+  onDone();
+}
 
 export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
   const form = new FormData();

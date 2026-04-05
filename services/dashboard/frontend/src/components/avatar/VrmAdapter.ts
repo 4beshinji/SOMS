@@ -27,6 +27,15 @@ export class VrmAdapter implements AvatarModel {
     return this.vrm.expressionManager?.getValue(name) ?? 0
   }
 
+  hasExpression(name: string): boolean {
+    return this.vrm.expressionManager?.getExpression(name) !== undefined
+  }
+
+  getExpressionKey(name: string): string | null {
+    // VRM expressions are 1:1 — key is the name itself
+    return this.vrm.expressionManager?.getExpression(name) ? name : null
+  }
+
   getBone(name: string): THREE.Object3D | null {
     return this.vrm.humanoid?.getNormalizedBoneNode(name as VRMHumanBoneName) ?? null
   }

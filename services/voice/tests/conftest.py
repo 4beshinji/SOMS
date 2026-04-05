@@ -22,7 +22,7 @@ os.environ.setdefault("LLM_API_URL", "http://test-llm:8000/v1")
 os.environ.setdefault("LLM_MODEL", "test-model")
 
 # ── Mock missing optional dependencies ───────────────────────────
-# pydub is used by voicevox_client.py but is not installed in the test venv.
+# pydub is used by tts_provider.py but is not installed in the test venv.
 # We inject a stub module so imports succeed without the real library.
 if "pydub" not in sys.modules:
     _pydub = types.ModuleType("pydub")
@@ -90,12 +90,17 @@ def mock_speech_gen():
 
 @pytest.fixture
 def mock_voice_client():
-    """Create a mock VoicevoxClient with common async methods."""
+    """Create a mock TTSProvider with common async methods."""
+    from tts_provider import AudioResult
+
     client = MagicMock()
-    # Return 48000 bytes = 1 second of audio at 24kHz 16-bit
-    client.synthesize = AsyncMock(return_value=b"\x00" * 48000)
+    # Return AudioResult with 48000 bytes = 1 second of audio at 24kHz 16-bit
+    client.synthesize = AsyncMock(
+        return_value=AudioResult(audio_data=b"\x00" * 48000)
+    )
     client.save_audio = AsyncMock()
-    client.base_url = "http://test-voicevox:50021"
+    client.name = "voicevox"
+    client.get_speaker_name = AsyncMock(return_value="ナースロボ＿タイプＴ")
     return client
 
 

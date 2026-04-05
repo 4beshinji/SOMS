@@ -166,6 +166,8 @@ function Monitor() {
               onVoiceModeChange={voice.setMode}
               isRecording={voice.isRecording}
               isTranscribing={voice.isTranscribing}
+              audioLevel={voice.audioLevel}
+              vadActive={voice.vadActive}
               onPttDown={voice.onPttDown}
               onPttUp={voice.onPttUp}
               dark={theme.dark}

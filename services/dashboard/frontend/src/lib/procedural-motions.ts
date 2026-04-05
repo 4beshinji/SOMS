@@ -86,6 +86,57 @@ const MOTION_DEFS: Record<string, MotionDefinition> = {
       eulers: [[0,0,0], [-0.06, 0, 0.13], [-0.06, 0, 0.13], [0,0,0]],
     },
   ],
+
+  // Surprise: head pulls back and up slightly
+  surprise_back: [
+    {
+      vrmBone: 'head',
+      times:  [0,       0.15,            0.5,             1.0,    1.3],
+      eulers: [[0,0,0], [-0.18, 0, 0], [-0.12, 0, 0], [0,0,0], [0,0,0]],
+    },
+    {
+      vrmBone: 'chest',
+      times:  [0,       0.15,            0.5,             1.0,    1.3],
+      eulers: [[0,0,0], [-0.08, 0, 0], [-0.05, 0, 0], [0,0,0], [0,0,0]],
+    },
+  ],
+
+  // Emphatic nod: deeper double nod for strong agreement
+  emphatic_nod: [
+    {
+      vrmBone: 'head',
+      times:  [0,       0.2,        0.45,    0.65,       0.9,     1.2,    1.8],
+      eulers: [[0,0,0], [-0.35,0,0], [0,0,0], [-0.32,0,0], [0,0,0], [0,0,0], [0,0,0]],
+    },
+    {
+      vrmBone: 'chest',
+      times:  [0,       0.2,         0.45,    0.65,        0.9,     1.8],
+      eulers: [[0,0,0], [0.06, 0, 0], [0,0,0], [0.05, 0, 0], [0,0,0], [0,0,0]],
+    },
+  ],
+
+  // Slow shake: gentle head shake (disagreement/sympathy)
+  slow_shake: [
+    {
+      vrmBone: 'head',
+      times:  [0,       0.4,            0.8,     1.2,             1.6,    2.0],
+      eulers: [[0,0,0], [0, 0.18, 0], [0,0,0], [0, -0.18, 0], [0,0,0], [0,0,0]],
+    },
+  ],
+
+  // Perk up: head lifts and tilts slightly (alert/interest)
+  perk_up: [
+    {
+      vrmBone: 'head',
+      times:  [0,       0.2,                 0.8,                 1.4],
+      eulers: [[0,0,0], [-0.15, 0, -0.06], [-0.15, 0, -0.06], [0,0,0]],
+    },
+    {
+      vrmBone: 'chest',
+      times:  [0,       0.2,             0.8,             1.4],
+      eulers: [[0,0,0], [-0.04, 0, 0], [-0.04, 0, 0], [0,0,0]],
+    },
+  ],
 };
 
 export function createProceduralClip(

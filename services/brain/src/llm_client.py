@@ -4,7 +4,7 @@ import os
 import json
 import re
 import aiohttp
-from typing import List, Dict, Any, Optional
+from typing import AsyncIterator, List, Dict, Any, Optional
 from dataclasses import dataclass, field
 from loguru import logger
 
@@ -26,7 +26,7 @@ class LLMClient:
     def __init__(self, api_url: str = "http://localhost:8000/v1", session: aiohttp.ClientSession = None):
         self.api_url = api_url
         self.api_key = os.getenv("OPENAI_API_KEY", "EMPTY")
-        self.model = os.getenv("LLM_MODEL", "qwen2.5:14b")
+        self.model = os.getenv("LLM_MODEL", "qwen3.5:9b")
         self._session = session
 
     async def chat(
@@ -72,6 +72,78 @@ class LLMClient:
         except Exception as e:
             logger.error(f"LLM Connection Error: {e}")
             return LLMResponse(error=str(e))
+
+    async def chat_stream(
+        self,
+        messages: List[Dict[str, Any]],
+    ) -> AsyncIterator[str]:
+        """Stream tokens from LLM. Yields content deltas as they arrive.
+
+        Only supports text generation (no tool calls in streaming mode).
+        Strips <think>...</think> blocks on the fly.
+        """
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.3,
+            "max_tokens": 512,
+            "stream": True,
+        }
+        try:
+            async with self._session.post(
+                f"{self.api_url}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=120),
+            ) as resp:
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    logger.error(f"LLM stream error {resp.status}: {error_text}")
+                    return
+
+                in_think = False
+                buf = ""
+                async for raw_chunk in resp.content.iter_any():
+                    buf += raw_chunk.decode("utf-8", errors="replace")
+                    while "\n" in buf:
+                        line, buf = buf.split("\n", 1)
+                        line = line.strip()
+                        if not line.startswith("data: "):
+                            continue
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            return
+                        try:
+                            chunk = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+                        delta = (
+                            chunk.get("choices", [{}])[0]
+                            .get("delta", {})
+                            .get("content", "")
+                        )
+                        if not delta:
+                            continue
+
+                        # Strip <think>...</think> on the fly
+                        if "<think>" in delta:
+                            in_think = True
+                        if in_think:
+                            if "</think>" in delta:
+                                after = delta.split("</think>", 1)[1]
+                                in_think = False
+                                if after:
+                                    yield after
+                            continue
+                        yield delta
+        except asyncio.TimeoutError:
+            logger.error("LLM stream timed out (120s)")
+        except Exception as e:
+            logger.error(f"LLM stream error: {e}")
 
     def _parse_response(self, raw: Dict[str, Any]) -> LLMResponse:
         """Parse OpenAI-compatible response into LLMResponse."""

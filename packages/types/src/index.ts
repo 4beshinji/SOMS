@@ -403,11 +403,19 @@ export interface UpdateDevicePositionRequest {
   detection_range_m?: number | null;
 }
 
-// ── Chat Types ──────────────────────────────────────────────────────
+// ── Chat Types ───────────────────────────��──────────────────────────
+
+export interface ChatChunk {
+  text: string;
+  audio_url: string | null;
+  tone: string | null;
+  motion_id?: string | null;
+}
 
 export interface ChatResponse {
   content: string;
   audio_url: string | null;
   tone: string | null;
   motion_id?: string | null;
+  chunks?: ChatChunk[];
 }

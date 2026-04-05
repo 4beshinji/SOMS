@@ -19,23 +19,14 @@ def _verify_service_token(token: str | None) -> None:
         raise HTTPException(status_code=403, detail="Invalid service token")
 
 from models import TaskAnnounceRequest, SynthesizeRequest, VoiceResponse, DualVoiceResponse
-from voicevox_client import VoicevoxClient
+from provider_factory import create_provider
 from speech_generator import SpeechGenerator
 from rejection_stock import RejectionStock, idle_generation_loop
 from acceptance_stock import AcceptanceStock, idle_acceptance_generation_loop
 from currency_unit_stock import CurrencyUnitStock, idle_currency_generation_loop
 
-# Select TTS backend via TTS_BACKEND env var ("voicepeak" or "voicevox")
-_TTS_BACKEND = os.getenv("TTS_BACKEND", "voicepeak").lower()
-
-if _TTS_BACKEND == "voicepeak":
-    from voicepeak_client import VoicepeakClient
-    _vp_bridge = os.getenv("VOICEPEAK_BRIDGE_URL", "http://host.docker.internal:18100")
-    _vp_narrator = os.getenv("VOICEPEAK_NARRATOR", "Otomachi Una")
-    voice_client = VoicepeakClient(bridge_url=_vp_bridge, narrator=_vp_narrator)
-else:
-    _voicevox_url = os.getenv("VOICEVOX_URL", "http://voicevox:50021")
-    voice_client = VoicevoxClient(base_url=_voicevox_url)
+# Create TTS provider via factory
+voice_provider = create_provider()
 
 speech_gen = SpeechGenerator()
 
@@ -44,10 +35,10 @@ currency_unit_stock = CurrencyUnitStock(speech_gen)
 speech_gen.currency_stock = currency_unit_stock
 
 # Rejection voice stock
-rejection_stock = RejectionStock(speech_gen, voice_client)
+rejection_stock = RejectionStock(speech_gen, voice_provider)
 
 # Acceptance voice stock
-acceptance_stock = AcceptanceStock(speech_gen, voice_client)
+acceptance_stock = AcceptanceStock(speech_gen, voice_provider)
 
 # Audio storage directory
 AUDIO_DIR = Path("/app/audio")
@@ -119,21 +110,11 @@ async def health():
     checks = {}
 
     # TTS backend check
-    if _TTS_BACKEND == "voicepeak":
-        try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as s:
-                async with s.get(f"{voice_client.bridge_url}/health") as resp:
-                    data = await resp.json()
-                    checks["voicepeak"] = "ok" if data.get("status") == "ok" else f"bridge={data}"
-        except Exception as e:
-            checks["voicepeak"] = f"error: {e}"
-    else:
-        try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as s:
-                async with s.get(f"{voice_client.base_url}/speakers") as resp:
-                    checks["voicevox"] = "ok" if resp.status == 200 else f"status={resp.status}"
-        except Exception as e:
-            checks["voicevox"] = f"error: {e}"
+    try:
+        available = await voice_provider.is_available()
+        checks[voice_provider.name] = "ok" if available else "unreachable"
+    except Exception as e:
+        checks[voice_provider.name] = f"error: {e}"
 
     # LLM check
     try:
@@ -163,17 +144,14 @@ async def synthesize_text(request: SynthesizeRequest):
     try:
         logger.info(f"Synthesizing text: {request.text[:50]}...")
 
-        # 1. Synthesize using VOICEVOX
-        audio_data = await voice_client.synthesize(request.text)
+        result = await voice_provider.synthesize(request.text)
 
-        # 2. Save audio file
         audio_id = str(uuid.uuid4())
         audio_filename = f"speak_{audio_id}.mp3"
         audio_path = AUDIO_DIR / audio_filename
-        await voice_client.save_audio(audio_data, audio_path)
+        await voice_provider.save_audio(result.audio_data, audio_path)
 
-        # 3. Calculate duration
-        duration_seconds = estimate_audio_duration(audio_data)
+        duration_seconds = result.duration or estimate_audio_duration(result.audio_data)
 
         return VoiceResponse(
             audio_url=f"/audio/{audio_filename}",
@@ -193,10 +171,10 @@ async def synthesize_text(request: SynthesizeRequest):
 async def announce_task(request: TaskAnnounceRequest):
     """
     Generate voice announcement for a task.
-    
+
     Flow:
     1. Generate natural speech text using LLM
-    2. Synthesize using VOICEVOX (ナースロボ＿タイプＴ)
+    2. Synthesize using TTS provider
     3. Save audio file
     4. Return audio URL and metadata
     """
@@ -206,20 +184,15 @@ async def announce_task(request: TaskAnnounceRequest):
     try:
         logger.info(f"Announcing task: {request.task.title}")
 
-        # 1. Generate natural speech text using LLM
         speech_text = await speech_gen.generate_speech_text(request.task)
+        result = await voice_provider.synthesize(speech_text)
 
-        # 2. Synthesize using VOICEVOX
-        audio_data = await voice_client.synthesize(speech_text)
-
-        # 3. Save audio file
         audio_id = str(uuid.uuid4())
         audio_filename = f"task_{audio_id}.mp3"
         audio_path = AUDIO_DIR / audio_filename
-        await voice_client.save_audio(audio_data, audio_path)
+        await voice_provider.save_audio(result.audio_data, audio_path)
 
-        # 4. Calculate duration
-        duration_seconds = estimate_audio_duration(audio_data)
+        duration_seconds = result.duration or estimate_audio_duration(result.audio_data)
 
         return VoiceResponse(
             audio_url=f"/audio/{audio_filename}",
@@ -249,20 +222,15 @@ async def generate_feedback(feedback_type: str):
     try:
         logger.info(f"Generating feedback: {feedback_type}")
 
-        # 1. Generate feedback text using LLM
         feedback_text = await speech_gen.generate_feedback(feedback_type)
+        result = await voice_provider.synthesize(feedback_text)
 
-        # 2. Synthesize
-        audio_data = await voice_client.synthesize(feedback_text)
-
-        # 3. Save
         audio_id = str(uuid.uuid4())
         audio_filename = f"feedback_{audio_id}.mp3"
         audio_path = AUDIO_DIR / audio_filename
-        await voice_client.save_audio(audio_data, audio_path)
+        await voice_provider.save_audio(result.audio_data, audio_path)
 
-        # 4. Calculate duration
-        duration_seconds = estimate_audio_duration(audio_data)
+        duration_seconds = result.duration or estimate_audio_duration(result.audio_data)
 
         return VoiceResponse(
             audio_url=f"/audio/{audio_filename}",
@@ -283,13 +251,6 @@ async def announce_task_with_completion(request: TaskAnnounceRequest):
     """
     Generate both announcement and completion voices for a task.
     The completion voice is contextually linked to the task content.
-
-    Flow:
-    1. Generate announcement text using LLM
-    2. Generate contextual completion text using LLM
-    3. Synthesize both using VOICEVOX
-    4. Save both audio files
-    5. Return both audio URLs and metadata
     """
     rejection_stock.request_started()
     acceptance_stock.request_started()
@@ -297,34 +258,32 @@ async def announce_task_with_completion(request: TaskAnnounceRequest):
     try:
         logger.info(f"Generating dual voice for task: {request.task.title}")
 
-        # 1. Generate announcement text using LLM
         announcement_text = await speech_gen.generate_speech_text(request.task)
-
-        # 2. Generate contextual completion text using LLM
         completion_text = await speech_gen.generate_completion_text(request.task)
 
-        # 3. Synthesize announcement
-        announcement_audio = await voice_client.synthesize(announcement_text)
+        announcement_result = await voice_provider.synthesize(announcement_text)
+        completion_result = await voice_provider.synthesize(
+            completion_text, voice="completion"
+        )
 
-        # 4. Synthesize completion (with speaker variation)
-        completion_speaker = VoicevoxClient.pick_speaker("completion")
-        completion_audio = await voice_client.synthesize(completion_text, speaker_id=completion_speaker)
-
-        # 5. Save announcement audio
         announcement_id = str(uuid.uuid4())
         announcement_filename = f"task_announce_{announcement_id}.mp3"
         announcement_path = AUDIO_DIR / announcement_filename
-        await voice_client.save_audio(announcement_audio, announcement_path)
+        await voice_provider.save_audio(announcement_result.audio_data, announcement_path)
 
-        # 6. Save completion audio
         completion_id = str(uuid.uuid4())
         completion_filename = f"task_complete_{completion_id}.mp3"
         completion_path = AUDIO_DIR / completion_filename
-        await voice_client.save_audio(completion_audio, completion_path)
+        await voice_provider.save_audio(completion_result.audio_data, completion_path)
 
-        # 7. Calculate durations
-        announcement_duration = estimate_audio_duration(announcement_audio)
-        completion_duration = estimate_audio_duration(completion_audio)
+        announcement_duration = (
+            announcement_result.duration
+            or estimate_audio_duration(announcement_result.audio_data)
+        )
+        completion_duration = (
+            completion_result.duration
+            or estimate_audio_duration(completion_result.audio_data)
+        )
 
         logger.info(f"Announcement: {announcement_text}")
         logger.info(f"Completion: {completion_text}")
@@ -349,9 +308,8 @@ async def announce_task_with_completion(request: TaskAnnounceRequest):
 @app.get("/api/voice/credit")
 async def get_voice_credit():
     """Return voice character credit info for license compliance."""
-    name = await voice_client.get_speaker_name()
-    engine = "VOICEPEAK" if _TTS_BACKEND == "voicepeak" else "VOICEVOX"
-    return {"engine": engine, "character": name}
+    name = await voice_provider.get_speaker_name()
+    return {"engine": voice_provider.name.upper(), "character": name}
 
 
 @app.get("/api/voice/rejection/random")
@@ -372,12 +330,11 @@ async def get_random_rejection():
     currency_unit_stock.request_started()
     try:
         text = await speech_gen.generate_rejection_text()
-        rejection_speaker = VoicevoxClient.pick_speaker("rejection")
-        audio_data = await voice_client.synthesize(text, speaker_id=rejection_speaker)
+        result = await voice_provider.synthesize(text, voice="rejection")
         audio_id = str(uuid.uuid4())[:8]
         audio_filename = f"rejection_ondemand_{audio_id}.mp3"
         audio_path = AUDIO_DIR / audio_filename
-        await voice_client.save_audio(audio_data, audio_path)
+        await voice_provider.save_audio(result.audio_data, audio_path)
         return {"audio_url": f"/audio/{audio_filename}", "text": text}
     except Exception as e:
         logger.error(f"On-demand rejection generation failed: {e}")
@@ -425,12 +382,11 @@ async def get_random_acceptance():
     currency_unit_stock.request_started()
     try:
         text = await speech_gen.generate_acceptance_text()
-        acceptance_speaker = VoicevoxClient.pick_speaker("acceptance")
-        audio_data = await voice_client.synthesize(text, speaker_id=acceptance_speaker)
+        result = await voice_provider.synthesize(text, voice="acceptance")
         audio_id = str(uuid.uuid4())[:8]
         audio_filename = f"acceptance_ondemand_{audio_id}.mp3"
         audio_path = AUDIO_DIR / audio_filename
-        await voice_client.save_audio(audio_data, audio_path)
+        await voice_provider.save_audio(result.audio_data, audio_path)
         return {"audio_url": f"/audio/{audio_filename}", "text": text}
     except Exception as e:
         logger.error(f"On-demand acceptance generation failed: {e}")

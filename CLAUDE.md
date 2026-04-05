@@ -426,7 +426,7 @@ Double-entry credit ledger with PostgreSQL (asyncpg). Key models: `Wallet` (bala
 - **Backend**: Python 3.11, FastAPI, SQLAlchemy (async), paho-mqtt >=2.0, Pydantic 2.x, loguru
 - **Frontend**: React 19, TypeScript, Vite 7, Tailwind CSS 4, TanStack Query 5, Framer Motion, Lucide icons; pnpm as package manager
 - **ML/Vision**: Python 3.10 (ROCm base image), Ultralytics YOLOv11 (yolo11s.pt + yolo11s-pose.pt), OpenCV, PyTorch (ROCm)
-- **LLM**: Ollama with ROCm for AMD GPUs (Qwen2.5 target model)
+- **LLM**: Ollama with ROCm for AMD GPUs (Qwen3.5 9B target model)
 - **TTS**: VOICEVOX (Japanese speech synthesis)
 - **Edge**: MicroPython on ESP32 (BME680, MH-Z19 CO2, DHT22), PlatformIO C++ for camera nodes
 - **Infra**: Docker Compose, Mosquitto MQTT, PostgreSQL 16 (asyncpg), nginx
@@ -464,7 +464,7 @@ When working as one of multiple concurrent Claude Code workers, read these docum
 Key variables in `.env` (see `env.example`):
 
 - `LLM_API_URL` — `http://mock-llm:8000/v1` (dev) or `http://ollama:11434/v1` (Docker内部) or `http://host.docker.internal:11434/v1` (ホストOllama)
-- `LLM_MODEL` — Model name for Ollama (e.g. `qwen2.5:14b`)
+- `LLM_MODEL` — Model name for Ollama (e.g. `qwen3.5:9b`)
 - `MQTT_BROKER` / `MQTT_PORT` — Broker address (default: `mosquitto:1883`)
 - `MQTT_USER` / `MQTT_PASS` — MQTT credentials (default: `soms` / `soms_dev_mqtt`)
 - `DATABASE_URL` — `postgresql+asyncpg://user:pass@postgres:5432/soms` (Docker)

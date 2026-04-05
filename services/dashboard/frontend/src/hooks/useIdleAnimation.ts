@@ -37,15 +37,17 @@ export function useIdleAnimation(model: AvatarModel | null, isPlayingMotion = fa
         headBaseY.current = head.rotation.y;
       }
 
-      // Relax arms from A-pose to natural resting position
-      const lUpperArm = model.getBone('leftUpperArm');
-      const rUpperArm = model.getBone('rightUpperArm');
-      const lLowerArm = model.getBone('leftLowerArm');
-      const rLowerArm = model.getBone('rightLowerArm');
-      if (lUpperArm) lUpperArm.rotation.z -= 0.70;   // ~40° down
-      if (rUpperArm) rUpperArm.rotation.z += 0.70;
-      if (lLowerArm) lLowerArm.rotation.z -= 0.12;
-      if (rLowerArm) rLowerArm.rotation.z += 0.12;
+      // Relax arms from A-pose to natural resting position (MMD only)
+      if (model.format === 'mmd') {
+        const lUpperArm = model.getBone('leftUpperArm');
+        const rUpperArm = model.getBone('rightUpperArm');
+        const lLowerArm = model.getBone('leftLowerArm');
+        const rLowerArm = model.getBone('rightLowerArm');
+        if (lUpperArm) lUpperArm.rotation.z -= 0.70;   // ~40° down
+        if (rUpperArm) rUpperArm.rotation.z += 0.70;
+        if (lLowerArm) lLowerArm.rotation.z -= 0.12;
+        if (rLowerArm) rLowerArm.rotation.z += 0.12;
+      }
 
       initialized.current = true;
     }

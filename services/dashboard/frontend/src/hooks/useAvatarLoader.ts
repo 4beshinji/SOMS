@@ -83,7 +83,12 @@ async function loadMmd(url: string): Promise<AvatarModel> {
       url,
       (mesh: any) => {
         console.log('[MMDLoader] Loaded mesh:', mesh?.geometry?.attributes?.position?.count, 'vertices');
-        resolve(new MmdAdapter(mesh));
+        const adapter = new MmdAdapter(mesh);
+        // Fire-and-forget solver init (renders immediately, grant+physics snap on when ready)
+        adapter.initSolvers().catch((e) =>
+          console.warn('[AvatarLoader] Solver init failed:', e),
+        );
+        resolve(adapter);
       },
       undefined,
       (err: any) => reject(new Error(`MMD load failed: ${err}`)),

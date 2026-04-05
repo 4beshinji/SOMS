@@ -147,10 +147,7 @@ class TestRejectionStockGenerateOne:
              patch("rejection_stock.MANIFEST_PATH", manifest):
             from rejection_stock import RejectionStock
             stock = RejectionStock(mock_speech_gen, mock_voice_client)
-            # Patch VoicevoxClient.pick_speaker inside the module
-            with patch("rejection_stock.VoicevoxClient") as MockVC:
-                MockVC.pick_speaker.return_value = 47
-                result = await stock.generate_one()
+            result = await stock.generate_one()
         assert result is True
         assert stock.count == 1
         assert stock._entries[0]["text"] == "AI overlord disapproves."
@@ -180,9 +177,7 @@ class TestRejectionStockGenerateOne:
                 {"id": str(i), "text": f"t{i}", "audio_file": f"f{i}.mp3"}
                 for i in range(99)
             ]
-            with patch("rejection_stock.VoicevoxClient") as MockVC:
-                MockVC.pick_speaker.return_value = 47
-                result = await stock.generate_one()
+            result = await stock.generate_one()
         assert result is True
         assert stock.count == 100
 

@@ -1,7 +1,7 @@
 """Unit tests for main.py — FastAPI endpoint handlers.
 
 Tests patch the module-level globals in main.py so that no real
-VOICEVOX / LLM / filesystem calls are made.
+TTS / LLM / filesystem calls are made.
 
 conftest.py handles redirecting all filesystem paths to a temp directory
 before main.py is first imported, so module-level init is safe.
@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import main as main_mod
+from tts_provider import AudioResult
 
 
 # ── estimate_audio_duration ──────────────────────────────────────
@@ -42,18 +43,21 @@ def client(tmp_path):
     audio_tmp.mkdir()
 
     # Store originals
-    orig_voice = main_mod.voice_client
+    orig_voice = main_mod.voice_provider
     orig_speech = main_mod.speech_gen
     orig_rejection = main_mod.rejection_stock
     orig_acceptance = main_mod.acceptance_stock
     orig_currency = main_mod.currency_unit_stock
     orig_audio_dir = main_mod.AUDIO_DIR
 
-    # Create mocks
+    # Create mocks — synthesize returns AudioResult
     mock_voice = MagicMock()
-    mock_voice.synthesize = AsyncMock(return_value=b"\x00" * 48000)
+    mock_voice.synthesize = AsyncMock(
+        return_value=AudioResult(audio_data=b"\x00" * 48000)
+    )
     mock_voice.save_audio = AsyncMock()
-    mock_voice.base_url = "http://test-voicevox:50021"
+    mock_voice.name = "voicevox"
+    mock_voice.get_speaker_name = AsyncMock(return_value="ナースロボ＿タイプＴ")
 
     mock_speech = MagicMock()
     mock_speech.generate_speech_text = AsyncMock(return_value="Generated announcement")
@@ -89,7 +93,7 @@ def client(tmp_path):
     mock_currency.count = 3
     mock_currency.needs_refill = True
 
-    main_mod.voice_client = mock_voice
+    main_mod.voice_provider = mock_voice
     main_mod.speech_gen = mock_speech
     main_mod.rejection_stock = mock_rejection
     main_mod.acceptance_stock = mock_acceptance
@@ -107,7 +111,7 @@ def client(tmp_path):
     yield tc, mock_voice, mock_speech, mock_rejection, mock_acceptance, mock_currency, audio_tmp
 
     # Restore
-    main_mod.voice_client = orig_voice
+    main_mod.voice_provider = orig_voice
     main_mod.speech_gen = orig_speech
     main_mod.rejection_stock = orig_rejection
     main_mod.acceptance_stock = orig_acceptance
@@ -219,9 +223,7 @@ class TestAnnounceWithCompletionEndpoint:
                 "bounty_gold": 50,
             }
         }
-        with patch("main.VoicevoxClient") as MockVC:
-            MockVC.pick_speaker.return_value = 48
-            resp = tc.post("/api/voice/announce_with_completion", json=payload)
+        resp = tc.post("/api/voice/announce_with_completion", json=payload)
         assert resp.status_code == 200
         data = resp.json()
         assert "announcement_audio_url" in data
@@ -248,9 +250,7 @@ class TestRejectionEndpoints:
     def test_rejection_random_fallback_on_demand(self, client):
         tc, mock_voice, mock_speech, mock_rejection, mock_acceptance, mock_currency, tmp = client
         mock_rejection.get_random = AsyncMock(return_value=None)
-        with patch("main.VoicevoxClient") as MockVC:
-            MockVC.pick_speaker.return_value = 46
-            resp = tc.get("/api/voice/rejection/random")
+        resp = tc.get("/api/voice/rejection/random")
         assert resp.status_code == 200
         data = resp.json()
         assert data["text"] == "AI is disappointed."

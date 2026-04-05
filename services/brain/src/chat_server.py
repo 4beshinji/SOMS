@@ -11,15 +11,21 @@ import aiohttp
 from aiohttp import web
 from loguru import logger
 
+import re
+
 from chat_prompt import build_chat_system_message, CHAT_TOOLS, build_cleanup_prompt
 from llm_client import LLMClient
+from motion_retriever import MotionRetriever
 
 CHAT_MAX_ITERATIONS = 3
-CHAT_MAX_RESPONSE_CHARS = int(os.getenv("CHAT_MAX_RESPONSE_CHARS", "80"))
+CHAT_MAX_RESPONSE_CHARS = int(os.getenv("CHAT_MAX_RESPONSE_CHARS", "300"))
 VOICE_SERVICE_URL = os.getenv("VOICE_SERVICE_URL", "http://voice-service:8000")
 CLEANUP_MODEL = os.getenv("CHAT_CLEANUP_MODEL", "")
 LLM_API_URL = os.getenv("LLM_API_URL", "http://mock-llm:8000/v1")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
+
+# Shared motion retriever instance (stateful — tracks usage for novelty/decay)
+_motion_retriever = MotionRetriever()
 
 
 def create_chat_app(brain) -> web.Application:
@@ -137,7 +143,45 @@ def create_chat_app(brain) -> web.Application:
         except Exception as e:
             return web.json_response({"error": str(e)}, status=502)
 
+    async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
+        """SSE streaming chat: emit each sentence chunk as it's ready."""
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON"}, status=400)
+
+        user_message = data.get("user_message", "").strip()
+        if not user_message:
+            return web.json_response({"error": "Empty message"}, status=400)
+
+        resp = web.StreamResponse(
+            status=200,
+            reason="OK",
+            headers={
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+        await resp.prepare(request)
+
+        try:
+            await _process_chat_stream(brain, user_message, resp)
+            await _sse_write(resp, "done", {})
+            await resp.write_eof()
+        except (ConnectionResetError, ConnectionError) as e:
+            logger.debug(f"Chat stream client disconnected: {e}")
+        except Exception as e:
+            logger.error(f"Chat stream error: {e}")
+            try:
+                await _sse_write(resp, "error", {"message": str(e)})
+                await resp.write_eof()
+            except Exception:
+                pass
+        return resp
+
     app.router.add_post("/chat", handle_chat)
+    app.router.add_post("/chat/stream", handle_chat_stream)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/models", handle_models_list)
     app.router.add_post("/models/pull", handle_models_pull)
@@ -146,7 +190,7 @@ def create_chat_app(brain) -> web.Application:
 
 
 async def _process_chat(brain, user_message: str) -> dict:
-    """Process a single chat message through ReAct loop + cleanup + TTS."""
+    """Process a single chat message through ReAct loop + cleanup + chunked TTS."""
     # Build context from WorldModel
     world_context = brain.world_model.get_llm_context()
     system_msg = build_chat_system_message(world_context)
@@ -207,38 +251,70 @@ async def _process_chat(brain, user_message: str) -> dict:
     # Cleanup with small LLM (if configured)
     content = await _cleanup_response(brain, raw_content)
 
-    # Truncate to max chars
+    # Truncate to max chars at sentence boundary
     if len(content) > CHAT_MAX_RESPONSE_CHARS:
-        # Find last sentence boundary before limit
         truncated = content[:CHAT_MAX_RESPONSE_CHARS]
-        for sep in ("。", "！", "？", "、", "！", "？"):
+        for sep in ("。", "！", "？", "!", "?"):
             idx = truncated.rfind(sep)
             if idx > 0:
                 truncated = truncated[: idx + 1]
                 break
         content = truncated
 
-    # Classify tone and pick reaction motion
-    tone = _classify_tone(content)
-    motion_id = _pick_motion(tone, content)
+    # Split into sentence chunks
+    sentences = _split_sentences(content)
 
-    # Synthesize TTS with tone
-    audio_url = await _synthesize_tts(brain, content, tone)
+    # Per-chunk: classify tone, select motion, synthesize TTS (parallel)
+    import asyncio
 
-    return {"content": content, "audio_url": audio_url, "tone": tone, "motion_id": motion_id}
+    async def _build_chunk(sentence: str) -> dict:
+        tone = _classify_tone(sentence)
+        motion_id = _motion_retriever.select(sentence, tone)
+        audio_url = await _synthesize_tts(brain, sentence, tone)
+        return {
+            "text": sentence,
+            "audio_url": audio_url,
+            "tone": tone,
+            "motion_id": motion_id,
+        }
+
+    chunks = await asyncio.gather(*[_build_chunk(s) for s in sentences])
+    chunks = list(chunks)
+
+    # First chunk provides backward-compatible top-level fields
+    first = chunks[0] if chunks else {}
+
+    return {
+        "content": content,
+        "audio_url": first.get("audio_url"),
+        "tone": first.get("tone", "neutral"),
+        "motion_id": first.get("motion_id"),
+        "chunks": chunks,
+    }
 
 
-def _pick_motion(tone: str, content: str) -> str | None:
-    """Select a reaction motion based on response tone and content keywords."""
-    if any(w in content for w in ("了解", "わかった", "うん", "はい", "なるほど", "そうだね")):
-        return "nod_agree"
-    if any(w in content for w in ("？", "かな", "わからない", "難しい", "どうだろ")):
-        return "head_tilt"
-    if any(w in content for w in ("よろしく", "はじめ", "ありがとう", "どうぞ")):
-        return "small_bow"
-    if tone == "alert":
-        return "head_tilt"
-    return None
+def _split_sentences(text: str) -> list[str]:
+    """Split Japanese text into sentences at 。！？ boundaries.
+
+    Merges very short fragments (< 8 chars) with the previous sentence
+    to avoid tiny audio chunks.
+    """
+    # Split at sentence-ending punctuation, keeping the delimiter
+    parts = re.split(r"(?<=[。！？!?])", text)
+    parts = [p.strip() for p in parts if p.strip()]
+
+    if not parts:
+        return [text] if text.strip() else []
+
+    # Merge short fragments with previous
+    merged: list[str] = []
+    for part in parts:
+        if merged and len(part) < 8:
+            merged[-1] += part
+        else:
+            merged.append(part)
+
+    return merged if merged else [text]
 
 
 def _classify_tone(content: str) -> str:
@@ -295,3 +371,159 @@ async def _synthesize_tts(brain, text: str, tone: str = "neutral") -> str | None
     except Exception as e:
         logger.debug(f"Chat TTS failed (non-fatal): {e}")
     return None
+
+
+# ── Streaming chat ───────────────────────────────────────────────────
+
+import asyncio
+
+_SENTENCE_END = re.compile(r"[。！？!?\n]")
+
+
+async def _sse_write(resp: web.StreamResponse, event: str, data: dict) -> None:
+    """Write a single SSE event. Raises ConnectionError on client disconnect."""
+    payload = json.dumps(data, ensure_ascii=False)
+    try:
+        await resp.write(f"event: {event}\ndata: {payload}\n\n".encode("utf-8"))
+    except (ConnectionResetError, ConnectionError):
+        raise
+    except Exception as e:
+        if "closing transport" in str(e).lower():
+            raise ConnectionError(str(e)) from e
+        raise
+
+
+async def _process_chat_stream(
+    brain, user_message: str, resp: web.StreamResponse
+) -> None:
+    """Stream LLM tokens, emit SSE chunk events as sentences complete.
+
+    Flow:
+      1. Run ReAct tool calls (non-streaming) to gather context
+      2a. Simple question → stream token-by-token, emit per-sentence
+      2b. After tool calls → non-streaming final call, emit per-sentence
+    """
+    world_context = brain.world_model.get_llm_context()
+    system_msg = build_chat_system_message(world_context)
+    messages = [system_msg, {"role": "user", "content": user_message}]
+
+    # Phase 1: tool-call loop (non-streaming, max 1 iteration for streaming speed)
+    used_tools = False
+    for _ in range(1):
+        response = await brain.llm.chat(messages, CHAT_TOOLS)
+        if response.error:
+            await _sse_write(resp, "chunk", {
+                "index": 0, "text": "うーん、LLMに接続できない",
+                "audio_url": None, "tone": "neutral", "motion_id": None,
+            })
+            return
+
+        if not response.tool_calls:
+            break
+
+        used_tools = True
+        assistant_msg = {"role": "assistant", "content": response.content or ""}
+        assistant_msg["tool_calls"] = [
+            {
+                "id": tc["id"],
+                "type": "function",
+                "function": {
+                    "name": tc["function"]["name"],
+                    "arguments": json.dumps(
+                        tc["function"]["arguments"], ensure_ascii=False
+                    ),
+                },
+            }
+            for tc in response.tool_calls
+        ]
+        messages.append(assistant_msg)
+
+        for tc in response.tool_calls:
+            tool_name = tc["function"]["name"]
+            arguments = tc["function"]["arguments"]
+            result = await brain.tool_executor.execute(tool_name, arguments)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc["id"],
+                "content": str(result.get("result") or result.get("error", "")),
+            })
+
+    # Phase 2: generate and emit the final answer
+    if used_tools:
+        # Tool results in messages — get final answer incorporating tool results
+        # Add nudge so LLM generates text instead of trying more tool calls
+        messages.append({"role": "user", "content": "ツールの結果をもとに、ユーザーに回答してください。"})
+        final = await brain.llm.chat(messages)
+        content = (final.content or "")[:CHAT_MAX_RESPONSE_CHARS]
+        await _emit_sentences(brain, resp, _split_sentences(content))
+    elif response.content:
+        # Phase 1 already returned content (no tool calls) — use it directly
+        content = response.content[:CHAT_MAX_RESPONSE_CHARS]
+        await _emit_sentences(brain, resp, _split_sentences(content))
+    else:
+        # Fallback: stream fresh answer
+        await _stream_and_emit(brain, resp, messages)
+
+
+async def _emit_sentences(
+    brain, resp: web.StreamResponse, sentences: list[str]
+) -> None:
+    """Emit pre-split sentences as SSE chunks with TTS + motion."""
+    for i, sentence in enumerate(sentences):
+        tone = _classify_tone(sentence)
+        motion_id = _motion_retriever.select(sentence, tone)
+        audio_url = await _synthesize_tts(brain, sentence, tone)
+        await _sse_write(resp, "chunk", {
+            "index": i, "text": sentence,
+            "audio_url": audio_url, "tone": tone, "motion_id": motion_id,
+        })
+
+
+async def _stream_and_emit(
+    brain, resp: web.StreamResponse, messages: list[dict]
+) -> None:
+    """Stream LLM tokens, detect sentence boundaries, emit each as SSE chunk."""
+    buffer = ""
+    total_chars = 0
+    chunk_index = 0
+
+    async for token in brain.llm.chat_stream(messages):
+        buffer += token
+        total_chars += len(token)
+
+        # Check for sentence boundary in buffer
+        while total_chars <= CHAT_MAX_RESPONSE_CHARS:
+            match = _SENTENCE_END.search(buffer)
+            if not match:
+                break
+
+            split_pos = match.end()
+            sentence = buffer[:split_pos].strip()
+            buffer = buffer[split_pos:].strip()
+
+            if len(sentence) < 2:
+                continue
+
+            tone = _classify_tone(sentence)
+            motion_id = _motion_retriever.select(sentence, tone)
+            audio_url = await _synthesize_tts(brain, sentence, tone)
+
+            await _sse_write(resp, "chunk", {
+                "index": chunk_index, "text": sentence,
+                "audio_url": audio_url, "tone": tone, "motion_id": motion_id,
+            })
+            chunk_index += 1
+
+        if total_chars > CHAT_MAX_RESPONSE_CHARS:
+            break
+
+    # Flush remaining buffer
+    remaining = buffer.strip()
+    if remaining:
+        tone = _classify_tone(remaining)
+        motion_id = _motion_retriever.select(remaining, tone)
+        audio_url = await _synthesize_tts(brain, remaining, tone)
+        await _sse_write(resp, "chunk", {
+            "index": chunk_index, "text": remaining,
+            "audio_url": audio_url, "tone": tone, "motion_id": motion_id,
+        })

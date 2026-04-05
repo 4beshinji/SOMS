@@ -54,9 +54,7 @@ class TestAcceptanceStockGenerateOne:
              patch("acceptance_stock.MANIFEST_PATH", manifest):
             from acceptance_stock import AcceptanceStock
             stock = AcceptanceStock(mock_speech_gen, mock_voice_client)
-            with patch("acceptance_stock.VoicevoxClient") as MockVC:
-                MockVC.pick_speaker.return_value = 48
-                result = await stock.generate_one()
+            result = await stock.generate_one()
         assert result is True
         assert stock.count == 1
 

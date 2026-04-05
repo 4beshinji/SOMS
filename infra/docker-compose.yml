@@ -123,13 +123,14 @@ services:
     restart: always
     ports:
       - "${SOMS_PORT_FRONTEND:-80}:80"
+      - "${SOMS_PORT_FRONTEND_HTTPS:-8444}:443"
     depends_on:
       backend:
         condition: service_healthy
     networks:
       - soms-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO /dev/null --no-check-certificate https://127.0.0.1:443/ || wget -qO /dev/null http://127.0.0.1:80/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -163,7 +164,7 @@ services:
     environment:
       - VOICEVOX_URL=http://voicevox:50021
       - LLM_API_URL=${VOICE_LLM_API_URL:-http://ollama:11434/v1}
-      - LLM_MODEL=${VOICE_LLM_MODEL:-gpt-oss:20b}
+      - LLM_MODEL=${VOICE_LLM_MODEL:-qwen3.5:9b}
       - TTS_BACKEND=${TTS_BACKEND:-voicepeak}
       - VOICEPEAK_BRIDGE_URL=${VOICEPEAK_BRIDGE_URL:-http://host.docker.internal:18100}
       - VOICEPEAK_NARRATOR=${VOICEPEAK_NARRATOR:-Otomachi Una}
@@ -491,18 +492,19 @@ services:
       retries: 3
       start_period: 60s
 
-  # --- Speech-to-Text (kotoba-whisper) ---
+  # --- Speech-to-Text (kotoba-whisper + PyTorch ROCm) ---
   stt:
-    image: ghcr.io/speaches-ai/speaches:latest
+    build:
+      context: ..
+      dockerfile: services/stt/Dockerfile
     container_name: soms-stt
     restart: unless-stopped
     environment:
-      - WHISPER__MODEL=${STT_MODEL:-kotoba-tech/kotoba-whisper-v2.0-faster}
-      - WHISPER__INFERENCE_DEVICE=auto
-      - UVICORN_PORT=8000
+      - STT_MODEL=${STT_MODEL:-kotoba-tech/kotoba-whisper-v2.0}
       - HSA_OVERRIDE_GFX_VERSION=12.0.1
     volumes:
       - stt_models:/root/.cache/huggingface
+      - ../services/stt/src:/app
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri/card1:/dev/dri/card1
@@ -514,7 +516,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      start_period: 180s
 
   # --- Admin Panel ---
   admin-frontend:

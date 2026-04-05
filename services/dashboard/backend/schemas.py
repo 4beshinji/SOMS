@@ -205,11 +205,18 @@ class ShoppingShareResponse(BaseModel):
 class ChatRequest(BaseModel):
     message: str
 
+class ChatChunk(BaseModel):
+    text: str
+    audio_url: Optional[str] = None
+    tone: Optional[str] = None
+    motion_id: Optional[str] = None
+
 class ChatResponse(BaseModel):
     content: str
     audio_url: Optional[str] = None
     tone: Optional[str] = None
     motion_id: Optional[str] = None
+    chunks: Optional[List[ChatChunk]] = None
 
 class ChatLogResponse(BaseModel):
     id: int

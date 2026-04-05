@@ -42,6 +42,20 @@ async def send_message(req: schemas.ChatRequest, db: AsyncSession = Depends(get_
     audio_url = brain_response.get("audio_url")
     tone = brain_response.get("tone")
     motion_id = brain_response.get("motion_id")
+    raw_chunks = brain_response.get("chunks")
+
+    # Build typed chunks if present
+    chunks = None
+    if raw_chunks:
+        chunks = [
+            schemas.ChatChunk(
+                text=c.get("text", ""),
+                audio_url=c.get("audio_url"),
+                tone=c.get("tone"),
+                motion_id=c.get("motion_id"),
+            )
+            for c in raw_chunks
+        ]
 
     # Log for analytics
     log_entry = models.ChatLog(
@@ -52,7 +66,73 @@ async def send_message(req: schemas.ChatRequest, db: AsyncSession = Depends(get_
     db.add(log_entry)
     await db.commit()
 
-    return schemas.ChatResponse(content=content, audio_url=audio_url, tone=tone, motion_id=motion_id)
+    return schemas.ChatResponse(
+        content=content, audio_url=audio_url, tone=tone,
+        motion_id=motion_id, chunks=chunks,
+    )
+
+
+_BRAIN_STREAM_TIMEOUT = httpx.Timeout(120.0, connect=5.0)
+
+
+@router.post("/stream")
+async def send_message_stream(req: schemas.ChatRequest, db: AsyncSession = Depends(get_db)):
+    """SSE streaming chat — proxy Brain /chat/stream to frontend."""
+    from fastapi.responses import StreamingResponse
+
+    message = req.message.strip()
+    if not message:
+        raise HTTPException(400, "Empty message")
+    if len(message) > 500:
+        raise HTTPException(400, "Message too long (max 500 chars)")
+
+    async def proxy_sse():
+        full_text_parts = []
+        first_audio_url = None
+        try:
+            async with httpx.AsyncClient(timeout=_BRAIN_STREAM_TIMEOUT) as client:
+                async with client.stream(
+                    "POST",
+                    f"{BRAIN_CHAT_URL}/chat/stream",
+                    json={"user_message": message},
+                ) as resp:
+                    async for line in resp.aiter_lines():
+                        if line.startswith("event: "):
+                            yield line + "\n"
+                        elif line.startswith("data: "):
+                            yield line + "\n\n"
+                            # Parse for logging
+                            try:
+                                import json
+                                data = json.loads(line[6:])
+                                if "text" in data:
+                                    full_text_parts.append(data["text"])
+                                    if first_audio_url is None:
+                                        first_audio_url = data.get("audio_url")
+                            except Exception:
+                                pass
+        except Exception as e:
+            logger.warning("Brain SSE proxy error: %s", e)
+            yield f"event: error\ndata: {{\"message\": \"stream failed\"}}\n\n"
+
+        # Log for analytics (fire-and-forget after stream ends)
+        try:
+            full_text = "".join(full_text_parts)
+            log_entry = models.ChatLog(
+                user_message=message[:500],
+                assistant_message=full_text[:500],
+                audio_url=first_audio_url,
+            )
+            db.add(log_entry)
+            await db.commit()
+        except Exception:
+            pass
+
+    return StreamingResponse(
+        proxy_sse(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/history", response_model=list[schemas.ChatLogResponse])
