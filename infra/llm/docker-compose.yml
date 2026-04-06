@@ -1,31 +1,62 @@
-version: '3.8'
-
 services:
-  # --- Local LLM Engine (Radeon/ROCm) ---
-  # To enable: ensure /dev/kfd and /dev/dri exist on the host machine
-  llm-engine:
-    image: rocm/vllm:latest
-    container_name: soms-llm-engine
+  # --- llama.cpp server (ROCm) ---
+  # Continuous batching + flash attention for parallel throughput
+  llama-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.rocm
+    image: soms-llama-server:rocm
+    container_name: soms-llama-server
     restart: unless-stopped
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri/card1:/dev/dri/card1
       - /dev/dri/renderD128:/dev/dri/renderD128
     ports:
-      - "8000:8000"
+      - "8080:8080"
     volumes:
-      - soms_models:/root/.cache/huggingface
+      - ./models:/models:ro
     environment:
-      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
-    # Command optimized for 32B model on consumer GPUs. Adjust --tensor-parallel-size if using multiple GPUs.
-    command: --model Qwen/Qwen3.5-32B-Instruct-AWQ --quantization awq --gpu-memory-utilization 0.95 --tensor-parallel-size 1
-    networks:
-      - soms-llm-net
+      - HSA_OVERRIDE_GFX_VERSION=12.0.1
+      - HSA_ENABLE_SDMA=0
+      - GPU_COREDUMP_ENABLE=0
+      - HIPBLASLT_TENSILE_LIBPATH=/dev/null
+    command: >
+      --model /models/qwen3.5-9b-q4km.gguf
+      --host 0.0.0.0
+      --port 8080
+      --n-gpu-layers 99
+      --ctx-size 8192
+      --parallel 4
+      --cont-batching
+      --flash-attn on
+      --cache-type-k q8_0
+      --cache-type-v q8_0
+    ulimits:
+      core: 0
 
-volumes:
-  soms_models:
+  # --- vLLM (ROCm) --- alternative, uncomment to test
+  # Requires HF_TOKEN in .env and HuggingFace model download
+  # vllm:
+  #   image: rocm/vllm:latest
+  #   container_name: soms-vllm
+  #   restart: unless-stopped
+  #   devices:
+  #     - /dev/kfd:/dev/kfd
+  #     - /dev/dri/card1:/dev/dri/card1
+  #     - /dev/dri/renderD128:/dev/dri/renderD128
+  #   ports:
+  #     - "8081:8000"
+  #   volumes:
+  #     - vllm_models:/root/.cache/huggingface
+  #   environment:
+  #     - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+  #     - HSA_OVERRIDE_GFX_VERSION=12.0.1
+  #   command: >
+  #     --model Qwen/Qwen3.5-9B-Instruct-AWQ
+  #     --quantization awq
+  #     --gpu-memory-utilization 0.90
+  #     --tensor-parallel-size 1
 
-
-networks:
-  soms-llm-net:
-    driver: bridge
+# volumes:
+#   vllm_models:

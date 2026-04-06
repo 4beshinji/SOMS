@@ -2,8 +2,8 @@
 LLM-based report generator for SOMS.
 
 Generates daily, weekly, and monthly usage reports by querying
-historical sensor data from PostgreSQL and feeding it to a large
-LLM via Ollama's native API.
+historical sensor data from PostgreSQL and feeding it to the LLM
+via OpenAI-compatible API (works with llama.cpp / Ollama / vLLM).
 
 Reports are stored in events.reports table as structured JSONB
 content plus rendered markdown.
@@ -42,7 +42,9 @@ class ReportGenerator:
         session: aiohttp.ClientSession,
     ):
         self._engine = engine
-        self._ollama_url = ollama_base_url.rstrip("/")
+        # Derive OpenAI-compatible endpoint from base URL
+        base = ollama_base_url.rstrip("/")
+        self._api_url = base if base.endswith("/v1") else f"{base}/v1"
         self._report_model = report_model
         self._spatial = spatial_config
         self._session = session
@@ -463,21 +465,17 @@ AIがどのような判断を行ったか。
     # ------------------------------------------------------------------
 
     async def _call_llm(self, messages: list[dict], max_tokens: int) -> str | None:
-        """Call the report LLM model via Ollama native /api/chat."""
+        """Call the report LLM via OpenAI-compatible /v1/chat/completions."""
         try:
             payload = {
                 "model": self._report_model,
                 "messages": messages,
-                "stream": False,
-                "options": {
-                    "temperature": REPORT_TEMPERATURE,
-                    "num_predict": max_tokens,
-                },
-                "keep_alive": "10m",
+                "temperature": REPORT_TEMPERATURE,
+                "max_tokens": max_tokens,
             }
 
             async with self._session.post(
-                f"{self._ollama_url}/api/chat",
+                f"{self._api_url}/chat/completions",
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=REPORT_GENERATION_TIMEOUT),
             ) as resp:
@@ -489,7 +487,11 @@ AIがどのような判断を行ったか。
                     return None
 
                 result = await resp.json()
-                content = result.get("message", {}).get("content", "")
+                content = (
+                    result.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                )
 
                 # Strip thinking blocks (Qwen3.5 may include <think>...</think>)
                 import re

@@ -65,7 +65,7 @@ CONTAINERS = [
     "soms-wallet",
     "soms-wallet-app",
     "soms-auth",
-    "soms-ollama",
+    "soms-llm",
     "soms-mock-llm",
     "soms-switchbot",
     "soms-perception",

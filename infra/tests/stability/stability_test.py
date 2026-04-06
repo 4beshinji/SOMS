@@ -47,7 +47,7 @@ DOCKER_HEALTH_SERVICES = [
     "soms-wallet-app",
     "soms-switchbot",
     "soms-perception",
-    "soms-ollama",
+    "soms-llm",
 ]
 
 # All container names we track for resource stats and log scanning.

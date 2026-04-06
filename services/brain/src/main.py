@@ -1001,23 +1001,20 @@ class Brain:
             # Start chitchat stock pre-generation loop
             asyncio.create_task(self._chitchat_stock_loop())
 
-            # Initialize report generation system (VRAM resource management)
-            ollama_base = LLM_API_URL.rstrip("/")
-            if ollama_base.endswith("/v1"):
-                ollama_base = ollama_base[:-3]
-            # Use OLLAMA_URL if set, otherwise derive from LLM_API_URL
-            ollama_url = os.getenv("OLLAMA_URL", ollama_base)
+            # Initialize report generation system
+            # OLLAMA_URL enables Ollama model-swap mode; empty = llama.cpp mode (no-op swap)
+            ollama_url = os.getenv("OLLAMA_URL", "")
             self.ollama_manager = OllamaManager(
                 session=session,
                 brain_model=os.getenv("LLM_MODEL", "qwen3.5:14b"),
-                report_model=os.getenv("REPORT_LLM_MODEL", "qwen3.5:32b"),
+                report_model=os.getenv("REPORT_LLM_MODEL", ""),
                 ollama_base_url=ollama_url,
             )
             if engine:
                 self.report_generator = ReportGenerator(
                     engine=engine,
-                    ollama_base_url=ollama_url,
-                    report_model=os.getenv("REPORT_LLM_MODEL", "qwen3.5:32b"),
+                    ollama_base_url=LLM_API_URL,
+                    report_model=os.getenv("REPORT_LLM_MODEL", os.getenv("LLM_MODEL", "qwen3.5:14b")),
                     spatial_config=spatial_config,
                     session=session,
                 )

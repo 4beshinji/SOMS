@@ -1,0 +1,31 @@
+FROM rocm/dev-ubuntu-24.04:6.4-complete AS build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cmake git build-essential libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG LLAMA_CPP_VERSION=master
+RUN git clone --depth 1 --branch ${LLAMA_CPP_VERSION} \
+    https://github.com/ggml-org/llama.cpp.git /llama.cpp
+
+WORKDIR /llama.cpp
+
+RUN cmake -B build \
+    -DGGML_HIP=ON \
+    -DGGML_HIP_GRAPHS=ON \
+    -DAMDGPU_TARGETS="gfx1200;gfx1201;gfx1100;gfx1101;gfx1102" \
+    -DLLAMA_CURL=ON \
+    -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --config Release -j$(nproc) --target llama-server
+
+FROM rocm/dev-ubuntu-24.04:6.4-complete
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcurl4 libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /llama.cpp/build/bin/llama-server /usr/local/bin/llama-server
+COPY --from=build /llama.cpp/build/bin/*.so* /usr/local/lib/
+RUN ldconfig
+
+ENTRYPOINT ["llama-server"]
