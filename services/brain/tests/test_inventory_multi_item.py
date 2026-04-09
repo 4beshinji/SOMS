@@ -257,6 +257,7 @@ class TestInventoryStatusMultiItem:
         tracker = _make_tracker_with_shelf()
         state = tracker._states["shelf_01:weight"]
         state.mode = "multi"
+        state.current_weight_g = 1100.0  # Simulate having received sensor data
         state.items = [
             CompartmentItem(barcode="A", item_name="ItemA", unit_weight_g=200.0,
                            quantity=5, total_weight_g=1000.0, category="cat1"),
@@ -272,3 +273,67 @@ class TestInventoryStatusMultiItem:
         assert status[1]["item_name"] == "ItemB"
         assert status[1]["status"] == "low"
         assert status[1]["barcode"] == "B"
+
+
+class TestRegisterItem:
+    """Manual item registration (no barcode)."""
+
+    def test_register_new_item(self):
+        tracker = _make_tracker_with_shelf()
+        event = tracker.register_item(
+            "shelf_01", "weight", "コーヒー豆", 200.0, quantity=3,
+        )
+        assert event is not None
+        assert event.event_type == "item_added"
+        assert event.item_name == "コーヒー豆"
+        assert event.quantity == 3
+
+        state = tracker._states["shelf_01:weight"]
+        assert state.mode == "multi"
+        assert len(state.items) == 1
+        assert state.items[0].unit_weight_g == 200.0
+
+    def test_register_updates_existing_item(self):
+        tracker = _make_tracker_with_shelf()
+        tracker.register_item("shelf_01", "weight", "コーヒー豆", 200.0, quantity=3)
+        event = tracker.register_item("shelf_01", "weight", "コーヒー豆", 200.0, quantity=5)
+        assert event.quantity == 5
+        state = tracker._states["shelf_01:weight"]
+        assert len(state.items) == 1
+        assert state.items[0].quantity == 5
+
+    def test_register_multiple_items(self):
+        tracker = _make_tracker_with_shelf()
+        tracker.register_item("shelf_01", "weight", "コーヒー豆", 200.0, quantity=3)
+        tracker.register_item("shelf_01", "weight", "砂糖", 1000.0, quantity=1)
+        state = tracker._states["shelf_01:weight"]
+        assert len(state.items) == 2
+        assert state.items[0].item_name == "コーヒー豆"
+        assert state.items[1].item_name == "砂糖"
+
+    def test_register_unknown_shelf_creates_entry(self):
+        tracker = InventoryTracker.__new__(InventoryTracker)
+        tracker._shelves = {}
+        tracker._states = {}
+        tracker._stable_window = 3
+        tracker._tolerance_pct = 5.0
+        tracker._cooldown_sec = 3600.0
+
+        event = tracker.register_item(
+            "new_scale", "weight", "テスト品", 150.0, zone="kitchen",
+        )
+        assert event is not None
+        assert "new_scale:weight" in tracker._states
+        assert tracker._shelves["new_scale:weight"].zone == "kitchen"
+
+    def test_register_then_consumption(self):
+        """Register item, feed weight readings, verify consumption detection."""
+        tracker = _make_tracker_with_shelf()
+        tracker.register_item("shelf_01", "weight", "本", 200.0, quantity=5)
+        state = tracker._states["shelf_01:weight"]
+        state.prev_total_weight_g = 1050.0
+
+        # Feed stable readings showing 200g decrease
+        for _ in range(3):
+            tracker.update_weight("kitchen", "shelf_01", "weight", 850.0)
+        assert state.items[0].quantity == 4

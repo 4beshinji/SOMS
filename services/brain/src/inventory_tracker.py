@@ -173,18 +173,23 @@ class InventoryTracker:
             return 0
         return int(net / shelf.unit_weight_g)
 
+    # Minimum absolute tolerance (grams) for near-zero stability checks.
+    # Load cell noise at near-zero is ~±2g; percentage tolerance alone
+    # would require unrealistically tight readings.
+    _MIN_STABLE_TOLERANCE_G: float = 5.0
+
     def _is_stable(self, readings: List[float]) -> bool:
         """Check if the last N readings are within tolerance of each other."""
         if len(readings) < self._stable_window:
             return False
         window = readings[-self._stable_window:]
         avg = sum(window) / len(window)
-        if avg == 0:
-            return all(v == 0 for v in window)
-        return all(
-            abs(v - avg) / abs(avg) * 100 <= self._tolerance_pct
-            for v in window
+        # Use the larger of percentage-based and absolute minimum tolerance
+        tolerance_g = max(
+            abs(avg) * self._tolerance_pct / 100,
+            self._MIN_STABLE_TOLERANCE_G,
         )
+        return all(abs(v - avg) <= tolerance_g for v in window)
 
     def update_weight(
         self, zone: str, device_id: str, channel: str, weight_g: float
@@ -561,6 +566,102 @@ class InventoryTracker:
 
         state.prev_total_weight_g = stable_weight
         return events
+
+    def register_item(
+        self,
+        device_id: str,
+        channel: str,
+        item_name: str,
+        unit_weight_g: float,
+        quantity: int = 1,
+        zone: str = None,
+        **kwargs,
+    ) -> Optional[InventoryEvent]:
+        """Register an item on a shelf manually (no barcode required).
+
+        Switches the shelf to multi-item mode and adds the item.
+        If an item with the same name already exists, updates its quantity.
+        """
+        key = self._key(device_id, channel)
+        state = self._states.get(key)
+        shelf = self._shelves.get(key)
+
+        if state is None:
+            shelf = ShelfConfig(
+                device_id=device_id,
+                channel=channel,
+                zone=zone or "unknown",
+                item_name="multi-item shelf",
+                category="",
+                unit_weight_g=0,
+                tare_weight_g=0,
+                min_threshold=1,
+                reorder_quantity=1,
+            )
+            self._shelves[key] = shelf
+            state = ShelfState(mode="multi")
+            self._states[key] = state
+
+        if state.mode == "single":
+            state.mode = "multi"
+
+        # Check if item with same name already exists — update quantity
+        for item in state.items:
+            if item.item_name == item_name:
+                item.quantity = quantity
+                item.unit_weight_g = unit_weight_g
+                item.total_weight_g = quantity * unit_weight_g
+                logger.info(
+                    "Item updated: %s quantity=%d (%.1fg each)",
+                    item_name, quantity, unit_weight_g,
+                )
+                return InventoryEvent(
+                    event_type="item_added",
+                    zone=shelf.zone,
+                    device_id=device_id,
+                    channel=channel,
+                    item_name=item_name,
+                    category=item.category,
+                    quantity=quantity,
+                    min_threshold=item.min_threshold,
+                    reorder_quantity=item.reorder_quantity,
+                    store=item.store,
+                    price=item.price,
+                )
+
+        # New item
+        new_item = CompartmentItem(
+            barcode=kwargs.get("barcode"),
+            item_name=item_name,
+            unit_weight_g=unit_weight_g,
+            quantity=quantity,
+            total_weight_g=quantity * unit_weight_g,
+            min_threshold=kwargs.get("min_threshold", 1),
+            reorder_quantity=kwargs.get("reorder_quantity", 1),
+            category=kwargs.get("category", ""),
+            store=kwargs.get("store"),
+            price=kwargs.get("price"),
+            last_scan_time=time.time(),
+        )
+        state.items.append(new_item)
+        logger.info(
+            "Item registered: %s x%d (%.1fg each) on %s",
+            item_name, quantity, unit_weight_g, device_id,
+        )
+
+        return InventoryEvent(
+            event_type="item_added",
+            zone=shelf.zone,
+            device_id=device_id,
+            channel=channel,
+            item_name=item_name,
+            category=new_item.category,
+            quantity=quantity,
+            min_threshold=new_item.min_threshold,
+            reorder_quantity=new_item.reorder_quantity,
+            store=new_item.store,
+            price=new_item.price,
+        )
 
     def register_barcode(self, device_id: str, channel: str, barcode: str, weight_g: float = None):
         """Legacy stub — delegates to handle_barcode_scan."""
