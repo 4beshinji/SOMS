@@ -27,8 +27,8 @@ BOARDS = {
         "pir_pin": 3,
         "led": 15,
         "adc_battery": -1,
-        "hx711_dout": 2,
-        "hx711_sck": 3,
+        "hx711_dout": 22,
+        "hx711_sck": 23,
     },
     "xiao_esp32_s3": {
         "i2c_sda": 5,
