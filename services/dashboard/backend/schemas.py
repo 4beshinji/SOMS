@@ -276,3 +276,23 @@ class InventoryItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Inventory Live Status (pushed by Brain, polled by frontend)
+class InventoryLiveItem(BaseModel):
+    device_id: str
+    channel: str = "weight"
+    zone: str
+    item_name: str
+    category: Optional[str] = None
+    quantity: int
+    min_threshold: int = 1
+    current_weight_g: Optional[float] = None
+    status: str = "ok"  # "ok" | "low"
+    mode: Optional[str] = None
+    barcode: Optional[str] = None
+
+
+class InventoryLiveStatusResponse(BaseModel):
+    items: list[InventoryLiveItem] = []
+    updated_at: float = 0.0

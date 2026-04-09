@@ -7,6 +7,7 @@ import ZoneEditor from './pages/ZoneEditor';
 import MonitorHeader from './components/MonitorHeader';
 import TaskCard from './components/TaskCard';
 import ShoppingPanel from './components/ShoppingPanel';
+import InventoryPanel from './components/InventoryPanel';
 import ChatInput from './components/ChatInput';
 import AvatarContainer from './components/avatar/AvatarContainer';
 import { useTaskManager } from './hooks/useTaskManager';
@@ -217,6 +218,11 @@ function Monitor() {
                 <ChevronDown className="h-3 w-3" /> もっと見る
               </button>
             )}
+          </div>
+
+          {/* Inventory Status */}
+          <div className={`border-t ${borderColor}`}>
+            <InventoryPanel />
           </div>
 
           {/* Shopping — fixed at bottom */}

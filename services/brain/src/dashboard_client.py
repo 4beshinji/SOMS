@@ -287,6 +287,20 @@ class DashboardClient:
             logger.warning(f"Error fetching inventory items: {e}")
             return []
 
+    async def push_inventory_status(self, items: list[dict]) -> bool:
+        """Push live inventory status to Dashboard backend."""
+        url = f"{self.api_url}/inventory/live-status"
+        try:
+            async with self._get_session() as session:
+                async with session.put(
+                    url, json=items,
+                    timeout=aiohttp.ClientTimeout(total=5),
+                ) as response:
+                    return response.status == 200
+        except Exception as e:
+            logger.debug(f"Failed to push inventory status: {e}")
+            return False
+
     async def get_task_stats(self) -> dict:
         """Fetch task statistics from dashboard."""
         url = f"{self.api_url}/tasks/stats"

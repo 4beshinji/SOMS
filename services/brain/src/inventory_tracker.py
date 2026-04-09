@@ -488,28 +488,32 @@ class InventoryTracker:
             price=new_item.price,
         )
 
-    def _estimate_consumed_item(
-        self, weight_delta_g: float, items: List[CompartmentItem]
+    def _match_single_item(
+        self, weight_g: float, items: List[CompartmentItem],
+        prefer_low_stock: bool = True,
+        require_quantity: bool = True,
     ) -> Optional[tuple]:
-        """Estimate which item was consumed based on weight decrease.
+        """Match a weight delta to a single item type.
 
         Returns (CompartmentItem, n_units) or None.
-        Strategy:
-        1. Find items whose unit_weight matches weight_delta within ±30%
-        2. Among candidates, prefer the one with lowest stock (most likely consumed)
+        Tolerance: ±30% of unit_weight.
         """
-        if not items or weight_delta_g <= 0:
+        if not items or weight_g <= 0:
             return None
 
         candidates = []
         for item in items:
-            if item.quantity <= 0 or item.unit_weight_g <= 0:
+            if item.unit_weight_g <= 0:
                 continue
-            ratio = weight_delta_g / item.unit_weight_g
+            if require_quantity and item.quantity <= 0:
+                continue
+            ratio = weight_g / item.unit_weight_g
             n_units = round(ratio)
+            if require_quantity:
+                n_units = min(n_units, item.quantity)
             if n_units >= 1:
                 error_pct = (
-                    abs(weight_delta_g - n_units * item.unit_weight_g)
+                    abs(weight_g - n_units * item.unit_weight_g)
                     / item.unit_weight_g
                     * 100
                 )
@@ -519,53 +523,200 @@ class InventoryTracker:
         if not candidates:
             return None
 
-        # Sort by error, then by quantity ascending (low stock first)
-        candidates.sort(key=lambda x: (x[2], x[0].quantity))
+        if prefer_low_stock:
+            candidates.sort(key=lambda x: (x[2], x[0].quantity))
+        else:
+            # For additions, prefer items with lowest stock (most likely restocked)
+            candidates.sort(key=lambda x: (x[2], x[0].quantity))
         return candidates[0][0], candidates[0][1]
+
+    def _match_combo(
+        self, weight_g: float, items: List[CompartmentItem],
+        require_quantity: bool = True,
+    ) -> Optional[List[tuple]]:
+        """Match a weight delta to a combination of 2 different item types.
+
+        Returns [(CompartmentItem, n_units), ...] or None.
+        Tolerance: ±20% (tighter than single-item to reduce false positives).
+        """
+        if len(items) < 2 or weight_g <= 0:
+            return None
+
+        eligible = [
+            it for it in items
+            if it.unit_weight_g > 0 and (not require_quantity or it.quantity > 0)
+        ]
+        if len(eligible) < 2:
+            return None
+
+        best = None
+        best_error = float("inf")
+        best_units = float("inf")
+
+        for i in range(len(eligible)):
+            for j in range(i + 1, len(eligible)):
+                a, b = eligible[i], eligible[j]
+                max_a = a.quantity if require_quantity else 5
+                max_b = b.quantity if require_quantity else 5
+                for na in range(1, min(max_a, 3) + 1):
+                    for nb in range(1, min(max_b, 3) + 1):
+                        combo_weight = na * a.unit_weight_g + nb * b.unit_weight_g
+                        if combo_weight <= 0:
+                            continue
+                        error_pct = abs(weight_g - combo_weight) / combo_weight * 100
+                        total_units = na + nb
+                        if error_pct <= 20 and (
+                            error_pct < best_error
+                            or (error_pct == best_error and total_units < best_units)
+                        ):
+                            best = [(a, na), (b, nb)]
+                            best_error = error_pct
+                            best_units = total_units
+
+        return best
+
+    # Keep backward-compatible aliases
+    def _estimate_consumed_item(self, weight_delta_g, items):
+        return self._match_single_item(weight_delta_g, items)
 
     def _check_multi_item_consumption(
         self, key: str, state: ShelfState, shelf: ShelfConfig, stable_weight: float
     ) -> List[InventoryEvent]:
-        """Check for item consumption in multi-item mode.
+        """Check for item consumption or addition in multi-item mode.
 
-        Returns a list of events (low_stock for any items below threshold).
+        Returns a list of events (low_stock, restocked).
         """
         events = []
         now = time.time()
 
         if state.prev_total_weight_g is not None:
             delta = state.prev_total_weight_g - stable_weight
-            if delta > 0:
-                # Weight decreased — something was consumed
-                result = self._estimate_consumed_item(delta, state.items)
-                if result:
-                    item, n_units = result
-                    item.quantity = max(0, item.quantity - n_units)
-                    item.total_weight_g = item.quantity * item.unit_weight_g
-                    logger.info(
-                        "Consumption detected: %s -%d (remaining: %d)",
-                        item.item_name, n_units, item.quantity,
-                    )
 
-                    if item.quantity < item.min_threshold:
-                        if now - state.last_low_stock_time >= self._cooldown_sec:
-                            state.last_low_stock_time = now
-                            events.append(InventoryEvent(
-                                event_type="low_stock",
-                                zone=shelf.zone,
-                                device_id=shelf.device_id,
-                                channel=shelf.channel,
-                                item_name=item.item_name,
-                                category=item.category,
-                                quantity=item.quantity,
-                                min_threshold=item.min_threshold,
-                                reorder_quantity=item.reorder_quantity,
-                                store=item.store,
-                                price=item.price,
-                            ))
+            if delta > self._MIN_STABLE_TOLERANCE_G:
+                # Weight decreased — consumption
+                self._handle_consumption(delta, state, shelf, events, now)
+
+            elif delta < -self._MIN_STABLE_TOLERANCE_G:
+                # Weight increased — item added / restocked
+                increase = abs(delta)
+                self._handle_addition(increase, state, shelf, events)
 
         state.prev_total_weight_g = stable_weight
         return events
+
+    @staticmethod
+    def _match_error(delta: float, result) -> float:
+        """Calculate match error as percentage of delta."""
+        if result is None:
+            return float("inf")
+        if isinstance(result, list):
+            matched_weight = sum(n * item.unit_weight_g for item, n in result)
+        else:
+            matched_weight = result[1] * result[0].unit_weight_g
+        return abs(delta - matched_weight) / delta * 100 if delta > 0 else float("inf")
+
+    def _handle_consumption(
+        self, delta: float, state: ShelfState, shelf: ShelfConfig,
+        events: List[InventoryEvent], now: float,
+    ):
+        """Process weight decrease — pick best of single vs combo match."""
+        single = self._match_single_item(delta, state.items)
+        combo = self._match_combo(delta, state.items) if len(state.items) >= 2 else None
+
+        single_err = self._match_error(delta, single)
+        combo_err = self._match_error(delta, combo)
+
+        if combo is not None and combo_err < single_err:
+            for item, n_units in combo:
+                self._apply_consumption(item, n_units, state, shelf, events, now)
+        elif single is not None:
+            self._apply_consumption(single[0], single[1], state, shelf, events, now)
+        elif combo is not None:
+            for item, n_units in combo:
+                self._apply_consumption(item, n_units, state, shelf, events, now)
+        else:
+            logger.debug("Unmatched consumption: %.1fg delta", delta)
+
+    def _apply_consumption(
+        self, item: CompartmentItem, n_units: int,
+        state: ShelfState, shelf: ShelfConfig,
+        events: List[InventoryEvent], now: float,
+    ):
+        """Reduce item quantity and emit low_stock if needed."""
+        item.quantity = max(0, item.quantity - n_units)
+        item.total_weight_g = item.quantity * item.unit_weight_g
+        logger.info(
+            "Consumption: %s -%d (remaining: %d)",
+            item.item_name, n_units, item.quantity,
+        )
+
+        if item.quantity < item.min_threshold:
+            if now - state.last_low_stock_time >= self._cooldown_sec:
+                state.last_low_stock_time = now
+                events.append(InventoryEvent(
+                    event_type="low_stock",
+                    zone=shelf.zone,
+                    device_id=shelf.device_id,
+                    channel=shelf.channel,
+                    item_name=item.item_name,
+                    category=item.category,
+                    quantity=item.quantity,
+                    min_threshold=item.min_threshold,
+                    reorder_quantity=item.reorder_quantity,
+                    store=item.store,
+                    price=item.price,
+                ))
+
+    def _handle_addition(
+        self, increase: float, state: ShelfState, shelf: ShelfConfig,
+        events: List[InventoryEvent],
+    ):
+        """Process weight increase — pick best of single vs combo match."""
+        single = self._match_single_item(
+            increase, state.items, require_quantity=False,
+        )
+        combo = self._match_combo(
+            increase, state.items, require_quantity=False,
+        ) if len(state.items) >= 2 else None
+
+        single_err = self._match_error(increase, single)
+        combo_err = self._match_error(increase, combo)
+
+        if combo is not None and combo_err < single_err:
+            for item, n_units in combo:
+                self._apply_addition(item, n_units, shelf, events)
+        elif single is not None:
+            self._apply_addition(single[0], single[1], shelf, events)
+        elif combo is not None:
+            for item, n_units in combo:
+                self._apply_addition(item, n_units, shelf, events)
+        else:
+            logger.debug("Unmatched addition: %.1fg increase", increase)
+
+    def _apply_addition(
+        self, item: CompartmentItem, n_units: int,
+        shelf: ShelfConfig, events: List[InventoryEvent],
+    ):
+        """Increase item quantity and emit restocked event."""
+        item.quantity += n_units
+        item.total_weight_g = item.quantity * item.unit_weight_g
+        logger.info(
+            "Addition: %s +%d (now: %d)",
+            item.item_name, n_units, item.quantity,
+        )
+        events.append(InventoryEvent(
+            event_type="restocked",
+            zone=shelf.zone,
+            device_id=shelf.device_id,
+            channel=shelf.channel,
+            item_name=item.item_name,
+            category=item.category,
+            quantity=item.quantity,
+            min_threshold=item.min_threshold,
+            reorder_quantity=item.reorder_quantity,
+            store=item.store,
+            price=item.price,
+        ))
 
     def register_item(
         self,

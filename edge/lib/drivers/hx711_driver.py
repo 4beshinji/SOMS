@@ -121,6 +121,40 @@ class HX711:
         self._scale = (raw_avg - self._offset) / known_weight_g
         return self._scale
 
+    def read_raw_avg(self, readings=10):
+        """Read averaged raw ADC value (for multi-point calibration)."""
+        total = 0
+        for _ in range(readings):
+            total += self._read_raw()
+            time.sleep_ms(50)
+        return total / readings
+
+    def calibrate_multi(self, points):
+        """Multi-point least-squares calibration.
+
+        Args:
+            points: list of (known_weight_g, raw_avg) tuples.
+                    Must include at least 2 points (e.g., 0g and one known weight).
+        Sets offset and scale via linear regression: raw = scale * weight + offset.
+        Returns: (offset, scale) tuple.
+        """
+        n = len(points)
+        if n < 2:
+            raise ValueError("Need at least 2 calibration points")
+        sum_w = sum(p[0] for p in points)
+        sum_r = sum(p[1] for p in points)
+        sum_wr = sum(p[0] * p[1] for p in points)
+        sum_ww = sum(p[0] * p[0] for p in points)
+        denom = n * sum_ww - sum_w * sum_w
+        if abs(denom) < 1e-10:
+            raise ValueError("Degenerate calibration points")
+        # Linear fit: raw = scale * weight + offset
+        scale = (n * sum_wr - sum_w * sum_r) / denom
+        offset = (sum_r - scale * sum_w) / n
+        self._scale = scale
+        self._offset = offset
+        return offset, scale
+
     def get_calibration(self):
         """Return current calibration parameters."""
         return {"offset": self._offset, "scale": self._scale}

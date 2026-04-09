@@ -365,6 +365,27 @@ export interface InventoryItemUpdate {
   is_active?: boolean;
 }
 
+// ── Inventory Live Status Types ──────────────────────────────────────
+
+export interface InventoryLiveItem {
+  device_id: string;
+  channel: string;
+  zone: string;
+  item_name: string;
+  category?: string | null;
+  quantity: number;
+  min_threshold: number;
+  current_weight_g?: number | null;
+  status: 'ok' | 'low';
+  mode?: string | null;
+  barcode?: string | null;
+}
+
+export interface InventoryLiveStatus {
+  items: InventoryLiveItem[];
+  updated_at: number;
+}
+
 // ── Device Position API Types ────────────────────────────────────────
 
 export interface DevicePositionResponse {

@@ -889,6 +889,17 @@ class Brain:
             except Exception as e:
                 logger.error(f"Utility decay error: {e}")
 
+    async def _inventory_status_push_loop(self):
+        """Push inventory status to Dashboard every 15 seconds."""
+        while True:
+            await asyncio.sleep(15)
+            try:
+                status = self.inventory_tracker.get_inventory_status()
+                if status and self.dashboard:
+                    await self.dashboard.push_inventory_status(status)
+            except Exception as e:
+                logger.debug(f"Inventory status push error: {e}")
+
     async def _snapshot_loop(self):
         """Periodically write DeviceRegistry snapshot to DB (every 10 minutes)."""
         while True:
@@ -995,6 +1006,7 @@ class Brain:
             asyncio.create_task(self._utility_decay_loop())
 
             asyncio.create_task(self._snapshot_loop())
+            asyncio.create_task(self._inventory_status_push_loop())
 
             # Start chitchat loop (context-aware casual conversation)
             asyncio.create_task(self._chitchat_loop())

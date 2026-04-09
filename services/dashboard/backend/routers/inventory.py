@@ -1,10 +1,10 @@
 """
-Inventory Items API — CRUD for shelf sensor → item mappings.
-
-Used by Brain's InventoryTracker to know what items are on which shelves.
+Inventory Items API — CRUD for shelf sensor → item mappings,
+plus live status endpoint pushed by Brain service.
 """
 import logging
-from typing import Optional
+import time
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -12,11 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import InventoryItem
-from schemas import InventoryItemCreate, InventoryItemUpdate, InventoryItemResponse
+from schemas import (
+    InventoryItemCreate, InventoryItemUpdate, InventoryItemResponse,
+    InventoryLiveItem, InventoryLiveStatusResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
+
+# In-memory live inventory status (pushed by Brain every ~15s)
+_live_status: list[dict] = []
+_live_status_updated_at: float = 0.0
 
 
 @router.get("/", response_model=list[InventoryItemResponse])
@@ -94,3 +101,23 @@ async def delete_inventory_item(item_id: int, db: AsyncSession = Depends(get_db)
         raise HTTPException(status_code=404, detail="Inventory item not found")
     await db.delete(item)
     await db.commit()
+
+
+# --- Live Inventory Status (pushed by Brain, polled by frontend) ---
+
+@router.put("/live-status")
+async def update_live_inventory_status(items: List[InventoryLiveItem]):
+    """Receive live inventory status push from Brain service."""
+    global _live_status, _live_status_updated_at
+    _live_status = [item.model_dump() for item in items]
+    _live_status_updated_at = time.time()
+    return {"status": "ok", "items": len(_live_status)}
+
+
+@router.get("/live-status", response_model=InventoryLiveStatusResponse)
+async def get_live_inventory_status():
+    """Get current live inventory status for dashboard frontend."""
+    return InventoryLiveStatusResponse(
+        items=[InventoryLiveItem(**item) for item in _live_status],
+        updated_at=_live_status_updated_at,
+    )

@@ -337,3 +337,198 @@ class TestRegisterItem:
         for _ in range(3):
             tracker.update_weight("kitchen", "shelf_01", "weight", 850.0)
         assert state.items[0].quantity == 4
+
+
+class TestWeightIncrease:
+    """Weight increase detection (item addition / restocking)."""
+
+    def _setup(self):
+        tracker = _make_tracker_with_shelf()
+        tracker.register_item("shelf_01", "weight", "ItemA", 200.0, quantity=0)
+        state = tracker._states["shelf_01:weight"]
+        return tracker, state
+
+    def _feed_stable(self, tracker, weight, n=3):
+        event = None
+        for _ in range(n):
+            event = tracker.update_weight("kitchen", "shelf_01", "weight", weight)
+        return event
+
+    def test_single_item_added(self):
+        tracker, state = self._setup()
+        state.prev_total_weight_g = 0.0
+        event = self._feed_stable(tracker, 200.0)
+        assert event is not None
+        assert event.event_type == "restocked"
+        assert event.item_name == "ItemA"
+        assert state.items[0].quantity == 1
+
+    def test_multiple_units_added(self):
+        tracker, state = self._setup()
+        state.prev_total_weight_g = 0.0
+        self._feed_stable(tracker, 400.0)
+        assert state.items[0].quantity == 2
+
+    def test_restock_from_zero(self):
+        tracker = _make_tracker_with_shelf()
+        tracker.register_item("shelf_01", "weight", "Ramen", 90.0, quantity=0)
+        state = tracker._states["shelf_01:weight"]
+        state.prev_total_weight_g = 0.0
+        event = self._feed_stable(tracker, 90.0)
+        assert event is not None
+        assert event.event_type == "restocked"
+        assert state.items[0].quantity == 1
+
+    def test_noise_below_threshold_ignored(self):
+        tracker, state = self._setup()
+        state.prev_total_weight_g = 100.0
+        # 3g increase — below MIN_STABLE_TOLERANCE_G (5g), should be ignored
+        self._feed_stable(tracker, 103.0)
+        assert state.items[0].quantity == 0
+
+
+class TestComboConsumption:
+    """Simultaneous consumption of multiple item types."""
+
+    def _setup_basket(self):
+        tracker = _make_tracker_with_shelf()
+        tracker.register_item("shelf_01", "weight", "カップラーメン", 90.0, quantity=2)
+        tracker.register_item("shelf_01", "weight", "チューイングキャンディ", 50.0, quantity=3)
+        tracker.register_item("shelf_01", "weight", "お茶漬けカップ", 35.0, quantity=2)
+        state = tracker._states["shelf_01:weight"]
+        return tracker, state
+
+    def _feed_stable(self, tracker, weight, n=3):
+        event = None
+        for _ in range(n):
+            event = tracker.update_weight("kitchen", "shelf_01", "weight", weight)
+        return event
+
+    def test_combo_ramen_plus_candy(self):
+        """90g + 50g = 140g delta should match combo."""
+        tracker, state = self._setup_basket()
+        state.prev_total_weight_g = 400.0
+        self._feed_stable(tracker, 260.0)  # 140g decrease
+        ramen = next(i for i in state.items if i.item_name == "カップラーメン")
+        candy = next(i for i in state.items if i.item_name == "チューイングキャンディ")
+        assert ramen.quantity == 1
+        assert candy.quantity == 2
+
+    def test_combo_ramen_plus_ochazuke(self):
+        """90g + 35g = 125g delta should match combo."""
+        tracker, state = self._setup_basket()
+        state.prev_total_weight_g = 400.0
+        self._feed_stable(tracker, 275.0)  # 125g decrease
+        ramen = next(i for i in state.items if i.item_name == "カップラーメン")
+        ocha = next(i for i in state.items if i.item_name == "お茶漬けカップ")
+        assert ramen.quantity == 1
+        assert ocha.quantity == 1
+
+    def test_single_item_preferred_over_combo(self):
+        """90g delta should match single ramen, not a combo."""
+        tracker, state = self._setup_basket()
+        state.prev_total_weight_g = 400.0
+        self._feed_stable(tracker, 310.0)  # 90g decrease
+        ramen = next(i for i in state.items if i.item_name == "カップラーメン")
+        assert ramen.quantity == 1
+        # Others unchanged
+        candy = next(i for i in state.items if i.item_name == "チューイングキャンディ")
+        ocha = next(i for i in state.items if i.item_name == "お茶漬けカップ")
+        assert candy.quantity == 3
+        assert ocha.quantity == 2
+
+
+class TestComboAddition:
+    """Simultaneous addition of multiple item types."""
+
+    def _setup_empty(self):
+        tracker = _make_tracker_with_shelf()
+        tracker.register_item("shelf_01", "weight", "カップラーメン", 90.0, quantity=0)
+        tracker.register_item("shelf_01", "weight", "チューイングキャンディ", 50.0, quantity=0)
+        state = tracker._states["shelf_01:weight"]
+        return tracker, state
+
+    def _feed_stable(self, tracker, weight, n=3):
+        event = None
+        for _ in range(n):
+            event = tracker.update_weight("kitchen", "shelf_01", "weight", weight)
+        return event
+
+    def test_combo_addition(self):
+        """90g + 50g = 140g increase should match combo addition."""
+        tracker, state = self._setup_empty()
+        state.prev_total_weight_g = 0.0
+        self._feed_stable(tracker, 140.0)
+        ramen = next(i for i in state.items if i.item_name == "カップラーメン")
+        candy = next(i for i in state.items if i.item_name == "チューイングキャンディ")
+        assert ramen.quantity == 1
+        assert candy.quantity == 1
+
+
+class TestNoiseRejection:
+    """Small weight fluctuations should be ignored."""
+
+    def _setup(self):
+        tracker = _make_tracker_with_shelf()
+        tracker.register_item("shelf_01", "weight", "ItemA", 200.0, quantity=5)
+        state = tracker._states["shelf_01:weight"]
+        return tracker, state
+
+    def _feed_stable(self, tracker, weight, n=3):
+        for _ in range(n):
+            tracker.update_weight("kitchen", "shelf_01", "weight", weight)
+
+    def test_small_decrease_ignored(self):
+        tracker, state = self._setup()
+        state.prev_total_weight_g = 1000.0
+        self._feed_stable(tracker, 997.0)  # 3g decrease, below 5g threshold
+        assert state.items[0].quantity == 5
+
+    def test_small_increase_ignored(self):
+        tracker, state = self._setup()
+        state.prev_total_weight_g = 1000.0
+        self._feed_stable(tracker, 1004.0)  # 4g increase, below 5g threshold
+        assert state.items[0].quantity == 5
+
+
+class TestBasketScenario:
+    """Full basket scenario: tare → register → add items → consume → low_stock."""
+
+    def _feed_stable(self, tracker, weight, n=3):
+        events = []
+        for _ in range(n):
+            e = tracker.update_weight("kitchen", "shelf_01", "weight", weight)
+            if e:
+                events.append(e)
+        return events
+
+    def test_full_flow(self):
+        tracker = _make_tracker_with_shelf()
+
+        # Register items with quantity=0 (will be added physically)
+        tracker.register_item("shelf_01", "weight", "カップラーメン", 90.0, quantity=0)
+        tracker.register_item("shelf_01", "weight", "お茶漬け", 35.0, quantity=0)
+        tracker.register_item("shelf_01", "weight", "キャンディ", 50.0, quantity=0)
+        state = tracker._states["shelf_01:weight"]
+
+        # Establish baseline at 0g (tared basket)
+        self._feed_stable(tracker, 0.0)
+        assert state.prev_total_weight_g == 0.0
+
+        # Add 1 ramen (90g)
+        events = self._feed_stable(tracker, 90.0)
+        ramen = next(i for i in state.items if i.item_name == "カップラーメン")
+        assert ramen.quantity == 1
+        assert any(e.event_type == "restocked" for e in events)
+
+        # Add 1 ochazuke + 1 candy simultaneously (35+50 = 85g)
+        events = self._feed_stable(tracker, 175.0)  # 90+85=175
+        ocha = next(i for i in state.items if i.item_name == "お茶漬け")
+        candy = next(i for i in state.items if i.item_name == "キャンディ")
+        assert ocha.quantity == 1
+        assert candy.quantity == 1
+
+        # Consume 1 ramen (weight drops 90g)
+        events = self._feed_stable(tracker, 85.0)  # 175-90=85
+        assert ramen.quantity == 0
+        assert any(e.event_type == "low_stock" and e.item_name == "カップラーメン" for e in events)

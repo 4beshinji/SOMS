@@ -125,6 +125,17 @@ export const fetchShoppingDue = async (): Promise<ShoppingItem[]> => {
   return res.json();
 };
 
+// ── Inventory Live Status ──────────────────────────────────────────
+
+import type { InventoryLiveStatus } from '@soms/types';
+export type { InventoryLiveStatus };
+
+export const fetchInventoryLiveStatus = async (): Promise<InventoryLiveStatus> => {
+  const res = await fetch('/api/inventory/live-status');
+  if (!res.ok) throw new Error('Failed to fetch inventory status');
+  return res.json();
+};
+
 // ── Chat ───────────────────────────────────────────────────────────
 
 export const sendChat = async (message: string): Promise<ChatResponse> => {
