@@ -26,6 +26,28 @@ _live_status: list[dict] = []
 _live_status_updated_at: float = 0.0
 
 
+# --- Live Inventory Status (must be before /{item_id} to avoid path conflict) ---
+
+@router.put("/live-status")
+async def update_live_inventory_status(items: List[InventoryLiveItem]):
+    """Receive live inventory status push from Brain service."""
+    global _live_status, _live_status_updated_at
+    _live_status = [item.model_dump() for item in items]
+    _live_status_updated_at = time.time()
+    return {"status": "ok", "items": len(_live_status)}
+
+
+@router.get("/live-status", response_model=InventoryLiveStatusResponse)
+async def get_live_inventory_status():
+    """Get current live inventory status for dashboard frontend."""
+    return InventoryLiveStatusResponse(
+        items=[InventoryLiveItem(**item) for item in _live_status],
+        updated_at=_live_status_updated_at,
+    )
+
+
+# --- CRUD ---
+
 @router.get("/", response_model=list[InventoryItemResponse])
 async def list_inventory_items(
     zone: Optional[str] = None,
@@ -101,23 +123,3 @@ async def delete_inventory_item(item_id: int, db: AsyncSession = Depends(get_db)
         raise HTTPException(status_code=404, detail="Inventory item not found")
     await db.delete(item)
     await db.commit()
-
-
-# --- Live Inventory Status (pushed by Brain, polled by frontend) ---
-
-@router.put("/live-status")
-async def update_live_inventory_status(items: List[InventoryLiveItem]):
-    """Receive live inventory status push from Brain service."""
-    global _live_status, _live_status_updated_at
-    _live_status = [item.model_dump() for item in items]
-    _live_status_updated_at = time.time()
-    return {"status": "ok", "items": len(_live_status)}
-
-
-@router.get("/live-status", response_model=InventoryLiveStatusResponse)
-async def get_live_inventory_status():
-    """Get current live inventory status for dashboard frontend."""
-    return InventoryLiveStatusResponse(
-        items=[InventoryLiveItem(**item) for item in _live_status],
-        updated_at=_live_status_updated_at,
-    )

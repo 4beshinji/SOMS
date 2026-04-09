@@ -20,15 +20,15 @@ shelves:
     price: null
     barcode: null               # Phase 2: JAN code for barcode-based registration
 
-  # XIAO ESP32-C6 + HX711 scale (テスト: 中公新書)
+  # XIAO ESP32-C6 + HX711 scale
   - device_id: scale_01
     channel: weight
     zone: kitchen
-    item_name: クーデター――政権転覆のメカニズム
-    category: 書籍
-    unit_weight_g: 193.8          # 1冊 = 193.8g
+    item_name: ブタメン
+    category: 食品
+    unit_weight_g: 43.0
     tare_weight_g: 0.0
-    min_threshold: 1              # 0冊になったらアラート
+    min_threshold: 1
     reorder_quantity: 1
     store: null
     price: null

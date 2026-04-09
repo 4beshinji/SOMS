@@ -15,6 +15,7 @@
       "bus": "gpio",
       "dout_pin": 22,
       "sck_pin": 23,
+      "gain": 27,
       "scale": 16682.7,
       "tare": true,
       "tare_readings": 20
