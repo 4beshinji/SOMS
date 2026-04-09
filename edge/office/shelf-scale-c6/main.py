@@ -96,9 +96,9 @@ def main():
                     data = registry.read_all()
                     if data:
                         device.publish_sensor_data(data)
+                    last_report = now
                 except OSError:
                     print("Failed to read sensor")
-                last_report = now
 
             time.sleep(0.1)
 

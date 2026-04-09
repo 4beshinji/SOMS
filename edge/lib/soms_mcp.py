@@ -93,6 +93,7 @@ class MCPDevice:
         self.client = MQTTClient(
             self.device_id, self.broker, port=self.port,
             user=self.mqtt_user, password=self.mqtt_pass,
+            keepalive=60,
         )
         self.client.set_callback(self._mqtt_callback)
         self.client.connect()
@@ -108,6 +109,12 @@ class MCPDevice:
         """Attempt WiFi/MQTT reconnection without machine.reset()."""
         print("Reconnecting...")
         try:
+            # Close old connection to avoid session-taken-over
+            if self.client:
+                try:
+                    self.client.disconnect()
+                except Exception:
+                    pass
             if self._wlan and not self._wlan.isconnected():
                 self.connect_wifi()
             self._connect_mqtt()

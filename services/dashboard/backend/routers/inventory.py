@@ -1,13 +1,13 @@
 """
 Inventory Items API — CRUD for shelf sensor → item mappings,
-plus live status endpoint pushed by Brain service.
+plus live status computed from latest sensor readings.
 """
 import logging
 import time
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -21,29 +21,70 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
-# In-memory live inventory status (pushed by Brain every ~15s)
-_live_status: list[dict] = []
-_live_status_updated_at: float = 0.0
 
-
-# --- Live Inventory Status (must be before /{item_id} to avoid path conflict) ---
-
-@router.put("/live-status")
-async def update_live_inventory_status(items: List[InventoryLiveItem]):
-    """Receive live inventory status push from Brain service."""
-    global _live_status, _live_status_updated_at
-    _live_status = [item.model_dump() for item in items]
-    _live_status_updated_at = time.time()
-    return {"status": "ok", "items": len(_live_status)}
-
+# --- Live Inventory Status (computed from DB sensor data + config) ---
 
 @router.get("/live-status", response_model=InventoryLiveStatusResponse)
-async def get_live_inventory_status():
-    """Get current live inventory status for dashboard frontend."""
-    return InventoryLiveStatusResponse(
-        items=[InventoryLiveItem(**item) for item in _live_status],
-        updated_at=_live_status_updated_at,
+async def get_live_inventory_status(db: AsyncSession = Depends(get_db)):
+    """Compute live inventory status from latest sensor readings + config.
+
+    Rule-based: qty = int(latest_weight / unit_weight_g).
+    No Brain dependency — reads directly from events.raw_events.
+    """
+    # 1. Load active inventory items
+    result = await db.execute(
+        select(InventoryItem).where(InventoryItem.is_active == True)
     )
+    items = result.scalars().all()
+    if not items:
+        return InventoryLiveStatusResponse(items=[], updated_at=time.time())
+
+    # 2. For each item, get latest weight from raw_events
+    live_items = []
+    latest_ts = 0.0
+
+    for item in items:
+        row = (await db.execute(text("""
+            SELECT data->>'value' as weight, timestamp
+            FROM events.raw_events
+            WHERE source_device = :device_id
+              AND event_type = 'sensor_reading'
+              AND data->>'channel' = :channel
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """), {"device_id": item.device_id, "channel": item.channel})).first()
+
+        if row is None:
+            continue
+
+        try:
+            weight = float(row.weight)
+        except (TypeError, ValueError):
+            continue
+
+        ts = row.timestamp.timestamp() if row.timestamp else 0.0
+        if ts > latest_ts:
+            latest_ts = ts
+
+        # Rule: qty = int((weight - tare) / unit_weight)
+        net = weight - item.tare_weight_g
+        qty = max(0, int(net / item.unit_weight_g)) if item.unit_weight_g > 0 else 0
+        status = "low" if qty < item.min_threshold else "ok"
+
+        live_items.append(InventoryLiveItem(
+            device_id=item.device_id,
+            channel=item.channel,
+            zone=item.zone,
+            item_name=item.item_name,
+            category=item.category,
+            quantity=qty,
+            min_threshold=item.min_threshold,
+            current_weight_g=round(weight, 1),
+            status=status,
+            barcode=item.barcode,
+        ))
+
+    return InventoryLiveStatusResponse(items=live_items, updated_at=latest_ts or time.time())
 
 
 # --- CRUD ---

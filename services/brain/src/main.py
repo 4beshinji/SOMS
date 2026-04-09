@@ -891,14 +891,16 @@ class Brain:
 
     async def _inventory_status_push_loop(self):
         """Push inventory status to Dashboard every 15 seconds."""
+        logger.info("Inventory status push loop started")
         while True:
             await asyncio.sleep(15)
             try:
                 status = self.inventory_tracker.get_inventory_status()
                 if status and self.dashboard:
-                    await self.dashboard.push_inventory_status(status)
+                    ok = await self.dashboard.push_inventory_status(status)
+                    logger.debug(f"Inventory push: {len(status)} items, ok={ok}")
             except Exception as e:
-                logger.debug(f"Inventory status push error: {e}")
+                logger.warning(f"Inventory status push error: {e}")
 
     async def _snapshot_loop(self):
         """Periodically write DeviceRegistry snapshot to DB (every 10 minutes)."""
