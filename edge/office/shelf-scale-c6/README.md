@@ -47,7 +47,137 @@ XIAO ESP32-C6          HX711 Board              5KG Load Cell
 
 **重要**: タレとキャリブレーションは別々の exec で実行すること。1回の exec 内で「ユーザーに物を載せてもらう」ような待機を入れると、出力が見えないため指示に従えない。
 
-### Step 1: タレ (空荷)
+### 推奨: gain=64 + プリロード + 区分線形校正
+
+5kg ロードセルは低荷重域で非線形性が大きいため、以下の手法を推奨:
+
+1. **gain=64** (`HX711(22, 23, gain=27)`) — gain=128 よりノイズが少なく線形性が良い
+2. **プリロード** — かご等の重り (100g以上) を常時載せてタレし、線形領域で運用
+3. **区分線形補間** (`read_weight_pw`) — 複数校正点間をセグメント別に線形補間
+
+#### 知見 (2026-04-10 計測)
+
+| 条件 | 0→25.8g 感度 | 25.8→70.7g 感度 | 比率 |
+|------|-------------|----------------|------|
+| gain=128, プリロードなし | 5,775 | 1,618 | 0.28x |
+| gain=64, プリロードなし | 7,467 | 3,101 | 0.42x |
+| gain=64, 141gプリロード | -8,008 | -7,626 | **0.95x** |
+
+プリロードで低荷重の非線形性を回避し、0〜70g で 0.95x の線形性を達成。
+
+#### IRQ 無効化
+
+ESP32 の WiFi 割り込みが bit-bang 中に入ると ADC 値が化ける。`_read_raw()` は
+`machine.disable_irq()` で割り込みを抑止済み。
+
+#### 固定の剛性
+
+ロードセル固定端の剛性がデータ品質を決定する:
+- **バイス固定**: mid_range 14〜30K (安定) ✓
+- **金具固定 (不十分)**: mid_range 260K+ (振動で使えない) ✗
+
+固定端はボルト2本+厚い金属板で挟む等、バイスレベルの剛性が必要。
+
+### 区分線形校正の手順
+
+各ステップは別の exec で実行する。
+
+#### Step 1: プリロード + タレ
+
+```bash
+mpremote connect /dev/ttyACM1 exec "
+from lib.drivers.hx711_driver import HX711
+import time
+hx = HX711(22, 23, gain=27)
+for _ in range(5):
+    try: hx._read_raw()
+    except: pass
+    time.sleep_ms(100)
+
+def trimmed_avg(hx, n=100, trim=25):
+    vals = []
+    for _ in range(n):
+        vals.append(hx._read_raw())
+        time.sleep_ms(30)
+    vals.sort()
+    mid = vals[trim:n-trim]
+    return sum(mid) / len(mid), max(mid)-min(mid)
+
+raw_0, mr = trimmed_avg(hx)
+print(f'0g: raw={raw_0:.0f}  mid_range={mr}')
+"
+```
+
+#### Step 2: 各重量を追加して raw 値を記録
+
+```bash
+# 既知重量を載せた状態で実行 (各重量ごとに繰り返す)
+mpremote connect /dev/ttyACM1 exec "
+from lib.drivers.hx711_driver import HX711
+import time
+hx = HX711(22, 23, gain=27)
+for _ in range(5):
+    try: hx._read_raw()
+    except: pass
+    time.sleep_ms(100)
+
+def trimmed_avg(hx, n=100, trim=25):
+    vals = []
+    for _ in range(n):
+        vals.append(hx._read_raw())
+        time.sleep_ms(30)
+    vals.sort()
+    mid = vals[trim:n-trim]
+    return sum(mid) / len(mid), max(mid)-min(mid)
+
+raw, mr = trimmed_avg(hx)
+print(f'raw={raw:.0f}  mid_range={mr}')
+"
+```
+
+#### Step 3: 校正点をセットして保存
+
+```bash
+mpremote connect /dev/ttyACM1 exec "
+from lib.drivers.hx711_driver import HX711
+hx = HX711(22, 23, gain=27)
+points = [
+    (0.0, RAW_0G),
+    (25.8, RAW_25G),
+    (70.7, RAW_70G),
+]
+hx.set_cal_points(points)
+hx._offset = RAW_0G
+hx._scale = (RAW_70G - RAW_0G) / 70.7
+hx.save_calibration()
+print('saved:', hx.get_calibration())
+"
+```
+
+#### Step 4: 検証
+
+```bash
+mpremote connect /dev/ttyACM1 exec "
+from lib.drivers.hx711_driver import HX711
+import time
+hx = HX711(22, 23, gain=27)
+for _ in range(5):
+    try: hx._read_raw()
+    except: pass
+    time.sleep_ms(100)
+hx.load_calibration()
+for i in range(5):
+    w = hx.read_weight_pw(3)
+    print(round(w, 1), 'g')
+    time.sleep_ms(500)
+"
+```
+
+### 従来の単純2点校正
+
+プリロードなし、gain=128 での校正。精度は ±2g 程度 (低荷重域で悪化)。
+
+#### Step 1: タレ (空荷)
 
 ```bash
 mpremote connect /dev/ttyACM0 exec "
@@ -64,10 +194,9 @@ print('offset =', hx.get_calibration()['offset'])
 "
 ```
 
-### Step 2: 既知重量を載せてキャリブレーション
+#### Step 2: 既知重量を載せてキャリブレーション
 
 ```bash
-# 例: 193.8g の物体を載せた状態で実行
 mpremote connect /dev/ttyACM0 exec "
 from lib.drivers.hx711_driver import HX711
 import time
@@ -87,7 +216,7 @@ for i in range(5):
 "
 ```
 
-### Step 3: 検証 (空荷)
+#### Step 3: 検証 (空荷)
 
 ```bash
 mpremote connect /dev/ttyACM0 exec "
@@ -169,8 +298,9 @@ office/kitchen/sensor/scale_01/heartbeat {"status":"online","uptime_sec":...}
 
 | 日付 | 基準物体 | scale | 精度 | 備考 |
 |------|---------|-------|------|------|
-| 2026-04-09 | 中公新書 193.8g | -16682.7 | ±0.3g | USB 直結テスト |
-| 2026-04-09 | 中公新書 193.8g | -15119.06 | ±2g | WiFi/MQTT E2E テスト |
+| 2026-04-09 | 中公新書 193.8g | -16682.7 | ±0.3g | USB 直結テスト, gain=128 |
+| 2026-04-09 | 中公新書 193.8g | -15119.06 | ±2g | WiFi/MQTT E2E テスト, gain=128 |
+| 2026-04-10 | 3点区分線形 (0/25.8/70.7g) | -8616 (pw) | ±2g | gain=64, keyboard 819g プリロード, バイス固定 |
 
 ## ステータス
 

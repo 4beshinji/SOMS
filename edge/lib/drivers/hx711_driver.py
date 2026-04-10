@@ -28,6 +28,7 @@ class HX711:
         self._gain = gain
         self._offset = 0
         self._scale = 1.0
+        self._cal_points = []
 
     def is_ready(self):
         """Check if HX711 has data ready (DOUT goes LOW)."""
@@ -35,12 +36,16 @@ class HX711:
 
     def _read_raw(self):
         """Read raw 24-bit signed value from HX711."""
+        import machine
         # Wait for ready (DOUT LOW), timeout 1s
         t0 = time.ticks_ms()
         while not self.is_ready():
             if time.ticks_diff(time.ticks_ms(), t0) > 1000:
                 raise OSError("HX711 timeout: not ready")
             time.sleep_us(10)
+
+        # Disable interrupts during critical bit-bang section
+        irq_state = machine.disable_irq()
 
         # Read 24 bits, MSB first
         value = 0
@@ -57,6 +62,8 @@ class HX711:
             time.sleep_us(1)
             self._sck.value(0)
             time.sleep_us(1)
+
+        machine.enable_irq(irq_state)
 
         # Convert from 24-bit two's complement
         if value & 0x800000:
@@ -157,12 +164,85 @@ class HX711:
 
     def get_calibration(self):
         """Return current calibration parameters."""
-        return {"offset": self._offset, "scale": self._scale}
+        result = {"offset": self._offset, "scale": self._scale}
+        if self._cal_points:
+            result["cal_points"] = self._cal_points
+        return result
+
+    def set_cal_points(self, points):
+        """Set piecewise linear calibration points.
+
+        Args:
+            points: list of (weight_g, raw_avg) tuples, sorted by weight.
+                    Must include at least 2 points (e.g., 0g and one known weight).
+        """
+        if len(points) < 2:
+            raise ValueError("Need at least 2 points")
+        self._cal_points = sorted(points, key=lambda p: p[0])
+
+    def read_weight_pw(self, readings=3):
+        """Read weight using piecewise linear interpolation.
+
+        Uses cal_points for segment-based interpolation.
+        Falls back to read_weight() if no cal_points set.
+        Returns weight in grams (float), or None on read failure.
+        """
+        if not self._cal_points or len(self._cal_points) < 2:
+            return self.read_weight(readings)
+        try:
+            total = 0
+            for _ in range(readings):
+                total += self._read_raw()
+                time.sleep_ms(20)
+            raw = total / readings
+
+            pts = self._cal_points
+            # Find segment (points sorted by weight, raw may be increasing or decreasing)
+            # Use raw value to find the right segment
+            # Determine if raw is monotonically increasing or decreasing with weight
+            ascending = pts[-1][1] > pts[0][1]
+
+            if ascending:
+                # raw increases with weight
+                if raw <= pts[0][1]:
+                    w0, r0 = pts[0]
+                    w1, r1 = pts[1]
+                elif raw >= pts[-1][1]:
+                    w0, r0 = pts[-2]
+                    w1, r1 = pts[-1]
+                else:
+                    for i in range(len(pts) - 1):
+                        if pts[i][1] <= raw <= pts[i + 1][1]:
+                            w0, r0 = pts[i]
+                            w1, r1 = pts[i + 1]
+                            break
+            else:
+                # raw decreases with weight
+                if raw >= pts[0][1]:
+                    w0, r0 = pts[0]
+                    w1, r1 = pts[1]
+                elif raw <= pts[-1][1]:
+                    w0, r0 = pts[-2]
+                    w1, r1 = pts[-1]
+                else:
+                    for i in range(len(pts) - 1):
+                        if pts[i][1] >= raw >= pts[i + 1][1]:
+                            w0, r0 = pts[i]
+                            w1, r1 = pts[i + 1]
+                            break
+
+            if abs(r1 - r0) < 1e-10:
+                return None
+            return w0 + (raw - r0) * (w1 - w0) / (r1 - r0)
+        except OSError:
+            return None
 
     def save_calibration(self, path="/calibration.json"):
         """Persist calibration to filesystem (NVS)."""
         import json
         data = {"offset": self._offset, "scale": self._scale}
+        if self._cal_points:
+            data["cal_points"] = self._cal_points
         with open(path, "w") as f:
             json.dump(data, f)
 
@@ -174,6 +254,7 @@ class HX711:
                 data = json.load(f)
             self._offset = data["offset"]
             self._scale = data["scale"]
+            self._cal_points = data.get("cal_points", [])
             return True
         except (OSError, KeyError, ValueError):
             return False
