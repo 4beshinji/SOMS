@@ -59,6 +59,8 @@ class ToolExecutor:
                 return await self._handle_add_shopping_item(arguments)
             elif tool_name == "calibrate_shelf":
                 return await self._handle_calibrate_shelf(arguments)
+            elif tool_name == "trigger_display_event":
+                return await self._handle_trigger_display_event(arguments)
             else:
                 return {"success": False, "error": f"Unknown tool: {tool_name}"}
         except Exception as e:
@@ -392,3 +394,42 @@ class ToolExecutor:
                     "result": f"棚センサ {device_id} のキャリブレーション完了 (scale={scale})",
                 }
             return {"success": False, "error": f"キャリブレーション失敗: {result}"}
+
+    async def _handle_trigger_display_event(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Trigger a cross-dashboard coordination event via Dashboard API."""
+        event_type = args.get("event_type", "avatar_traversal")
+        animation = args.get("animation", "run")
+        speed = args.get("speed", "normal")
+
+        # Parse display_ids from comma-separated string
+        display_ids_str = args.get("display_ids")
+        display_ids = None
+        if display_ids_str:
+            display_ids = [d.strip() for d in display_ids_str.split(",") if d.strip()]
+
+        if event_type == "avatar_traversal":
+            try:
+                async with self._session.post(
+                    f"{self.dashboard_api_url}/coordination/avatar-traversal",
+                    json={
+                        "display_ids": display_ids,
+                        "animation": animation,
+                        "speed": speed,
+                    },
+                    headers=self._service_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        count = len(data.get("sequence", []))
+                        return {
+                            "success": True,
+                            "result": f"アバター横断アニメーションをトリガーしました ({count}台のディスプレイ)",
+                        }
+                    else:
+                        text = await resp.text()
+                        return {"success": False, "error": f"Coordination API エラー: {resp.status} {text}"}
+            except Exception as e:
+                return {"success": False, "error": f"Display event trigger failed: {e}"}
+        else:
+            return {"success": False, "error": f"未知のイベント種別: {event_type}"}

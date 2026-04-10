@@ -13,6 +13,7 @@ import AvatarContainer from './components/avatar/AvatarContainer';
 import { useTaskManager } from './hooks/useTaskManager';
 import { useChat } from './hooks/useChat';
 import { useVoiceInput } from './hooks/useVoiceInput';
+import { DisplayIdentityContext, useDisplayIdentityProvider } from './hooks/useDisplayIdentity';
 
 const DEFAULT_AVATAR_URL = '/models/otomachi_una.pmx';
 
@@ -236,10 +237,13 @@ function Monitor() {
 }
 
 function AuthenticatedApp() {
+  const displayIdentity = useDisplayIdentityProvider();
   return (
-    <ErrorBoundary>
-      <Monitor />
-    </ErrorBoundary>
+    <DisplayIdentityContext.Provider value={displayIdentity}>
+      <ErrorBoundary>
+        <Monitor />
+      </ErrorBoundary>
+    </DisplayIdentityContext.Provider>
   );
 }
 

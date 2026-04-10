@@ -1,11 +1,12 @@
+import json
 import logging
 import random
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
@@ -40,6 +41,8 @@ async def create_voice_event(
         audio_url=event.audio_url,
         zone=event.zone,
         tone=event.tone,
+        target_zone=event.target_zone or event.zone,
+        target_display_ids=json.dumps(event.target_display_ids) if event.target_display_ids else None,
     )
     db.add(db_event)
     await db.commit()
@@ -49,19 +52,41 @@ async def create_voice_event(
 
 @router.get("/recent", response_model=List[schemas.VoiceEvent])
 async def get_recent_voice_events(
+    display_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return voice events from the last 60 seconds (for frontend polling)."""
+    """Return voice events from the last 60 seconds (for frontend polling).
+
+    When display_id is provided, filters to events targeting this display's zone
+    or broadcast events (no target_zone). Without display_id, returns all events.
+    """
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=60)
-    # Also ignore events older than 5 minutes (stale)
     max_age = datetime.now(timezone.utc) - timedelta(minutes=5)
 
-    result = await db.execute(
+    query = (
         select(models.VoiceEvent)
         .where(models.VoiceEvent.created_at >= max_age)
         .where(models.VoiceEvent.created_at >= cutoff)
-        .order_by(models.VoiceEvent.created_at.desc())
     )
+
+    # Zone-based filtering when display_id is provided
+    if display_id:
+        display_result = await db.execute(
+            select(models.DisplayPosition).where(
+                models.DisplayPosition.display_id == display_id
+            )
+        )
+        display_row = display_result.scalar_one_or_none()
+        if display_row:
+            display_zone = display_row.zone
+            query = query.where(
+                or_(
+                    models.VoiceEvent.target_zone.is_(None),
+                    models.VoiceEvent.target_zone == display_zone,
+                )
+            )
+
+    result = await db.execute(query.order_by(models.VoiceEvent.created_at.desc()))
     return result.scalars().all()
 
 

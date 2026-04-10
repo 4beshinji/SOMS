@@ -53,11 +53,20 @@ class CameraConfig:
 
 
 @dataclass
+class DisplayConfig:
+    zone: str = ""
+    position: list[float] = field(default_factory=lambda: [0.0, 0.0])
+    display_name: Optional[str] = None
+    sort_order: int = 0
+
+
+@dataclass
 class SpatialConfig:
     building: BuildingConfig = field(default_factory=BuildingConfig)
     zones: dict[str, ZoneGeometry] = field(default_factory=dict)
     devices: dict[str, DevicePosition] = field(default_factory=dict)
     cameras: dict[str, CameraConfig] = field(default_factory=dict)
+    displays: dict[str, DisplayConfig] = field(default_factory=dict)
 
 
 _cached_config: Optional[SpatialConfig] = None
@@ -116,6 +125,14 @@ def load_spatial_config(path: str = "config/spatial.yaml") -> SpatialConfig:
             resolution=cdata.get("resolution", [640, 480]),
             fov_deg=cdata.get("fov_deg", 90.0),
             orientation_deg=cdata.get("orientation_deg", 0.0),
+        )
+
+    for disp_id, ddata in raw.get("displays", {}).items():
+        config.displays[disp_id] = DisplayConfig(
+            zone=ddata.get("zone", ""),
+            position=ddata.get("position", [0.0, 0.0]),
+            display_name=ddata.get("display_name"),
+            sort_order=ddata.get("sort_order", 0),
         )
 
     _cached_config = config

@@ -13,11 +13,12 @@ from pydantic import BaseModel
 
 
 class SpatialConfigResponse(BaseModel):
-    """Building + zone geometry + device/camera positions."""
+    """Building + zone geometry + device/camera/display positions."""
     building: dict[str, Any] = {}
     zones: dict[str, Any] = {}
     devices: dict[str, Any] = {}
     cameras: dict[str, Any] = {}
+    displays: dict[str, Any] = {}
 
 
 class LiveSpatialData(BaseModel):

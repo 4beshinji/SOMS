@@ -95,13 +95,62 @@ class VoiceEventCreate(BaseModel):
     audio_url: str
     zone: Optional[str] = None
     tone: str = "neutral"
+    target_zone: Optional[str] = None
+    target_display_ids: Optional[List[str]] = None
 
-class VoiceEvent(VoiceEventCreate):
+class VoiceEvent(BaseModel):
     id: int
+    message: str
+    audio_url: str
+    zone: Optional[str] = None
+    tone: str = "neutral"
+    target_zone: Optional[str] = None
+    target_display_ids: Optional[List[str]] = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+# Display Schemas
+class DisplayCreate(BaseModel):
+    display_id: str
+    display_name: Optional[str] = None
+    zone: str
+    x: float
+    y: float
+    screen_width_px: Optional[int] = None
+    screen_height_px: Optional[int] = None
+    sort_order: int = 0
+
+class DisplayUpdate(BaseModel):
+    display_name: Optional[str] = None
+    zone: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    screen_width_px: Optional[int] = None
+    screen_height_px: Optional[int] = None
+    sort_order: Optional[int] = None
+
+class DisplayOut(BaseModel):
+    id: int
+    display_id: str
+    display_name: Optional[str] = None
+    zone: str
+    x: float
+    y: float
+    screen_width_px: Optional[int] = None
+    screen_height_px: Optional[int] = None
+    sort_order: int = 0
+    is_active: bool = True
+    last_seen_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class DisplayHeartbeat(BaseModel):
+    screen_width_px: Optional[int] = None
+    screen_height_px: Optional[int] = None
 
 # User Schemas
 class UserBase(BaseModel):

@@ -55,6 +55,8 @@ class VoiceEvent(Base):
     audio_url = Column(String)
     zone = Column(String, nullable=True)
     tone = Column(String, default="neutral")
+    target_zone = Column(String, nullable=True)
+    target_display_ids = Column(String, nullable=True)  # JSON array
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class SystemStats(Base):
@@ -157,6 +159,23 @@ class ChatLog(Base):
     assistant_message = Column(String)
     audio_url = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class DisplayPosition(Base):
+    __tablename__ = "display_positions"
+    id = Column(Integer, primary_key=True, index=True)
+    display_id = Column(String, unique=True, index=True)
+    display_name = Column(String, nullable=True)
+    zone = Column(String)
+    x = Column(Float)
+    y = Column(Float)
+    screen_width_px = Column(Integer, nullable=True)
+    screen_height_px = Column(Integer, nullable=True)
+    sort_order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 class User(Base):

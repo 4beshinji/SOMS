@@ -219,6 +219,35 @@ TOOLS = [
                 "required": ["name", "quantity"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "trigger_display_event",
+            "description": "複数のダッシュボードディスプレイ間で連動イベントをトリガーする。アバターが画面を横断するアニメーションなど。来客歓迎時やイベント演出に使用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "event_type": {
+                        "type": "string",
+                        "description": "イベント種別: avatar_traversal（アバター横断）"
+                    },
+                    "display_ids": {
+                        "type": "string",
+                        "description": "対象ディスプレイIDをカンマ区切りで（省略時: 全台をsort_order順で使用）"
+                    },
+                    "animation": {
+                        "type": "string",
+                        "description": "アニメーション種別: run（走る）、walk（歩く）。デフォルト: run"
+                    },
+                    "speed": {
+                        "type": "string",
+                        "description": "速度: slow, normal, fast。デフォルト: normal"
+                    }
+                },
+                "required": ["event_type"]
+            }
+        }
     }
 ]
 

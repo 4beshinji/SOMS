@@ -13,7 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from spatial_config import load_spatial_config
-from models import DevicePosition, CameraPosition
+from models import DevicePosition, CameraPosition, DisplayPosition as DisplayPositionModel
 from .spatial_repository import (
     HeatmapData,
     LiveSpatialData,
@@ -87,6 +87,27 @@ class PgSpatialRepository(SpatialDataRepository):
         except Exception:
             logger.warning("Could not read camera_positions table (may not exist yet)")
 
+        # Start with YAML displays
+        displays = {
+            disp_id: asdict(disp)
+            for disp_id, disp in config.displays.items()
+        }
+
+        # Merge DB display_positions (DB wins on same display_id)
+        try:
+            result = await self._session.execute(select(DisplayPositionModel))
+            for row in result.scalars().all():
+                existing = displays.get(row.display_id, {})
+                existing.update({
+                    "zone": row.zone,
+                    "position": [row.x, row.y],
+                    "display_name": row.display_name,
+                    "sort_order": row.sort_order,
+                })
+                displays[row.display_id] = existing
+        except Exception:
+            logger.warning("Could not read display_positions table (may not exist yet)")
+
         return SpatialConfigResponse(
             building=asdict(config.building),
             zones={
@@ -95,6 +116,7 @@ class PgSpatialRepository(SpatialDataRepository):
             },
             devices=devices,
             cameras=cameras,
+            displays=displays,
         )
 
     async def get_live_spatial(

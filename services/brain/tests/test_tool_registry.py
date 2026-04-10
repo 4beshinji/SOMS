@@ -38,6 +38,7 @@ class TestGetters:
             "check_inventory",
             "add_shopping_item",
             "calibrate_shelf",
+            "trigger_display_event",
         }
         assert expected == names
 

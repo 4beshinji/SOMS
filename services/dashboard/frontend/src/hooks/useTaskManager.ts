@@ -11,6 +11,7 @@ import {
   acceptTask,
   completeTask,
 } from '../api';
+import { useDisplayIdentity } from './useDisplayIdentity';
 
 const DEFAULT_DISPLAY_TASKS = 10;
 const DISPLAY_TASKS_INCREMENT = 10;
@@ -20,6 +21,7 @@ const CHITCHAT_POLL_INTERVAL = 120_000; // 2 minutes — consume from stock peri
 
 export function useTaskManager() {
   const queryClient = useQueryClient();
+  const { displayId, zone: displayZone } = useDisplayIdentity();
 
   const [isAudioEnabled, setIsAudioEnabledRaw] = useState(false);
   const setIsAudioEnabled = (value: boolean) => {
@@ -76,8 +78,8 @@ export function useTaskManager() {
   });
 
   const voiceEventsQuery = useQuery({
-    queryKey: ['voiceEvents'],
-    queryFn: fetchVoiceEvents,
+    queryKey: ['voiceEvents', displayId],
+    queryFn: () => fetchVoiceEvents(displayId ?? undefined),
     refetchInterval: 3000,
     enabled: isAudioEnabled,
   });
@@ -214,6 +216,12 @@ export function useTaskManager() {
       const aAccepted = acceptedTaskIds.has(a.id);
       const bAccepted = acceptedTaskIds.has(b.id);
       if (aAccepted !== bAccepted) return aAccepted ? -1 : 1;
+      // Zone proximity: tasks in the same zone as this display sort higher
+      if (displayZone) {
+        const aLocal = a.zone === displayZone;
+        const bLocal = b.zone === displayZone;
+        if (aLocal !== bLocal) return aLocal ? -1 : 1;
+      }
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 

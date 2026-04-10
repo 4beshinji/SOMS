@@ -30,8 +30,9 @@ export const fetchSupply = async (): Promise<SupplyStats> => {
   return res.json();
 };
 
-export const fetchVoiceEvents = async (): Promise<{ id: number; audio_url: string }[]> => {
-  const res = await fetch('/api/voice-events/recent');
+export const fetchVoiceEvents = async (displayId?: string): Promise<{ id: number; audio_url: string }[]> => {
+  const params = displayId ? `?display_id=${encodeURIComponent(displayId)}` : '';
+  const res = await fetch(`/api/voice-events/recent${params}`);
   if (!res.ok) throw new Error('Failed to fetch voice events');
   return res.json();
 };
@@ -203,6 +204,43 @@ export async function sendChatStream(
   }
   onDone();
 }
+
+// ── Display Identity ──────────────────────────────────────────────
+
+export interface DisplayInfo {
+  id: number;
+  display_id: string;
+  display_name: string | null;
+  zone: string;
+  x: number;
+  y: number;
+  screen_width_px: number | null;
+  screen_height_px: number | null;
+  sort_order: number;
+  is_active: boolean;
+  last_seen_at: string | null;
+}
+
+export const fetchDisplay = async (displayId: string): Promise<DisplayInfo> => {
+  const res = await fetch(`/api/displays/${encodeURIComponent(displayId)}`);
+  if (!res.ok) throw new Error(`Display '${displayId}' not found`);
+  return res.json();
+};
+
+export const sendDisplayHeartbeat = async (
+  displayId: string,
+  screenWidth?: number,
+  screenHeight?: number,
+): Promise<void> => {
+  const body: Record<string, number> = {};
+  if (screenWidth != null) body.screen_width_px = screenWidth;
+  if (screenHeight != null) body.screen_height_px = screenHeight;
+  await fetch(`/api/displays/${encodeURIComponent(displayId)}/heartbeat`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+};
 
 export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
   const form = new FormData();
