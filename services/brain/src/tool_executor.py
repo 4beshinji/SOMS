@@ -71,7 +71,6 @@ class ToolExecutor:
         """Create a task via DashboardClient and register with TaskQueueManager."""
         title = args.get("title", "")
         description = args.get("description", "")
-        bounty = args.get("bounty", 1000)
         urgency = args.get("urgency", 2)
         zone = args.get("zone")
         audience = args.get("audience", "user")
@@ -83,7 +82,6 @@ class ToolExecutor:
         result = await self.dashboard.create_task(
             title=title,
             description=description,
-            bounty=bounty,
             urgency=urgency,
             zone=zone,
             task_types=task_types,
@@ -107,7 +105,7 @@ class ToolExecutor:
 
             return {
                 "success": True,
-                "result": f"タスク '{title}' を作成しました (ID: {task_id}, 報酬: {bounty}pt)",
+                "result": f"タスク '{title}' を作成しました (ID: {task_id})",
             }
         else:
             return {"success": False, "error": "タスクの作成に失敗しました"}

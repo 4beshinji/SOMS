@@ -91,7 +91,7 @@ class TestCreateTask:
         result = await client.create_task(
             title="Test task",
             description="Test description",
-            bounty=1000,
+            
             urgency=2,
             zone="main",
         )
@@ -115,7 +115,7 @@ class TestCreateTask:
         result = await client.create_task(
             title="Voice task",
             description="Desc",
-            bounty=500,
+            
             urgency=1,
             zone="kitchen",
         )
@@ -193,7 +193,7 @@ class TestCreateTask:
         session = _mock_session([voice_resp, task_resp])
         client = DashboardClient(enable_voice=True, session=session)
 
-        result = await client.create_task(title="T", description="D", bounty=100)
+        result = await client.create_task(title="T", description="D", )
         assert result is not None
         assert result["id"] == 7
 

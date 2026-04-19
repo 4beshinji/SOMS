@@ -55,12 +55,6 @@ class Sanitizer:
 
     def _validate_create_task(self, args: Dict[str, Any]) -> Tuple[bool, str]:
         """Validate create_task parameters."""
-        # Bounty cap
-        bounty = args.get("bounty", 0)
-        if isinstance(bounty, (int, float)) and bounty > 5000:
-            logger.warning(f"REJECTED: Bounty {bounty} exceeds maximum 5000")
-            return False, f"Bounty {bounty} exceeds maximum of 5000"
-
         # Urgency range
         urgency = args.get("urgency", 2)
         if isinstance(urgency, (int, float)) and not (0 <= urgency <= 4):

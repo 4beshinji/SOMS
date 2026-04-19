@@ -47,7 +47,6 @@ def client(tmp_path):
     orig_speech = main_mod.speech_gen
     orig_rejection = main_mod.rejection_stock
     orig_acceptance = main_mod.acceptance_stock
-    orig_currency = main_mod.currency_unit_stock
     orig_audio_dir = main_mod.AUDIO_DIR
 
     # Create mocks — synthesize returns AudioResult
@@ -85,19 +84,10 @@ def client(tmp_path):
     mock_acceptance.is_idle = True
     mock_acceptance.needs_refill = True
 
-    mock_currency = MagicMock()
-    mock_currency.request_started = MagicMock()
-    mock_currency.request_finished = MagicMock()
-    mock_currency.get_random = MagicMock(return_value="test-points")
-    mock_currency.clear_all = AsyncMock()
-    mock_currency.count = 3
-    mock_currency.needs_refill = True
-
     main_mod.voice_provider = mock_voice
     main_mod.speech_gen = mock_speech
     main_mod.rejection_stock = mock_rejection
     main_mod.acceptance_stock = mock_acceptance
-    main_mod.currency_unit_stock = mock_currency
     main_mod.AUDIO_DIR = audio_tmp
 
     # Disable lifespan background tasks
@@ -108,14 +98,13 @@ def client(tmp_path):
     main_mod.app.router.lifespan_context = noop_lifespan
 
     tc = TestClient(main_mod.app)
-    yield tc, mock_voice, mock_speech, mock_rejection, mock_acceptance, mock_currency, audio_tmp
+    yield tc, mock_voice, mock_speech, mock_rejection, mock_acceptance, audio_tmp
 
     # Restore
     main_mod.voice_provider = orig_voice
     main_mod.speech_gen = orig_speech
     main_mod.rejection_stock = orig_rejection
     main_mod.acceptance_stock = orig_acceptance
-    main_mod.currency_unit_stock = orig_currency
     main_mod.AUDIO_DIR = orig_audio_dir
 
 
@@ -139,7 +128,7 @@ class TestRootEndpoint:
 class TestSynthesizeEndpoint:
 
     def test_synthesize_success(self, client):
-        tc, mock_voice, mock_speech, mock_rejection, mock_acceptance, mock_currency, tmp = client
+        tc, mock_voice, mock_speech, mock_rejection, mock_acceptance, tmp = client
         resp = tc.post("/api/voice/synthesize", json={"text": "Hello world"})
         assert resp.status_code == 200
         data = resp.json()
@@ -150,8 +139,6 @@ class TestSynthesizeEndpoint:
         mock_rejection.request_finished.assert_called()
         mock_acceptance.request_started.assert_called()
         mock_acceptance.request_finished.assert_called()
-        mock_currency.request_started.assert_called()
-        mock_currency.request_finished.assert_called()
 
     def test_synthesize_voicevox_error(self, client):
         tc, mock_voice, *_ = client
@@ -171,7 +158,6 @@ class TestAnnounceEndpoint:
             "task": {
                 "title": "Refill coffee",
                 "description": "Coffee beans need refilling",
-                "bounty_gold": 100,
                 "urgency": 2,
             }
         }
@@ -220,7 +206,6 @@ class TestAnnounceWithCompletionEndpoint:
             "task": {
                 "title": "Clean kitchen",
                 "description": "Wipe counters",
-                "bounty_gold": 50,
             }
         }
         resp = tc.post("/api/voice/announce_with_completion", json=payload)
@@ -248,7 +233,7 @@ class TestRejectionEndpoints:
         assert data["text"] == "Hmph"
 
     def test_rejection_random_fallback_on_demand(self, client):
-        tc, mock_voice, mock_speech, mock_rejection, mock_acceptance, mock_currency, tmp = client
+        tc, mock_voice, mock_speech, mock_rejection, mock_acceptance, tmp = client
         mock_rejection.get_random = AsyncMock(return_value=None)
         resp = tc.get("/api/voice/rejection/random")
         assert resp.status_code == 200
@@ -300,27 +285,6 @@ class TestAcceptanceEndpoints:
         mock_acceptance.clear_all.assert_called_once()
 
 
-# ── Currency unit endpoints ──────────────────────────────────────
-
-
-class TestCurrencyUnitEndpoints:
-
-    def test_currency_status(self, client):
-        tc, mock_voice, mock_speech, mock_rejection, mock_acceptance, mock_currency, *_ = client
-        resp = tc.get("/api/voice/currency-units/status")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["stock_count"] == 3
-        assert data["max_stock"] == 50
-        assert data["sample"] == "test-points"
-
-    def test_currency_clear(self, client):
-        tc, mock_voice, mock_speech, mock_rejection, mock_acceptance, mock_currency, *_ = client
-        resp = tc.post("/api/voice/currency-units/clear")
-        assert resp.status_code == 200
-        mock_currency.clear_all.assert_called_once()
-
-
 # ── Audio serving ────────────────────────────────────────────────
 
 
@@ -332,7 +296,7 @@ class TestAudioServing:
         assert resp.status_code == 404
 
     def test_serve_audio_exists(self, client):
-        tc, mock_voice, mock_speech, mock_rejection, mock_acceptance, mock_currency, audio_tmp = client
+        tc, mock_voice, mock_speech, mock_rejection, mock_acceptance, audio_tmp = client
         audio_file = audio_tmp / "test_audio.mp3"
         audio_file.write_bytes(b"\xff\xfb\x90\x00" * 100)
         resp = tc.get("/audio/test_audio.mp3")

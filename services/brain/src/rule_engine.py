@@ -105,7 +105,6 @@ class RuleEngine:
                             "args": {
                                 "title": f"転倒検知: {zone_name}で転倒の可能性",
                                 "description": f"{zone_name}で転倒が検知されました。速やかに確認してください。",
-                                "bounty": 5000,
                                 "urgency": 4,
                                 "zone": zone_id,
                             },
@@ -120,7 +119,6 @@ class RuleEngine:
                         "args": {
                             "title": f"CO2危険: {zone_name} ({env.co2:.0f}ppm)",
                             "description": f"{zone_name}のCO2濃度が{env.co2:.0f}ppmで危険水準です。直ちに換気してください。",
-                            "bounty": 3000,
                             "urgency": 3,
                             "zone": zone_id,
                         },
@@ -136,7 +134,6 @@ class RuleEngine:
                             "args": {
                                 "title": f"高温警報: {zone_name} ({env.temperature:.1f}℃)",
                                 "description": f"{zone_name}の温度が{env.temperature:.1f}℃で危険です。冷房を確認してください。",
-                                "bounty": 3000,
                                 "urgency": 3,
                                 "zone": zone_id,
                             },
@@ -149,7 +146,6 @@ class RuleEngine:
                             "args": {
                                 "title": f"低温警報: {zone_name} ({env.temperature:.1f}℃)",
                                 "description": f"{zone_name}の温度が{env.temperature:.1f}℃で危険です。暖房を確認してください。",
-                                "bounty": 3000,
                                 "urgency": 3,
                                 "zone": zone_id,
                             },
@@ -165,7 +161,6 @@ class RuleEngine:
                         "args": {
                             "title": f"漏水検知: {zone_name}",
                             "description": f"{zone_name}で漏水が検知されました。速やかに確認してください。",
-                            "bounty": 5000,
                             "urgency": 4,
                             "zone": zone_id,
                         },
@@ -194,7 +189,6 @@ class RuleEngine:
                         "args": {
                             "title": f"換気推奨: {zone_name} CO2 {env.co2:.0f}ppm",
                             "description": f"{zone_name}のCO2濃度が{env.co2:.0f}ppmです。換気をお願いします。",
-                            "bounty": 500,
                             "urgency": 1,
                             "zone": zone_id,
                         },
@@ -210,7 +204,6 @@ class RuleEngine:
                             "args": {
                                 "title": f"室温高め: {zone_name} ({env.temperature:.1f}℃)",
                                 "description": f"{zone_name}の温度が{env.temperature:.1f}℃で快適範囲を超えています。",
-                                "bounty": 500,
                                 "urgency": 1,
                                 "zone": zone_id,
                             },
@@ -223,7 +216,6 @@ class RuleEngine:
                             "args": {
                                 "title": f"室温低め: {zone_name} ({env.temperature:.1f}℃)",
                                 "description": f"{zone_name}の温度が{env.temperature:.1f}℃で快適範囲を下回っています。",
-                                "bounty": 500,
                                 "urgency": 1,
                                 "zone": zone_id,
                             },
@@ -239,7 +231,6 @@ class RuleEngine:
                             "args": {
                                 "title": f"湿度高: {zone_name} ({env.humidity:.0f}%)",
                                 "description": f"{zone_name}の湿度が{env.humidity:.0f}%です。除湿をお願いします。",
-                                "bounty": 500,
                                 "urgency": 1,
                                 "zone": zone_id,
                             },
@@ -252,7 +243,6 @@ class RuleEngine:
                             "args": {
                                 "title": f"湿度低: {zone_name} ({env.humidity:.0f}%)",
                                 "description": f"{zone_name}の湿度が{env.humidity:.0f}%です。加湿をお願いします。",
-                                "bounty": 500,
                                 "urgency": 1,
                                 "zone": zone_id,
                             },

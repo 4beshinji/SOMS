@@ -94,7 +94,6 @@ class TaskReminder:
                     "title": task.get("title"),
                     "description": task.get("description"),
                     "location": task.get("location"),
-                    "bounty_gold": task.get("bounty_gold", 0),
                     "urgency": task.get("urgency", 2),
                     "zone": task.get("zone")
                 }

@@ -68,13 +68,13 @@ class TestValidationGate:
     async def test_rejected_by_sanitizer(self):
         sanitizer = Sanitizer()
         executor = _make_executor(sanitizer=sanitizer)
-        # Bounty exceeds 5000 → rejected
+        # Urgency out of range → rejected
         result = await executor.execute(
             "create_task",
-            {"title": "Test", "bounty": 9999, "urgency": 2},
+            {"title": "Test", "urgency": 9},
         )
         assert result["success"] is False
-        assert "5000" in result["error"]
+        assert "0 and 4" in result["error"]
 
     @pytest.mark.asyncio
     async def test_unknown_tool_rejected(self):
@@ -106,7 +106,7 @@ class TestCreateTask:
 
         result = await executor.execute(
             "create_task",
-            {"title": "Clean kitchen", "description": "Wipe counters", "bounty": 1500, "urgency": 3, "zone": "kitchen"},
+            {"title": "Clean kitchen", "description": "Wipe counters", "urgency": 3, "zone": "kitchen"},
         )
 
         assert result["success"] is True
@@ -126,7 +126,7 @@ class TestCreateTask:
         executor = _make_executor(sanitizer=sanitizer, dashboard_client=dashboard)
         await executor.execute(
             "create_task",
-            {"title": "T", "description": "D", "bounty": 500, "urgency": 1},
+            {"title": "T", "description": "D", "urgency": 1},
         )
         assert len(sanitizer._task_creation_times) == 1
 
@@ -138,7 +138,7 @@ class TestCreateTask:
         executor = _make_executor(dashboard_client=dashboard)
         result = await executor.execute(
             "create_task",
-            {"title": "Fail", "description": "D", "bounty": 500, "urgency": 1},
+            {"title": "Fail", "description": "D", "urgency": 1},
         )
         assert result["success"] is False
         assert "失敗" in result["error"]
@@ -151,7 +151,7 @@ class TestCreateTask:
         executor = _make_executor(dashboard_client=dashboard)
         result = await executor.execute(
             "create_task",
-            {"title": "No ID", "description": "D", "bounty": 500, "urgency": 1},
+            {"title": "No ID", "description": "D", "urgency": 1},
         )
         assert result["success"] is False
 
@@ -163,7 +163,7 @@ class TestCreateTask:
         executor = _make_executor(dashboard_client=dashboard, task_queue=AsyncMock())
         await executor.execute(
             "create_task",
-            {"title": "T", "description": "D", "bounty": 500, "urgency": 1, "task_types": "supply, urgent"},
+            {"title": "T", "description": "D", "urgency": 1, "task_types": "supply, urgent"},
         )
         call_args = dashboard.create_task.call_args
         assert call_args.kwargs["task_types"] == ["supply", "urgent"]
@@ -181,7 +181,7 @@ class TestCreateTask:
         )
         result = await executor.execute(
             "create_task",
-            {"title": "T", "description": "D", "bounty": 500, "urgency": 1},
+            {"title": "T", "description": "D", "urgency": 1},
         )
         assert result["success"] is True
 
@@ -527,7 +527,7 @@ class TestExceptionHandling:
         executor = _make_executor(dashboard_client=dashboard)
         result = await executor.execute(
             "create_task",
-            {"title": "T", "description": "D", "bounty": 500, "urgency": 1},
+            {"title": "T", "description": "D", "urgency": 1},
         )
         assert result["success"] is False
         assert "DB down" in result["error"]

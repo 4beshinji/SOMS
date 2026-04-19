@@ -23,16 +23,11 @@ from provider_factory import create_provider
 from speech_generator import SpeechGenerator
 from rejection_stock import RejectionStock, idle_generation_loop
 from acceptance_stock import AcceptanceStock, idle_acceptance_generation_loop
-from currency_unit_stock import CurrencyUnitStock, idle_currency_generation_loop
 
 # Create TTS provider via factory
 voice_provider = create_provider()
 
 speech_gen = SpeechGenerator()
-
-# Currency unit stock (text-only, injected into speech_gen)
-currency_unit_stock = CurrencyUnitStock(speech_gen)
-speech_gen.currency_stock = currency_unit_stock
 
 # Rejection voice stock
 rejection_stock = RejectionStock(speech_gen, voice_provider)
@@ -75,13 +70,11 @@ async def lifespan(app: FastAPI):
     # Start idle generation background tasks
     rejection_task = asyncio.create_task(idle_generation_loop(rejection_stock))
     acceptance_task = asyncio.create_task(idle_acceptance_generation_loop(acceptance_stock))
-    currency_task = asyncio.create_task(idle_currency_generation_loop(currency_unit_stock))
-    logger.info("Background idle generation tasks started (rejection + acceptance + currency)")
+    logger.info("Background idle generation tasks started (rejection + acceptance)")
     yield
     rejection_task.cancel()
     acceptance_task.cancel()
-    currency_task.cancel()
-    for t in [rejection_task, acceptance_task, currency_task]:
+    for t in [rejection_task, acceptance_task]:
         try:
             await t
         except asyncio.CancelledError:
@@ -140,7 +133,6 @@ async def synthesize_text(request: SynthesizeRequest):
     """
     rejection_stock.request_started()
     acceptance_stock.request_started()
-    currency_unit_stock.request_started()
     try:
         logger.info(f"Synthesizing text: {request.text[:50]}...")
 
@@ -165,7 +157,6 @@ async def synthesize_text(request: SynthesizeRequest):
     finally:
         rejection_stock.request_finished()
         acceptance_stock.request_finished()
-        currency_unit_stock.request_finished()
 
 @app.post("/api/voice/announce", response_model=VoiceResponse)
 async def announce_task(request: TaskAnnounceRequest):
@@ -180,7 +171,6 @@ async def announce_task(request: TaskAnnounceRequest):
     """
     rejection_stock.request_started()
     acceptance_stock.request_started()
-    currency_unit_stock.request_started()
     try:
         logger.info(f"Announcing task: {request.task.title}")
 
@@ -206,7 +196,6 @@ async def announce_task(request: TaskAnnounceRequest):
     finally:
         rejection_stock.request_finished()
         acceptance_stock.request_finished()
-        currency_unit_stock.request_finished()
 
 @app.post("/api/voice/feedback/{feedback_type}")
 async def generate_feedback(feedback_type: str):
@@ -218,7 +207,6 @@ async def generate_feedback(feedback_type: str):
     """
     rejection_stock.request_started()
     acceptance_stock.request_started()
-    currency_unit_stock.request_started()
     try:
         logger.info(f"Generating feedback: {feedback_type}")
 
@@ -244,7 +232,6 @@ async def generate_feedback(feedback_type: str):
     finally:
         rejection_stock.request_finished()
         acceptance_stock.request_finished()
-        currency_unit_stock.request_finished()
 
 @app.post("/api/voice/announce_with_completion", response_model=DualVoiceResponse)
 async def announce_task_with_completion(request: TaskAnnounceRequest):
@@ -254,7 +241,6 @@ async def announce_task_with_completion(request: TaskAnnounceRequest):
     """
     rejection_stock.request_started()
     acceptance_stock.request_started()
-    currency_unit_stock.request_started()
     try:
         logger.info(f"Generating dual voice for task: {request.task.title}")
 
@@ -303,7 +289,6 @@ async def announce_task_with_completion(request: TaskAnnounceRequest):
     finally:
         rejection_stock.request_finished()
         acceptance_stock.request_finished()
-        currency_unit_stock.request_finished()
 
 @app.get("/api/voice/credit")
 async def get_voice_credit():
@@ -327,7 +312,6 @@ async def get_random_rejection():
     logger.warning("Rejection stock empty, generating on-demand")
     rejection_stock.request_started()
     acceptance_stock.request_started()
-    currency_unit_stock.request_started()
     try:
         text = await speech_gen.generate_rejection_text()
         result = await voice_provider.synthesize(text, voice="rejection")
@@ -342,7 +326,6 @@ async def get_random_rejection():
     finally:
         rejection_stock.request_finished()
         acceptance_stock.request_finished()
-        currency_unit_stock.request_finished()
 
 
 @app.get("/api/voice/rejection/status")
@@ -379,7 +362,6 @@ async def get_random_acceptance():
     logger.warning("Acceptance stock empty, generating on-demand")
     rejection_stock.request_started()
     acceptance_stock.request_started()
-    currency_unit_stock.request_started()
     try:
         text = await speech_gen.generate_acceptance_text()
         result = await voice_provider.synthesize(text, voice="acceptance")
@@ -394,7 +376,6 @@ async def get_random_acceptance():
     finally:
         rejection_stock.request_finished()
         acceptance_stock.request_finished()
-        currency_unit_stock.request_finished()
 
 
 @app.get("/api/voice/acceptance/status")
@@ -414,25 +395,6 @@ async def clear_acceptance_stock(x_service_token: str = Header(None, alias="X-Se
     _verify_service_token(x_service_token)
     await acceptance_stock.clear_all()
     return {"status": "cleared", "stock_count": acceptance_stock.count}
-
-
-@app.get("/api/voice/currency-units/status")
-async def get_currency_unit_status():
-    """Get current currency unit stock status."""
-    return {
-        "stock_count": currency_unit_stock.count,
-        "max_stock": 50,
-        "needs_refill": currency_unit_stock.needs_refill,
-        "sample": currency_unit_stock.get_random(),
-    }
-
-
-@app.post("/api/voice/currency-units/clear")
-async def clear_currency_unit_stock(x_service_token: str = Header(None, alias="X-Service-Token")):
-    """Clear all pre-generated currency unit stock and force regeneration."""
-    _verify_service_token(x_service_token)
-    await currency_unit_stock.clear_all()
-    return {"status": "cleared", "stock_count": currency_unit_stock.count}
 
 
 def _safe_audio_path(base_dir: Path, filename: str) -> Path:

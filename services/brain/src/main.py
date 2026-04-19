@@ -18,7 +18,6 @@ from tool_executor import ToolExecutor
 from tool_registry import get_tools
 from system_prompt import build_system_message, build_chitchat_message
 from device_registry import DeviceRegistry
-from wallet_bridge import WalletBridge
 from event_store import init_db, EventWriter, HourlyAggregator
 from spatial_config import load_spatial_config
 from federation_config import load_federation_config, get_region_id
@@ -117,7 +116,6 @@ class Brain:
         self.task_queue = None
         self.task_reminder = None
         self.tool_executor = None
-        self.wallet_bridge = None
 
         # Event-driven trigger
         self._cycle_triggered = asyncio.Event()
@@ -174,7 +172,7 @@ class Brain:
                         region_id=self.region_id,
                     )
 
-        # Forward heartbeat messages to DeviceRegistry and Wallet
+        # Forward heartbeat messages to DeviceRegistry
         if "/heartbeat" in topic:
             parts = topic.split("/")
             # Extract device_id from topic (e.g., office/main/sensor/env_01/heartbeat)
@@ -185,14 +183,6 @@ class Brain:
                 label = payload.get("label", "")
                 if label:
                     self.world_model.set_device_label(device_id, label)
-                # Forward to Wallet service for reward distribution
-                if self.wallet_bridge and self._loop:
-                    asyncio.ensure_future(
-                        self.wallet_bridge.forward_heartbeat(device_id, payload)
-                    )
-                    asyncio.ensure_future(
-                        self.wallet_bridge.forward_children(device_id, payload)
-                    )
 
         # Check if new events were generated -> trigger cycle
         current_event_counts = {
@@ -977,7 +967,6 @@ class Brain:
                 inventory_tracker=self.inventory_tracker,
                 calibration_manager=self.calibration_manager,
             )
-            self.wallet_bridge = WalletBridge(session, self.device_registry)
             self.weather_fetcher = WeatherFetcher(
                 location=os.getenv("CHITCHAT_WEATHER_LOCATION", "Maebashi"),
                 session=session,

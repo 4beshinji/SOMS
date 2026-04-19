@@ -158,7 +158,7 @@ class TestCompleteTaskAuth:
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
-        with patch("routers.tasks._grant_device_xp"), \
+        with \
              patch("routers.tasks._publish_task_report"):
             app = _create_app(db)
             client = TestClient(app)
@@ -180,7 +180,7 @@ class TestCompleteTaskAuth:
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
-        with patch("routers.tasks._grant_device_xp"), \
+        with \
              patch("routers.tasks._publish_task_report"):
             app = _create_app(db)
             client = TestClient(app)
@@ -197,7 +197,7 @@ class TestCompleteTaskAuth:
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
-        with patch("routers.tasks._grant_device_xp"), \
+        with \
              patch("routers.tasks._publish_task_report"):
             app = _create_app(db)
             client = TestClient(app)
@@ -212,7 +212,7 @@ class TestCompleteTaskAuth:
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
-        with patch("routers.tasks._grant_device_xp"), \
+        with \
              patch("routers.tasks._publish_task_report"):
             app = _create_app(db)
             client = TestClient(app)
@@ -227,7 +227,7 @@ class TestCompleteTaskAuth:
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
-        with patch("routers.tasks._grant_device_xp"), \
+        with \
              patch("routers.tasks._publish_task_report"):
             app = _create_app(db)
             client = TestClient(app)

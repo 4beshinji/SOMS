@@ -44,13 +44,11 @@ _TEST_ACCEPTANCES_DIR.mkdir(exist_ok=True)
 # Patch stock module constants before any import of main
 import rejection_stock as _rs_mod
 import acceptance_stock as _as_mod
-import currency_unit_stock as _cu_mod
 
 _rs_mod.STOCK_DIR = _TEST_REJECTIONS_DIR
 _rs_mod.MANIFEST_PATH = _TEST_REJECTIONS_DIR / "manifest.json"
 _as_mod.STOCK_DIR = _TEST_ACCEPTANCES_DIR
 _as_mod.MANIFEST_PATH = _TEST_ACCEPTANCES_DIR / "manifest.json"
-_cu_mod.STOCK_PATH = _TEST_AUDIO_DIR / "currency_units.json"
 
 # Temporarily patch pathlib.Path.mkdir to avoid /app/audio creation errors
 _orig_mkdir = Path.mkdir
@@ -78,13 +76,11 @@ def mock_speech_gen():
     """Create a mock SpeechGenerator with common async methods."""
     gen = MagicMock()
     gen.generate_rejection_text = AsyncMock(return_value="AI overlord disapproves.")
-    gen.generate_currency_unit_text = AsyncMock(return_value="test-coin")
     gen.generate_speech_text = AsyncMock(return_value="Test announcement text")
     gen.generate_feedback = AsyncMock(return_value="Thank you for completing the task.")
     gen.generate_completion_text = AsyncMock(return_value="Great job completing this task!")
     gen.generate_acceptance_text = AsyncMock(return_value="Thank you for accepting!")
     gen.llm_api_url = "http://test-llm:8000/v1"
-    gen.currency_stock = None
     return gen
 
 
@@ -120,12 +116,6 @@ def tmp_acceptance_dir(tmp_path):
     return stock_dir
 
 
-@pytest.fixture
-def tmp_currency_path(tmp_path):
-    """Create a temporary path for currency unit stock file."""
-    return tmp_path / "currency_units.json"
-
-
 # ── Shared stock factory helpers ──────────────────────────────────
 
 
@@ -145,13 +135,6 @@ def make_acceptance_stock(mock_speech_gen, mock_voice_client, tmp_dir):
         return AcceptanceStock(mock_speech_gen, mock_voice_client)
 
 
-def make_currency_stock(mock_speech_gen, tmp_path):
-    """Build a CurrencyUnitStock whose file path points at tmp_path."""
-    with patch("currency_unit_stock.STOCK_PATH", tmp_path):
-        from currency_unit_stock import CurrencyUnitStock
-        return CurrencyUnitStock(mock_speech_gen)
-
-
 class StockSpec:
     """Metadata for a stock type, used by parametrized shared tests."""
 
@@ -163,33 +146,25 @@ class StockSpec:
 
     def make_fake_entries(self, count):
         """Create fake entries appropriate for the stock type."""
-        if self.entries_attr == "_units":
-            return [f"unit_{i}" for i in range(count)]
         return [{"id": str(i), "text": f"t{i}", "audio_file": f"f{i}.mp3"} for i in range(count)]
 
 
 REJECTION_SPEC = StockSpec("rejection", max_stock=100, refill_threshold=80, entries_attr="_entries")
 ACCEPTANCE_SPEC = StockSpec("acceptance", max_stock=50, refill_threshold=20, entries_attr="_entries")
-CURRENCY_SPEC = StockSpec("currency", max_stock=50, refill_threshold=30, entries_attr="_units")
 
 
-@pytest.fixture(params=["rejection", "acceptance", "currency"])
+@pytest.fixture(params=["rejection", "acceptance"])
 def stock_with_spec(request, mock_speech_gen, mock_voice_client, tmp_path):
     """
     Parametrized fixture yielding (stock_instance, StockSpec) for each stock type.
-    Runs each test 3 times — once per stock type.
     """
     if request.param == "rejection":
         tmp_dir = tmp_path / "rejections"
         tmp_dir.mkdir()
         stock = make_rejection_stock(mock_speech_gen, mock_voice_client, tmp_dir)
         return stock, REJECTION_SPEC
-    elif request.param == "acceptance":
+    else:
         tmp_dir = tmp_path / "acceptances"
         tmp_dir.mkdir()
         stock = make_acceptance_stock(mock_speech_gen, mock_voice_client, tmp_dir)
         return stock, ACCEPTANCE_SPEC
-    else:
-        currency_path = tmp_path / "currency_units.json"
-        stock = make_currency_stock(mock_speech_gen, currency_path)
-        return stock, CURRENCY_SPEC

@@ -30,7 +30,6 @@ class DashboardClient:
         self,
         title: str,
         description: str,
-        bounty: int = 0,
         task_types: list[str] = None,
         expires_in_minutes: int = None,
         urgency: int = 2,
@@ -44,7 +43,6 @@ class DashboardClient:
         Args:
             title: Task title
             description: Task description
-            bounty: Reward amounts (Jinbo Points)
             task_types: List of task types (e.g., ['supply', 'urgent'])
             expires_in_minutes: Duration content should be displayed (minutes). If None, calculated based on types.
             urgency: Task urgency level (0-4)
@@ -78,7 +76,6 @@ class DashboardClient:
         payload = {
             "title": title,
             "description": description,
-            "bounty_gold": bounty,
             "task_type": task_types,
             "expires_at": expires_at,
             "location": zone or "Office",
@@ -95,7 +92,6 @@ class DashboardClient:
                     "title": title,
                     "description": description,
                     "location": zone or "Office",
-                    "bounty_gold": bounty,
                     "urgency": urgency,
                     "zone": zone
                 })

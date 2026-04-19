@@ -71,22 +71,10 @@ class TestCreateTask:
     def test_valid_task_passes(self, sanitizer):
         ok, reason = sanitizer.validate_tool_call("create_task", {
             "title": "Clean up", "description": "Please clean the desk",
-            "bounty": 1000, "urgency": 2,
+            "urgency": 2,
         })
         assert ok is True
         assert reason == "OK"
-
-    @pytest.mark.parametrize("bounty, expected_ok", [
-        (5000, True),
-        (5001, False),
-        (0, True),
-        (5000.01, False),
-    ])
-    def test_bounty_validation(self, sanitizer, bounty, expected_ok):
-        ok, reason = sanitizer.validate_tool_call("create_task", {"bounty": bounty})
-        assert ok is expected_ok
-        if not expected_ok:
-            assert "5000" in reason
 
     def test_urgency_valid_range(self, sanitizer):
         for urgency in range(5):
@@ -103,11 +91,6 @@ class TestCreateTask:
         assert ok is False
         assert "must be between 0 and 4" in reason
 
-    def test_missing_bounty_uses_default(self, sanitizer):
-        """Missing bounty defaults to 0 which is <= 5000."""
-        ok, _ = sanitizer.validate_tool_call("create_task", {"title": "test"})
-        assert ok is True
-
     def test_missing_urgency_uses_default(self, sanitizer):
         """Missing urgency defaults to 2 which is in range."""
         ok, _ = sanitizer.validate_tool_call("create_task", {"title": "test"})
@@ -118,7 +101,7 @@ class TestCreateTask:
         for _ in range(sanitizer._max_tasks_per_hour):
             sanitizer.record_task_created()
 
-        ok, reason = sanitizer.validate_tool_call("create_task", {"bounty": 500})
+        ok, reason = sanitizer.validate_tool_call("create_task", {"title": "t"})
         assert ok is False
         assert "Rate limit" in reason
 
@@ -126,7 +109,7 @@ class TestCreateTask:
         """Tasks older than 1 hour do not count toward rate limit."""
         old_time = time.time() - 3601  # > 1 hour ago
         sanitizer._task_creation_times = [old_time] * sanitizer._max_tasks_per_hour
-        ok, _ = sanitizer.validate_tool_call("create_task", {"bounty": 500})
+        ok, _ = sanitizer.validate_tool_call("create_task", {"title": "t"})
         assert ok is True
 
     def test_record_task_created_appends(self, sanitizer):

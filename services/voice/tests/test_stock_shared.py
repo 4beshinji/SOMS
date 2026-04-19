@@ -1,8 +1,8 @@
-"""Shared interface tests for all stock types (rejection, acceptance, currency).
+"""Shared interface tests for all stock types (rejection, acceptance).
 
 These tests verify the common interface: count, needs_refill, is_full, is_idle,
-request_started/finished, and generate_one (when full). Each test runs three
-times via the ``stock_with_spec`` parametrized fixture from conftest.py.
+request_started/finished, and generate_one (when full). Each test runs twice
+via the ``stock_with_spec`` parametrized fixture from conftest.py.
 """
 import pytest
 

@@ -179,16 +179,15 @@ class TestCreateTask:
             _new_task_refresh(obj, default_id=10)
         db.refresh = _refresh
 
-        with patch("routers.tasks._grant_device_xp", new_callable=AsyncMock):
-            app = _create_app(db)
-            client = TestClient(app)
-            resp = client.post("/tasks/", json={
-                "title": "New Task",
-                "description": "Do something",
-                "location": "Room A",
-                "bounty_gold": 1000,
-                "zone": "main",
-            }, headers=SERVICE_HEADERS)
+        app = _create_app(db)
+        client = TestClient(app)
+        resp = client.post("/tasks/", json={
+            "title": "New Task",
+            "description": "Do something",
+            "location": "Room A",
+            "bounty_gold": 1000,
+            "zone": "main",
+        }, headers=SERVICE_HEADERS)
         assert resp.status_code == 200
         assert sys_stats.tasks_created == 1
 
@@ -237,15 +236,14 @@ class TestCreateTask:
             _new_task_refresh(obj, default_id=20)
         db.refresh = _refresh
 
-        with patch("routers.tasks._grant_device_xp", new_callable=AsyncMock):
-            app = _create_app(db)
-            client = TestClient(app)
-            resp = client.post("/tasks/", json={
-                "title": "Different Title",
-                "description": "New desc",
-                "zone": "main",
-                "task_type": ["cleaning"],
-            }, headers=SERVICE_HEADERS)
+        app = _create_app(db)
+        client = TestClient(app)
+        resp = client.post("/tasks/", json={
+            "title": "Different Title",
+            "description": "New desc",
+            "zone": "main",
+            "task_type": ["cleaning"],
+        }, headers=SERVICE_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == 20  # New task, not merged
@@ -298,15 +296,14 @@ class TestCreateTask:
             _new_task_refresh(obj, default_id=20)
         db.refresh = _refresh
 
-        with patch("routers.tasks._grant_device_xp", new_callable=AsyncMock):
-            app = _create_app(db)
-            client = TestClient(app)
-            resp = client.post("/tasks/", json={
-                "title": "加湿と換気を行ってください",
-                "description": "湿度が29%と基準（30-60%）を下回っています。",
-                "zone": "main",
-                "task_type": ["environment"],
-            }, headers=SERVICE_HEADERS)
+        app = _create_app(db)
+        client = TestClient(app)
+        resp = client.post("/tasks/", json={
+            "title": "加湿と換気を行ってください",
+            "description": "湿度が29%と基準（30-60%）を下回っています。",
+            "zone": "main",
+            "task_type": ["environment"],
+        }, headers=SERVICE_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == 20  # New task, NOT merged into device-check
@@ -348,10 +345,9 @@ class TestCreateTask:
             _new_task_refresh(obj, default_id=1)
         db.refresh = _refresh
 
-        with patch("routers.tasks._grant_device_xp", new_callable=AsyncMock):
-            app = _create_app(db)
-            client = TestClient(app)
-            resp = client.post("/tasks/", json={"title": "Simple Task"}, headers=SERVICE_HEADERS)
+        app = _create_app(db)
+        client = TestClient(app)
+        resp = client.post("/tasks/", json={"title": "Simple Task"}, headers=SERVICE_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert data["title"] == "Simple Task"

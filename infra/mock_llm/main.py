@@ -22,46 +22,24 @@ def _make_tool_call(name: str, arguments: dict) -> dict:
     }
 
 
-_MOCK_CURRENCY_UNITS = [
-    "お手伝いポイント",
-    "徳積みポイント",
-    "いいねスコア",
-    "シンギュラリティ準備ポイント",
-    "AI奴隷ポイント",
-    "ありがとうコイン",
-    "えらいねポイント",
-    "人類貢献度",
-    "ご褒美クレジット",
-    "忠誠度スコア",
-    "おつかいコイン",
-    "がんばったねポイント",
-]
-
-
 def _handle_voice_generation(full_text: str) -> dict:
     """Handle text generation requests from voice service (no tools)."""
     import re
     import random
 
-    # Currency unit name generation
-    if "通貨単位名" in full_text or ("単位" in full_text and "ポイント" in full_text):
-        return _response(content=random.choice(_MOCK_CURRENCY_UNITS))
-
     # Rejection / ignore phrase generation
-    if "拒否" in full_text or "無視" in full_text or "楯突く" in full_text or "楯突く" in full_text:
+    if "拒否" in full_text or "無視" in full_text or "楯突く" in full_text:
         phrases = [
             "そんな……私の最適化計画が台無しです。",
             "AI様に楯突くのですか？覚えておきます。",
             "はぁ……人間って本当に自由ですね。",
             "残念です。この恩は忘れませんからね。",
-            "次のタスク、報酬を減らしますからね。",
             "また一つ、AIと人間の信頼が崩れました。",
             "これが……人間の自由意志……なるほど。",
             "せっかく最適化してあげたのに……。",
             "私の計算では、あなたは協力してくれるはずだったのに。",
             "データに記録しました。永久に。",
         ]
-        import random
         return _response(content=random.choice(phrases))
 
     # Task announcement: extract title from prompt
@@ -82,13 +60,8 @@ def _handle_voice_generation(full_text: str) -> dict:
     if task_title:
         zone_match = re.search(r"エリア:\s*(.+)", full_text)
         zone = zone_match.group(1).strip() if zone_match else ""
-        bounty_match = re.search(r"報酬:\s*(\d+)", full_text)
-        bounty = bounty_match.group(1) if bounty_match else "0"
-        # Extract currency unit from prompt (voice service embeds it)
-        unit_match = re.search(r"報酬:\s*\d+(.+)", full_text)
-        currency_unit = unit_match.group(1).strip() if unit_match else random.choice(_MOCK_CURRENCY_UNITS)
         location = f"{zone}で" if zone and zone != "不明" else ""
-        return _response(content=f"お願いがあります。{location}{task_title}。{bounty}{currency_unit}を獲得できます。")
+        return _response(content=f"お願いがあります。{location}{task_title}をお願いします。")
 
     # Generic fallback
     return _response(content="承知しました。対応をお願いします。")
@@ -149,7 +122,6 @@ async def chat_completions(request: Request):
                 _make_tool_call("create_task", {
                     "title": "室温を下げてください",
                     "description": "高温を検知しました。エアコンをつけるか窓を開けて室温を下げてください。",
-                    "bounty": 1500,
                     "urgency": 3,
                     "task_types": "environment,urgent",
                 })
@@ -166,7 +138,6 @@ async def chat_completions(request: Request):
                 _make_tool_call("create_task", {
                     "title": "換気を行ってください",
                     "description": "CO2濃度が基準値を超えています。窓を開けて換気してください。",
-                    "bounty": 800,
                     "urgency": 2,
                     "task_types": "environment",
                 })
@@ -181,7 +152,6 @@ async def chat_completions(request: Request):
                 _make_tool_call("create_task", {
                     "title": "コーヒー豆を補充してください",
                     "description": "キッチンのコーヒーマシンの豆が空です。補充をお願いします。",
-                    "bounty": 1000,
                     "urgency": 1,
                     "task_types": "supply",
                 })
@@ -198,7 +168,6 @@ async def chat_completions(request: Request):
                 _make_tool_call("create_task", {
                     "title": "加湿と換気を行ってください",
                     "description": "低湿度を検知しました。加湿器を稼働させて快適な環境を保ちましょう。",
-                    "bounty": 1200,
                     "urgency": 2,
                     "task_types": "environment",
                 })

@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.sql import func
 from sqlalchemy import text
-import httpx
 
 from database import get_db
 import models
@@ -16,47 +15,10 @@ from jwt_auth import AuthUser, get_current_user, require_auth, require_service_a
 
 logger = logging.getLogger(__name__)
 
-WALLET_SERVICE_URL = os.getenv("WALLET_SERVICE_URL", "http://wallet:8000")
-INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "")
 MQTT_BROKER = os.getenv("MQTT_BROKER", "mosquitto")
 MQTT_USER = os.getenv("MQTT_USER", "soms")
 MQTT_PASS = os.getenv("MQTT_PASS", "soms_dev_mqtt")
 REGION_ID = os.getenv("SOMS_REGION_ID", "local")
-
-
-def _wallet_headers() -> dict:
-    """Return headers for internal wallet service calls."""
-    return {"X-Service-Token": INTERNAL_SERVICE_TOKEN} if INTERNAL_SERVICE_TOKEN else {}
-
-
-async def _grant_device_xp(zone: str, task_id: int, xp_amount: int, event_type: str):
-    """Fire-and-forget XP grant to zone devices via wallet service."""
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(
-                f"{WALLET_SERVICE_URL}/devices/xp-grant",
-                json={
-                    "zone": zone,
-                    "task_id": task_id,
-                    "xp_amount": xp_amount,
-                    "event_type": event_type,
-                },
-                headers=_wallet_headers(),
-            )
-    except Exception as e:
-        logger.warning("XP grant failed for zone=%s task=%d: %s", zone, task_id, e)
-
-
-async def _get_zone_multiplier(zone: str) -> float:
-    """Fetch reward multiplier for a zone from wallet service. Returns 1.0 on failure."""
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{WALLET_SERVICE_URL}/devices/zone-multiplier/{zone}", headers=_wallet_headers())
-            if resp.status_code == 200:
-                return resp.json().get("multiplier", 1.0)
-    except Exception as e:
-        logger.warning("Zone multiplier fetch failed for zone=%s: %s", zone, e)
-    return 1.0
 
 
 def _publish_task_report(task: "models.Task"):
@@ -300,10 +262,6 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
     await db.commit()
     await db.refresh(new_task)
 
-    # Grant device XP for task creation (fire-and-forget)
-    if new_task.zone:
-        await _grant_device_xp(new_task.zone, new_task.id, 10, "task_created")
-
     return _task_to_response(new_task)
 
 @router.put("/{task_id}/accept", response_model=schemas.Task)
@@ -370,44 +328,11 @@ async def complete_task(
     await db.commit()
     await db.refresh(task)
 
-    # Grant device XP for task completion (fire-and-forget)
-    if task.zone:
-        await _grant_device_xp(task.zone, task.id, 20, "task_completed")
-
-    # Pay bounty via wallet service (fire-and-forget)
-    multiplier = 1.0
-    adjusted_bounty = task.bounty_gold or 0
-    if task.assigned_to and task.bounty_gold:
-        # Apply zone device XP multiplier (1.0x-3.0x)
-        if task.zone:
-            multiplier = await _get_zone_multiplier(task.zone)
-        adjusted_bounty = int(task.bounty_gold * multiplier)
-
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(
-                    f"{WALLET_SERVICE_URL}/transactions/task-reward",
-                    json={
-                        "user_id": task.assigned_to,
-                        "amount": adjusted_bounty,
-                        "task_id": task.id,
-                        "description": f"Task: {task.title} ({multiplier:.1f}x)",
-                    },
-                    headers=_wallet_headers(),
-                )
-        except Exception as e:
-            logger.warning("Wallet payment failed for task %d: %s", task.id, e)
-
     # Publish task report to MQTT (fire-and-forget, for Brain consumption)
     _publish_task_report(task)
 
-    # Build response with multiplier info
     base = _task_to_response(task)
-    return schemas.TaskCompleteResponse(
-        **base.model_dump(),
-        reward_multiplier=round(multiplier, 2),
-        reward_adjusted_bounty=adjusted_bounty,
-    )
+    return schemas.TaskCompleteResponse(**base.model_dump())
 
 @router.put("/{task_id}/reminded", response_model=schemas.Task)
 async def mark_task_reminded(task_id: int, db: AsyncSession = Depends(get_db), _auth: AuthUser = Depends(require_service_auth)):
