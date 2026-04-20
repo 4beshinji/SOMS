@@ -1,9 +1,0 @@
-{
-  "name": "SOMS Wallet",
-  "short_name": "Wallet",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#FAFAFA",
-  "theme_color": "#2196F3",
-  "icons": []
-}
