@@ -111,7 +111,7 @@ async def _get_or_create_system_stats(db: AsyncSession) -> models.SystemStats:
     result = await db.execute(select(models.SystemStats).filter(models.SystemStats.id == 1))
     stats = result.scalars().first()
     if not stats:
-        stats = models.SystemStats(id=1, total_xp=0, tasks_completed=0, tasks_created=0)
+        stats = models.SystemStats(id=1, tasks_completed=0, tasks_created=0)
         db.add(stats)
         await db.flush()
     return stats
@@ -151,8 +151,6 @@ def _task_to_response(task_model: models.Task) -> schemas.Task:
         title=task_model.title,
         description=task_model.description,
         location=task_model.location,
-        bounty_gold=task_model.bounty_gold,
-        bounty_xp=task_model.bounty_xp,
         is_completed=task_model.is_completed,
         is_queued=task_model.is_queued,
         created_at=task_model.created_at,
@@ -224,7 +222,6 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
         existing_task.title = task.title
         existing_task.description = task.description
         existing_task.location = task.location
-        existing_task.bounty_gold = task.bounty_gold
         existing_task.expires_at = task.expires_at
         existing_task.task_type = json.dumps(task.task_type) if task.task_type else None
         existing_task.urgency = task.urgency
@@ -253,8 +250,6 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
         title=task.title,
         description=task.description,
         location=task.location,
-        bounty_gold=task.bounty_gold,
-        bounty_xp=task.bounty_xp,
         expires_at=task.expires_at,
         task_type=json.dumps(task.task_type) if task.task_type else None,
         urgency=task.urgency,
@@ -341,9 +336,7 @@ async def complete_task(
         if body.completion_note:
             task.completion_note = body.completion_note[:500]
 
-    # Accumulate system XP
     sys_stats = await _get_or_create_system_stats(db)
-    sys_stats.total_xp += task.bounty_xp or 0
     sys_stats.tasks_completed += 1
 
     actor_id = auth_user.id if auth_user else task.assigned_to
@@ -450,7 +443,6 @@ async def get_task_stats(db: AsyncSession = Depends(get_db)):
     await db.commit()  # persist if newly created
 
     return schemas.SystemStatsResponse(
-        total_xp=sys_stats.total_xp,
         tasks_completed=sys_stats.tasks_completed,
         tasks_created=sys_stats.tasks_created,
         tasks_active=active_count or 0,

@@ -154,7 +154,7 @@ class TestCompleteTaskAuth:
 
     def test_authenticated_request_allowed(self):
         """Any authenticated user can complete — no user_id check."""
-        task = make_task_obj(id=1, zone=None, assigned_to=None, bounty_xp=0)
+        task = make_task_obj(id=1, zone=None, assigned_to=None)
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
@@ -176,7 +176,7 @@ class TestCompleteTaskAuth:
 
     def test_complete_with_report(self):
         """Complete with report_status and completion_note."""
-        task = make_task_obj(id=1, zone=None, assigned_to=None, bounty_xp=0)
+        task = make_task_obj(id=1, zone=None, assigned_to=None)
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
@@ -193,7 +193,7 @@ class TestCompleteTaskAuth:
 
     def test_completion_note_truncated_to_500(self):
         """completion_note is truncated to 500 chars."""
-        task = make_task_obj(id=1, zone=None, assigned_to=None, bounty_xp=0)
+        task = make_task_obj(id=1, zone=None, assigned_to=None)
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
@@ -208,7 +208,7 @@ class TestCompleteTaskAuth:
 
     def test_complete_marks_is_completed(self):
         """Completing a task sets is_completed=True."""
-        task = make_task_obj(id=1, zone=None, assigned_to=None, bounty_xp=0)
+        task = make_task_obj(id=1, zone=None, assigned_to=None)
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
@@ -222,19 +222,17 @@ class TestCompleteTaskAuth:
             assert task.is_completed is True
 
     def test_complete_increments_system_stats(self):
-        """Completing a task increments tasks_completed and adds bounty_xp."""
-        task = make_task_obj(id=1, zone=None, assigned_to=None, bounty_xp=100)
+        """Completing a task increments tasks_completed."""
+        task = make_task_obj(id=1, zone=None, assigned_to=None)
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
-        with \
-             patch("routers.tasks._publish_task_report"):
+        with patch("routers.tasks._publish_task_report"):
             app = _create_app(db)
             client = TestClient(app)
             client.put("/tasks/1/complete", json={},
                        headers=auth_header(sub=1))
             assert sys_stats.tasks_completed == 1
-            assert sys_stats.total_xp == 100
 
 
 # ── Edge Cases ─────────────────────────────────────────────────

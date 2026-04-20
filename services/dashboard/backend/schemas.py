@@ -7,8 +7,6 @@ class TaskBase(BaseModel):
     title: str
     description: Optional[str] = None
     location: Optional[str] = None
-    bounty_gold: int = 10
-    bounty_xp: int = 50
     expires_at: Optional[datetime] = None
     task_type: Optional[List[str]] = None
 
@@ -37,7 +35,6 @@ class TaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     location: Optional[str] = None
-    bounty_gold: Optional[int] = None
     is_completed: Optional[bool] = None
     expires_at: Optional[datetime] = None
     task_type: Optional[List[str]] = None
@@ -80,7 +77,6 @@ class TaskAccept(BaseModel):
 
 # SystemStats Schemas
 class SystemStatsResponse(BaseModel):
-    total_xp: int = 0
     tasks_completed: int = 0
     tasks_created: int = 0
     tasks_active: int = 0

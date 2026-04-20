@@ -19,16 +19,14 @@ PORT_MAP = [
     ("SOMS_PORT_BACKEND",    8000,  "backend API"),
     ("SOMS_PORT_MOCK_LLM",   8001,  "mock-llm"),
     ("SOMS_PORT_VOICE",      8002,  "voice-service"),
-    ("SOMS_PORT_WALLET",     8003,  "wallet"),
     ("SOMS_PORT_MQTT",       1883,  "MQTT"),
     ("SOMS_PORT_MQTT_WS",    9001,  "MQTT WebSocket"),
     ("SOMS_PORT_POSTGRES",   5432,  "PostgreSQL"),
-    ("SOMS_PORT_WALLET_APP", 8004,  "wallet-app"),
 ]
 
 SERVICES = [
     "mosquitto", "postgres", "backend", "brain", "mock-llm",
-    "wallet", "wallet-app", "frontend", "voice-service",
+    "frontend", "voice-service",
 ]
 
 
@@ -63,10 +61,8 @@ def main():
             f.write(f"{var}={port}\n")
         backend_port = env_overrides.get("SOMS_PORT_BACKEND", 8000)
         frontend_port = env_overrides.get("SOMS_PORT_FRONTEND", 80)
-        wallet_port = env_overrides.get("SOMS_PORT_WALLET", 8003)
         f.write(f"BACKEND_URL=http://localhost:{backend_port}\n")
         f.write(f"FRONTEND_URL=http://localhost:{frontend_port}\n")
-        f.write(f"WALLET_URL=http://localhost:{wallet_port}\n")
     print(f"\nPort config written to {PORTS_ENV_FILE}")
 
     # Build env for subprocess

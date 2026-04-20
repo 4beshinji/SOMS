@@ -185,8 +185,6 @@ def make_task_obj(
     title="Test Task",
     description="A task description",
     location="Office",
-    bounty_gold=1000,
-    bounty_xp=50,
     is_completed=False,
     is_queued=False,
     task_type=None,
@@ -223,8 +221,6 @@ def make_task_obj(
     task.title = title
     task.description = description
     task.location = location
-    task.bounty_gold = bounty_gold
-    task.bounty_xp = bounty_xp
     task.is_completed = is_completed
     task.is_queued = is_queued
     task.created_at = now
@@ -252,7 +248,7 @@ def make_task_obj(
     return task
 
 
-def make_sys_stats(total_xp=0, tasks_completed=0, tasks_created=0):
+def make_sys_stats(tasks_completed=0, tasks_created=0):
     """Create a fake SystemStats object for testing."""
 
     class FakeStats:
@@ -260,7 +256,6 @@ def make_sys_stats(total_xp=0, tasks_completed=0, tasks_created=0):
 
     s = FakeStats()
     s.id = 1
-    s.total_xp = total_xp
     s.tasks_completed = tasks_completed
     s.tasks_created = tasks_created
     return s

@@ -32,8 +32,6 @@ def _new_task_refresh(obj, default_id=1):
         obj.is_completed = False
     if getattr(obj, 'is_queued', None) is None:
         obj.is_queued = False
-    if getattr(obj, 'bounty_xp', None) is None:
-        obj.bounty_xp = 50
     if getattr(obj, 'last_reminded_at', None) is None:
         obj.last_reminded_at = None
     if getattr(obj, 'accepted_at', None) is None:
@@ -137,7 +135,7 @@ class TestReadTasks:
         """Verify key fields are present in response."""
         task = make_task_obj(
             id=42, title="Water Plants", description="All zones",
-            location="Lab", bounty_gold=500, urgency=3, zone="lab",
+            location="Lab", urgency=3, zone="lab",
             region_id="tokyo", json_encode_task_type=True,
         )
         db = make_mock_db([[task]])
@@ -149,7 +147,6 @@ class TestReadTasks:
         assert data["title"] == "Water Plants"
         assert data["description"] == "All zones"
         assert data["location"] == "Lab"
-        assert data["bounty_gold"] == 500
         assert data["urgency"] == 3
         assert data["zone"] == "lab"
         assert data["region_id"] == "tokyo"
@@ -185,7 +182,6 @@ class TestCreateTask:
             "title": "New Task",
             "description": "Do something",
             "location": "Room A",
-            "bounty_gold": 1000,
             "zone": "main",
         }, headers=SERVICE_HEADERS)
         assert resp.status_code == 200
@@ -209,13 +205,11 @@ class TestCreateTask:
             "title": "Fix Light",
             "description": "Updated description",
             "location": "Room A",
-            "bounty_gold": 2000,
         }, headers=SERVICE_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == 5  # Same task ID
         assert existing.description == "Updated description"
-        assert existing.bounty_gold == 2000
 
     def test_same_zone_task_type_overlap_creates_new(self):
         """Same zone + overlapping task_type but different category → new task.
@@ -351,7 +345,6 @@ class TestCreateTask:
         assert resp.status_code == 200
         data = resp.json()
         assert data["title"] == "Simple Task"
-        assert data["bounty_gold"] == 10  # default
         assert data["urgency"] == 2       # default
 
 
@@ -383,7 +376,7 @@ class TestMarkTaskReminded:
 
     def test_reminded_returns_full_task(self):
         """Response should contain all task fields."""
-        task = make_task_obj(id=3, title="Check AC", zone="lab", bounty_gold=500,
+        task = make_task_obj(id=3, title="Check AC", zone="lab",
                              json_encode_task_type=True)
         db = make_mock_db([[task]])
         app = _create_app(db)
@@ -392,7 +385,6 @@ class TestMarkTaskReminded:
         data = resp.json()
         assert data["title"] == "Check AC"
         assert data["zone"] == "lab"
-        assert data["bounty_gold"] == 500
 
 
 # ── GET /tasks/queue ───────────────────────────────────────────
@@ -491,7 +483,7 @@ class TestGetTaskStats:
     """GET /tasks/stats — system statistics."""
 
     def test_stats_all_zeros(self):
-        sys_stats = make_sys_stats(total_xp=0, tasks_completed=0, tasks_created=0)
+        sys_stats = make_sys_stats(tasks_completed=0, tasks_created=0)
         db = make_mock_db([
             [0],           # queued count
             [0],           # completed last hour
@@ -503,7 +495,6 @@ class TestGetTaskStats:
         resp = client.get("/tasks/stats")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total_xp"] == 0
         assert data["tasks_completed"] == 0
         assert data["tasks_created"] == 0
         assert data["tasks_active"] == 0
@@ -511,7 +502,7 @@ class TestGetTaskStats:
         assert data["tasks_completed_last_hour"] == 0
 
     def test_stats_with_values(self):
-        sys_stats = make_sys_stats(total_xp=5000, tasks_completed=25, tasks_created=30)
+        sys_stats = make_sys_stats(tasks_completed=25, tasks_created=30)
         db = make_mock_db([
             [3],           # queued count
             [2],           # completed last hour
@@ -523,7 +514,6 @@ class TestGetTaskStats:
         resp = client.get("/tasks/stats")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total_xp"] == 5000
         assert data["tasks_completed"] == 25
         assert data["tasks_created"] == 30
         assert data["tasks_active"] == 5
@@ -567,5 +557,4 @@ class TestGetTaskStats:
         resp = client.get("/tasks/stats")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total_xp"] == 0
         assert data["tasks_completed"] == 0

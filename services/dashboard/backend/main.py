@@ -100,6 +100,12 @@ async def startup():
         await conn.run_sync(_migrate_add_columns)
         # Ensure events schema exists (owned by brain, read by sensors API)
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS events"))
+        # v2 drop-column migrations (one-way, idempotent). Legacy v1 data is
+        # preserved in branch `legacy/v1-with_wallet` / tag `v1.0-with_wallet`.
+        await conn.execute(text("ALTER TABLE IF EXISTS tasks DROP COLUMN IF EXISTS bounty_gold"))
+        await conn.execute(text("ALTER TABLE IF EXISTS tasks DROP COLUMN IF EXISTS bounty_xp"))
+        await conn.execute(text("ALTER TABLE IF EXISTS system_stats DROP COLUMN IF EXISTS total_xp"))
+        await conn.execute(text("DROP SCHEMA IF EXISTS wallet CASCADE"))
 
 
 # Include Routers

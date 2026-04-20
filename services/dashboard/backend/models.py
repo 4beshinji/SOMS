@@ -8,8 +8,6 @@ class Task(Base):
     title = Column(String, index=True)
     description = Column(String)
     location = Column(String)
-    bounty_gold = Column(Integer, default=10)
-    bounty_xp = Column(Integer, default=50)
     is_completed = Column(Boolean, default=False)
     
     # Voice announcement fields
@@ -74,7 +72,6 @@ class VoiceEvent(Base):
 class SystemStats(Base):
     __tablename__ = "system_stats"
     id = Column(Integer, primary_key=True, default=1)
-    total_xp = Column(Integer, default=0)
     tasks_completed = Column(Integer, default=0)
     tasks_created = Column(Integer, default=0)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

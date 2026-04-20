@@ -19,7 +19,6 @@ async def main():
     task = await client.create_task(
         title="午後のティータイムの準備",
         description="リフレッシュの時間です！ラウンジに紅茶とお菓子を用意してみんなを驚かせましょう。",
-        bounty=500,
         task_types=["general"],
         urgency=1,
         zone="Lounge",
