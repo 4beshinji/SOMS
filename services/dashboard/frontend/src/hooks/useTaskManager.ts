@@ -1,13 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Task, TaskReport, ZoneMultiplierInfo } from '@soms/types';
+import { useEffect, useRef, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { Task, TaskReport } from '@soms/types';
 import { useAudioQueue, AudioPriority } from '../audio';
 import {
   fetchTasks,
   fetchStats,
-  fetchSupply,
   fetchVoiceEvents,
-  fetchZoneMultiplier,
   acceptTask,
   completeTask,
 } from '../api';
@@ -70,13 +68,6 @@ export function useTaskManager() {
     staleTime: 5000,
   });
 
-  const supplyQuery = useQuery({
-    queryKey: ['supply'],
-    queryFn: fetchSupply,
-    refetchInterval: 10000,
-    staleTime: 5000,
-  });
-
   const voiceEventsQuery = useQuery({
     queryKey: ['voiceEvents', displayId],
     queryFn: () => fetchVoiceEvents(displayId ?? undefined),
@@ -97,34 +88,6 @@ export function useTaskManager() {
   const tasks = Array.isArray(tasksQuery.data) ? tasksQuery.data : [];
   const loading = tasksQuery.isLoading;
   const systemStats = statsQuery.data ?? null;
-  const supply = supplyQuery.data ?? null;
-
-  // Collect unique zones from active tasks for multiplier fetching
-  const activeZones = useMemo(() => {
-    const zones = new Set<string>();
-    for (const t of tasks) {
-      if (t.zone && !t.is_completed) zones.add(t.zone);
-    }
-    return Array.from(zones);
-  }, [tasks]);
-
-  const zoneMultiplierQueries = useQueries({
-    queries: activeZones.map(zone => ({
-      queryKey: ['zoneMultiplier', zone],
-      queryFn: () => fetchZoneMultiplier(zone),
-      refetchInterval: 30000,
-      staleTime: 15000,
-    })),
-  });
-
-  const zoneMultipliers = useMemo(() => {
-    const map: Record<string, ZoneMultiplierInfo> = {};
-    activeZones.forEach((zone, i) => {
-      const data = zoneMultiplierQueries[i]?.data;
-      if (data) map[zone] = data;
-    });
-    return map;
-  }, [activeZones, zoneMultiplierQueries]);
 
   // Restore accepted state from server on data load
   useEffect(() => {
@@ -275,11 +238,9 @@ export function useTaskManager() {
     hasMoreTasks,
     loading,
     systemStats,
-    supply,
     isAudioEnabled,
     setIsAudioEnabled,
     acceptedTaskIds,
-    zoneMultipliers,
     handleAccept,
     handleComplete,
     handleIgnore,

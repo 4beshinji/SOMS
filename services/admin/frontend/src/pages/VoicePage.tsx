@@ -4,10 +4,7 @@ import {
   clearRejectionStock,
   fetchAcceptanceStatus,
   clearAcceptanceStock,
-  fetchCurrencyUnitStatus,
-  clearCurrencyUnitStock,
   type StockStatus,
-  type CurrencyUnitStatus,
 } from '../api/voice';
 
 function StockCard({
@@ -17,15 +14,13 @@ function StockCard({
   isError,
   onRegenerate,
   isRegenerating,
-  samples,
 }: {
   title: string;
-  data: StockStatus | CurrencyUnitStatus | undefined;
+  data: StockStatus | undefined;
   isLoading: boolean;
   isError: boolean;
   onRegenerate: () => void;
   isRegenerating: boolean;
-  samples?: string[];
 }) {
   const pct = data ? (data.count / data.max) * 100 : 0;
   const barColor = pct > 50 ? 'bg-[var(--success-500)]' : pct > 20 ? 'bg-[var(--warning-500)]' : 'bg-[var(--error-500)]';
@@ -54,14 +49,6 @@ function StockCard({
           <div className="w-full h-2 bg-[var(--gray-100)] rounded-full overflow-hidden">
             <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${pct}%` }} />
           </div>
-          {samples && samples.length > 0 && (
-            <div className="text-xs text-[var(--gray-500)] space-y-0.5">
-              <p className="font-medium">Samples:</p>
-              {samples.slice(0, 3).map((s, i) => (
-                <p key={i} className="truncate">{s}</p>
-              ))}
-            </div>
-          )}
           <button
             onClick={onRegenerate}
             disabled={isRegenerating}
@@ -92,13 +79,6 @@ export default function VoicePage() {
     retry: 1,
   });
 
-  const currencyQuery = useQuery({
-    queryKey: ['voice-currency'],
-    queryFn: fetchCurrencyUnitStatus,
-    refetchInterval: 15000,
-    retry: 1,
-  });
-
   const rejectionClear = useMutation({
     mutationFn: clearRejectionStock,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['voice-rejection'] }),
@@ -109,16 +89,11 @@ export default function VoicePage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['voice-acceptance'] }),
   });
 
-  const currencyClear = useMutation({
-    mutationFn: clearCurrencyUnitStock,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['voice-currency'] }),
-  });
-
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold text-[var(--gray-900)]">Voice Management</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <StockCard
           title="Rejection Stock"
           data={rejectionQuery.data}
@@ -134,15 +109,6 @@ export default function VoicePage() {
           isError={acceptanceQuery.isError}
           onRegenerate={() => acceptanceClear.mutate()}
           isRegenerating={acceptanceClear.isPending}
-        />
-        <StockCard
-          title="Currency Units"
-          data={currencyQuery.data}
-          isLoading={currencyQuery.isLoading}
-          isError={currencyQuery.isError}
-          onRegenerate={() => currencyClear.mutate()}
-          isRegenerating={currencyClear.isPending}
-          samples={(currencyQuery.data as CurrencyUnitStatus)?.sample}
         />
       </div>
     </div>

@@ -1,11 +1,11 @@
 import type {
-  Task, TaskReport, SystemStats, SupplyStats, ZoneMultiplierInfo,
+  Task, TaskReport, SystemStats,
   ShoppingItem, ShoppingItemCreate, ShoppingStats, ShoppingShareResponse,
   PurchaseHistory, ChatResponse, ChatChunk,
 } from '@soms/types';
 
 export type {
-  Task, TaskReport, SystemStats, SupplyStats, ZoneMultiplierInfo,
+  Task, TaskReport, SystemStats,
   ShoppingItem, ShoppingItemCreate, ShoppingStats, ShoppingShareResponse,
   PurchaseHistory, ChatResponse, ChatChunk,
 };
@@ -21,12 +21,6 @@ export const fetchTasks = async (): Promise<Task[]> => {
 export const fetchStats = async (): Promise<SystemStats> => {
   const res = await fetch('/api/tasks/stats');
   if (!res.ok) throw new Error('Failed to fetch stats');
-  return res.json();
-};
-
-export const fetchSupply = async (): Promise<SupplyStats> => {
-  const res = await fetch('/api/wallet/supply');
-  if (!res.ok) throw new Error('Failed to fetch supply');
   return res.json();
 };
 
@@ -62,12 +56,6 @@ export const completeTask = async ({
     }),
   });
   if (!res.ok) throw new Error('Failed to complete task');
-  return res.json();
-};
-
-export const fetchZoneMultiplier = async (zone: string): Promise<ZoneMultiplierInfo> => {
-  const res = await fetch(`/api/wallet/devices/zone-multiplier/${encodeURIComponent(zone)}`);
-  if (!res.ok) throw new Error('Failed to fetch zone multiplier');
   return res.json();
 };
 

@@ -35,11 +35,9 @@ function Monitor() {
     hasMoreTasks,
     loading,
     systemStats,
-    supply,
     isAudioEnabled,
     setIsAudioEnabled,
     acceptedTaskIds,
-    zoneMultipliers,
     handleAccept,
     handleComplete,
     handleIgnore,
@@ -81,7 +79,6 @@ function Monitor() {
       {/* Full Header */}
       <MonitorHeader
         systemStats={systemStats}
-        supply={supply}
         isAudioEnabled={isAudioEnabled}
         onToggleAudio={() => setIsAudioEnabled(!isAudioEnabled)}
       >
@@ -201,7 +198,6 @@ function Monitor() {
                     <TaskCard
                       task={task}
                       isAccepted={acceptedTaskIds.has(task.id)}
-                      zoneMultiplier={task.zone ? zoneMultipliers[task.zone] : undefined}
                       onAccept={handleAccept}
                       onComplete={handleComplete}
                       onIgnore={handleIgnore}

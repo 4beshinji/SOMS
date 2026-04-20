@@ -11,10 +11,6 @@ export default defineConfig({
         target: 'http://localhost:8006',
         rewrite: (path) => path.replace(/^\/api\/auth/, ''),
       },
-      '/api/wallet': {
-        target: 'http://localhost:8003',
-        rewrite: (path) => path.replace(/^\/api\/wallet/, ''),
-      },
       '/api': {
         target: 'http://localhost:8000',
       },

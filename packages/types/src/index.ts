@@ -21,8 +21,6 @@ export interface Task {
   title: string;
   description: string;
   location?: string;
-  bounty_gold: number;
-  bounty_xp: number;
   urgency: number;
   is_completed: boolean;
   announcement_audio_url?: string;
@@ -36,8 +34,6 @@ export interface Task {
   report_status?: string;
   completion_note?: string;
   zone?: string;
-  reward_multiplier?: number;
-  reward_adjusted_bounty?: number;
   estimated_duration?: number;  // minutes
   min_people_required?: number;
   expires_at?: string;
@@ -63,122 +59,11 @@ export interface TaskReport {
 // ── System Stats ─────────────────────────────────────────────────────
 
 export interface SystemStats {
-  total_xp: number;
   tasks_completed: number;
   tasks_created: number;
   tasks_active: number;
   tasks_queued: number;
   tasks_completed_last_hour: number;
-}
-
-export interface SupplyStats {
-  total_issued: number;
-  total_burned: number;
-  circulating: number;
-}
-
-export interface ZoneMultiplierInfo {
-  zone: string;
-  multiplier: number;
-  device_count: number;
-  avg_xp: number;
-  devices: { device_id: string; xp: number; contribution: number }[];
-}
-
-// ── Wallet Types ─────────────────────────────────────────────────────
-
-export interface Wallet {
-  id: number;
-  user_id: number;
-  balance: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface LedgerEntry {
-  id: number;
-  transaction_id: string;
-  wallet_id: number;
-  amount: number;
-  balance_after: number;
-  entry_type: 'DEBIT' | 'CREDIT';
-  transaction_type: string;
-  description: string | null;
-  reference_id: string | null;
-  counterparty_wallet_id: number | null;
-  created_at: string;
-}
-
-export interface TransferFeeInfo {
-  fee_rate: number;
-  fee_amount: number;
-  net_amount: number;
-  min_transfer: number;
-  below_minimum: boolean;
-}
-
-// ── Device / Stakes Types ────────────────────────────────────────────
-
-export interface Device {
-  id: number;
-  device_id: string;
-  owner_id: number;
-  device_type: string;
-  display_name: string | null;
-  is_active: boolean;
-  total_shares: number;
-  available_shares: number;
-  share_price: number;
-  funding_open: boolean;
-  power_mode: string;
-  battery_pct: number | null;
-  utility_score: number;
-  xp: number;
-  last_heartbeat_at: string | null;
-}
-
-export interface StakeResponse {
-  id: number;
-  device_id: number;
-  user_id: number;
-  shares: number;
-  percentage: number;
-  acquired_at: string;
-}
-
-export interface DeviceFundingResponse {
-  device_id: string;
-  total_shares: number;
-  available_shares: number;
-  share_price: number;
-  funding_open: boolean;
-  stakeholders: StakeResponse[];
-  estimated_reward_per_hour: number;
-}
-
-export interface PortfolioEntry {
-  device_id: string;
-  device_type: string;
-  shares: number;
-  total_shares: number;
-  percentage: number;
-  estimated_reward_per_hour: number;
-}
-
-export interface PortfolioResponse {
-  user_id: number;
-  stakes: PortfolioEntry[];
-  total_estimated_reward_per_hour: number;
-}
-
-export interface PoolListItem {
-  id: number;
-  title: string;
-  goal_jpy: number;
-  raised_jpy: number;
-  status: string;
-  progress_pct: number;
-  created_at: string;
 }
 
 // ── Sensor Types ─────────────────────────────────────────────────────

@@ -9,7 +9,6 @@ const InventoryPage = lazy(() => import('./pages/InventoryPage'));
 const AnomalyPage = lazy(() => import('./pages/AnomalyPage'));
 const TaskQueuePage = lazy(() => import('./pages/TaskQueuePage'));
 const VoicePage = lazy(() => import('./pages/VoicePage'));
-const EconomyPage = lazy(() => import('./pages/EconomyPage'));
 const ShoppingPage = lazy(() => import('./pages/ShoppingPage'));
 const ZoneEditor = lazy(() => import('./pages/ZoneEditor'));
 const CameraSetupPage = lazy(() => import('./pages/CameraSetupPage'));
@@ -148,18 +147,6 @@ function Layout() {
             Voice
           </NavLink>
           <NavLink
-            to="/economy"
-            className={({ isActive }) =>
-              `block px-4 py-2.5 text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-[var(--primary-50)] text-[var(--primary-700)] border-r-2 border-[var(--primary-500)]'
-                  : 'text-[var(--gray-700)] hover:bg-[var(--gray-100)]'
-              }`
-            }
-          >
-            Economy
-          </NavLink>
-          <NavLink
             to="/cameras"
             className={({ isActive }) =>
               `block px-4 py-2.5 text-sm font-medium transition-colors ${
@@ -213,7 +200,6 @@ function Layout() {
             <Route path="/task-queue" element={<TaskQueuePage />} />
             <Route path="/anomaly" element={<AnomalyPage />} />
             <Route path="/voice" element={<VoicePage />} />
-            <Route path="/economy" element={<EconomyPage />} />
             <Route path="/cameras" element={<CameraSetupPage />} />
             <Route path="/zone-editor" element={<ZoneEditor />} />
             <Route path="*" element={<Navigate to="/analytics" replace />} />

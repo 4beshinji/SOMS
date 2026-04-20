@@ -96,7 +96,6 @@ export default function TaskQueuePage() {
                     <p className="text-xs text-[var(--gray-500)] truncate">{task.description}</p>
                   </div>
                   <span className="text-xs text-[var(--gray-500)]">{task.zone || '-'}</span>
-                  <span className="text-xs font-medium text-[var(--gold-dark)]">{task.bounty_gold} SOMS</span>
                   <span className="text-xs text-[var(--gray-400)]">
                     {new Date(task.created_at).toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' })}
                   </span>
@@ -139,7 +138,6 @@ export default function TaskQueuePage() {
                     <p className="text-xs text-[var(--gray-500)] truncate">{task.description}</p>
                   </div>
                   <span className="text-xs text-[var(--gray-500)]">{task.zone || '-'}</span>
-                  <span className="text-xs font-medium text-[var(--gold-dark)]">{task.bounty_gold} SOMS</span>
                   <span className="text-xs text-[var(--gray-400)]">
                     {new Date(task.created_at).toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' })}
                   </span>

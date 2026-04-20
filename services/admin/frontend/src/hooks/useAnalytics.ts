@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
 import type { HeatmapData, SpatialConfig, SensorReading } from '@soms/types';
 import {
   fetchSensorTimeSeries,
@@ -10,12 +9,7 @@ import {
   fetchLLMActivity,
   fetchLLMTimeline,
 } from '../api/sensors';
-import { fetchDeviceStatus } from '../api/devices';
 import { fetchHeatmap as fetchHeatmapData, fetchSpatialConfig } from '../api/spatial';
-import {
-  classifyDevice,
-  type SensorCategory,
-} from '../utils/channelConfig';
 
 import type {
   TimeSeriesPoint,
@@ -26,7 +20,6 @@ import type {
   LLMTimelinePoint,
   LLMTimelineResponse,
 } from '../api/sensors';
-import type { DeviceStatus } from '../api/devices';
 
 // ── Re-export types for consumers ───────────────────────────────────
 
@@ -39,21 +32,9 @@ export type {
   LLMActivity,
   LLMTimelinePoint,
   LLMTimelineResponse,
-  DeviceStatus,
   HeatmapData,
   SpatialConfig,
 };
-
-// ── Enriched device type ────────────────────────────────────────────
-
-export interface EnrichedDevice extends DeviceStatus {
-  spatialType: string | null;
-  channels: string[];
-  zone: string | null;
-  label: string | null;
-  category: SensorCategory;
-  latestReadings: SensorReading[];
-}
 
 // ── Hooks ────────────────────────────────────────────────────────────
 
@@ -109,14 +90,6 @@ export function useLLMTimeline(hours: number = 24) {
   });
 }
 
-export function useDeviceStatus() {
-  return useQuery({
-    queryKey: ['deviceStatus'],
-    queryFn: fetchDeviceStatus,
-    refetchInterval: 30_000,
-  });
-}
-
 export function useHeatmap(zone?: string, period: string = 'hour') {
   return useQuery({
     queryKey: ['heatmap', zone, period],
@@ -141,55 +114,3 @@ export function useSensorLatestByDevice() {
   });
 }
 
-/**
- * Merges wallet device status, spatial config, and latest sensor readings
- * into a single enriched device list classified by sensor category.
- */
-export function useEnrichedDeviceStatus() {
-  const devicesQuery = useDeviceStatus();
-  const spatialQuery = useSpatialConfig();
-  const sensorQuery = useSensorLatestByDevice();
-
-  const enriched = useMemo(() => {
-    if (!devicesQuery.data) return undefined;
-    const spatialDevices = spatialQuery.data?.devices ?? {};
-    const readings = sensorQuery.data ?? [];
-
-    // Index sensor readings by device_id
-    const readingsByDevice = new Map<string, SensorReading[]>();
-    for (const r of readings) {
-      if (!r.device_id) continue;
-      const list = readingsByDevice.get(r.device_id) ?? [];
-      list.push(r);
-      readingsByDevice.set(r.device_id, list);
-    }
-
-    return devicesQuery.data.map((device): EnrichedDevice => {
-      const spatial = spatialDevices[device.device_id];
-      const spatialType = spatial?.type ?? null;
-      const channels = spatial?.channels ?? [];
-      const zone = spatial?.zone ?? null;
-      const label = spatial?.label ?? null;
-      const category = spatialType
-        ? classifyDevice(spatialType, channels)
-        : 'unknown';
-      const latestReadings = readingsByDevice.get(device.device_id) ?? [];
-
-      return {
-        ...device,
-        spatialType,
-        channels,
-        zone,
-        label,
-        category,
-        latestReadings,
-      };
-    });
-  }, [devicesQuery.data, spatialQuery.data, sensorQuery.data]);
-
-  return {
-    data: enriched,
-    isLoading: devicesQuery.isLoading,
-    isError: devicesQuery.isError,
-  };
-}

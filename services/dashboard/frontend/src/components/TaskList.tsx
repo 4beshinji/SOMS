@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import type { Task, TaskReport, ZoneMultiplierInfo } from '@soms/types';
+import type { Task, TaskReport } from '@soms/types';
 import { Spinner } from '@soms/ui';
 import TaskCard from './TaskCard';
 
@@ -8,7 +8,6 @@ interface TaskListProps {
   loading: boolean;
   hasMoreTasks?: boolean;
   acceptedTaskIds: Set<number>;
-  zoneMultipliers: Record<string, ZoneMultiplierInfo>;
   onAccept: (taskId: number) => void;
   onComplete: (taskId: number, report?: TaskReport) => void;
   onIgnore: (taskId: number) => void;
@@ -20,7 +19,6 @@ export default function TaskList({
   loading,
   hasMoreTasks,
   acceptedTaskIds,
-  zoneMultipliers,
   onAccept,
   onComplete,
   onIgnore,
@@ -33,7 +31,7 @@ export default function TaskList({
           お願い事一覧
         </h2>
         <p className="text-[var(--gray-600)]">
-          タスクを完了して報酬を受け取りましょう。スマホのウォレットアプリで QR コードを読み取ってください。
+          担当のタスクを確認し、完了したら報告してください。
         </p>
       </div>
 
@@ -68,7 +66,6 @@ export default function TaskList({
                 <TaskCard
                   task={task}
                   isAccepted={acceptedTaskIds.has(task.id)}
-                  zoneMultiplier={task.zone ? zoneMultipliers[task.zone] : undefined}
                   onAccept={onAccept}
                   onComplete={onComplete}
                   onIgnore={onIgnore}

@@ -8,7 +8,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "create_task",
-            "description": "ダッシュボードに人間向けタスクを作成する。オフィスの問題を検知した場合に使用。報酬（bounty）はタスクの難易度に応じて設定する。",
+            "description": "ダッシュボードに人間向けタスクを作成する。オフィスの問題を検知した場合に使用。緊急度（urgency）でタスクの優先度を表現する。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -19,10 +19,6 @@ TOOLS = [
                     "description": {
                         "type": "string",
                         "description": "タスクの詳細説明（状況と対応方法を含む）"
-                    },
-                    "bounty": {
-                        "type": "integer",
-                        "description": "報酬ポイント。簡単:500-1000、中程度:1000-2000、重労働:2000-5000"
                     },
                     "urgency": {
                         "type": "integer",

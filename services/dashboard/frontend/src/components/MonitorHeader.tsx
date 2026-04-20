@@ -1,15 +1,14 @@
 import { motion } from 'framer-motion';
-import type { SystemStats, SupplyStats } from '@soms/types';
+import type { SystemStats } from '@soms/types';
 
 interface MonitorHeaderProps {
   systemStats: SystemStats | null;
-  supply: SupplyStats | null;
   isAudioEnabled: boolean;
   onToggleAudio: () => void;
   children?: React.ReactNode;
 }
 
-export default function MonitorHeader({ systemStats, supply, isAudioEnabled, onToggleAudio, children }: MonitorHeaderProps) {
+export default function MonitorHeader({ systemStats, isAudioEnabled, onToggleAudio, children }: MonitorHeaderProps) {
   return (
     <header className="bg-white border-b border-[var(--gray-200)] elevation-1">
       <div className="max-w-6xl mx-auto px-6 py-6">
@@ -28,13 +27,10 @@ export default function MonitorHeader({ systemStats, supply, isAudioEnabled, onT
             </p>
           </div>
 
-          {/* System Stats + Supply */}
+          {/* System Stats */}
           <div className="flex items-center gap-4">
             {systemStats && (
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-100 to-pink-100 border border-[var(--xp-purple)]">
-                  <span className="font-bold text-sm text-[var(--xp-purple-dark)]">{systemStats.total_xp} XP</span>
-                </div>
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--gray-100)] border border-[var(--gray-300)]">
                   <span className="text-sm text-[var(--gray-700)]">{systemStats.tasks_completed} 完了</span>
                 </div>
@@ -43,13 +39,6 @@ export default function MonitorHeader({ systemStats, supply, isAudioEnabled, onT
                     <span className="text-sm font-medium text-[var(--info-700)]">{systemStats.tasks_queued} 待機中</span>
                   </div>
                 )}
-              </div>
-            )}
-            {supply && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-yellow-100 to-amber-100 border border-[var(--gold)]">
-                <span className="text-sm font-medium text-[var(--gold-dark)]">
-                  {(supply.circulating / 1000).toFixed(1)} SOMS 流通
-                </span>
               </div>
             )}
           </div>
