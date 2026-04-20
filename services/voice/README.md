@@ -1,3 +1,5 @@
+> ⚠️ **v2 B2B note**: this README predates the v2 fork and may reference the v1 credit economy. See [`/docs/architecture/v2-b2b-migration.md`](../../docs/architecture/v2-b2b-migration.md) for the current architecture. v1 preserved at `legacy/v1-with_wallet`.
+
 # VOICEVOX Voice Notification Service
 
 ナースロボ＿タイプＴの声でタスクを親しみやすく読み上げるサービスです。

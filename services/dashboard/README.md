@@ -1,3 +1,5 @@
+> ⚠️ **v2 B2B note**: this README predates the v2 fork and may reference the v1 credit economy. See [`/docs/architecture/v2-b2b-migration.md`](../../docs/architecture/v2-b2b-migration.md) for the current architecture. v1 preserved at `legacy/v1-with_wallet`.
+
 # Dashboard Service
 
 SOMS のヒューマンインターフェース。タスク管理・センサー可視化・空間マップ・音声イベント閲覧を提供する。

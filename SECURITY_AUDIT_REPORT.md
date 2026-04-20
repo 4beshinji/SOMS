@@ -1,3 +1,5 @@
+> ⚠️ **v2 B2B note**: this report covers the v1 code tree. The v2 fork on `main` removed the wallet/economy surfaces and their associated threat model. See `docs/architecture/v2-b2b-migration.md`.
+
 # SOMS セキュリティ監査レポート
 
 **監査日**: 2026-02-26

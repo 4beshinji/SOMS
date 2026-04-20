@@ -1,3 +1,5 @@
+> ⚠️ **v2 B2B note**: this document predates the v2 fork. See [`../../architecture/v2-b2b-migration.md`](../../architecture/v2-b2b-migration.md). v1 preserved at `legacy/v1-with_wallet`.
+
 # API Contracts — Inter-Service Communication
 
 This document defines the behavioral contracts between SOMS services.

@@ -1,3 +1,5 @@
+> ⚠️ **v2 B2B note**: this document predates the v2 fork and may reference the v1 credit economy (wallet, XP, bounty, demurrage). Those features are removed on `main`. See [`docs/architecture/v2-b2b-migration.md`](../architecture/v2-b2b-migration.md) for the current architecture. v1 is preserved at branch `legacy/v1-with_wallet` / tag `v1.0-with_wallet`.
+
 # SOMS — 自己増殖する都市知能
 
 **分散型ローカル LLM による自律的空間管理ネットワーク**
