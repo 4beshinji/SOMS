@@ -48,6 +48,18 @@ class Task(Base):
     # Audience targeting
     audience = Column(String(16), default="user")  # "user" or "admin"
 
+class TaskAuditLog(Base):
+    """Append-only audit trail of task lifecycle events (no amounts, no currency)."""
+    __tablename__ = "task_audit_log"
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, index=True, nullable=False)
+    action = Column(String(32), nullable=False, index=True)  # created / assigned / accepted / completed / dispatched
+    actor_user_id = Column(Integer, nullable=True)
+    notes = Column(String, nullable=True)
+    region_id = Column(String(32), default="local")
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class VoiceEvent(Base):
     __tablename__ = "voice_events"
     id = Column(Integer, primary_key=True, index=True)

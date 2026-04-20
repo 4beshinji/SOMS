@@ -8,6 +8,7 @@ const SpatialMonitorPage = lazy(() => import('./pages/SpatialMonitorPage'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage'));
 const AnomalyPage = lazy(() => import('./pages/AnomalyPage'));
 const TaskQueuePage = lazy(() => import('./pages/TaskQueuePage'));
+const ActivityPage = lazy(() => import('./pages/ActivityPage'));
 const VoicePage = lazy(() => import('./pages/VoicePage'));
 const ShoppingPage = lazy(() => import('./pages/ShoppingPage'));
 const ZoneEditor = lazy(() => import('./pages/ZoneEditor'));
@@ -123,6 +124,18 @@ function Layout() {
             Task Queue
           </NavLink>
           <NavLink
+            to="/activity"
+            className={({ isActive }) =>
+              `block px-4 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-[var(--primary-50)] text-[var(--primary-700)] border-r-2 border-[var(--primary-500)]'
+                  : 'text-[var(--gray-700)] hover:bg-[var(--gray-100)]'
+              }`
+            }
+          >
+            Activity
+          </NavLink>
+          <NavLink
             to="/anomaly"
             className={({ isActive }) =>
               `block px-4 py-2.5 text-sm font-medium transition-colors ${
@@ -198,6 +211,7 @@ function Layout() {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/shopping" element={<ShoppingPage />} />
             <Route path="/task-queue" element={<TaskQueuePage />} />
+            <Route path="/activity" element={<ActivityPage />} />
             <Route path="/anomaly" element={<AnomalyPage />} />
             <Route path="/voice" element={<VoicePage />} />
             <Route path="/cameras" element={<CameraSetupPage />} />

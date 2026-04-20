@@ -21,6 +21,23 @@ MQTT_PASS = os.getenv("MQTT_PASS", "soms_dev_mqtt")
 REGION_ID = os.getenv("SOMS_REGION_ID", "local")
 
 
+async def _record_audit(
+    db: AsyncSession,
+    task_id: int,
+    action: str,
+    actor_user_id: Optional[int] = None,
+    notes: Optional[str] = None,
+):
+    """Append an audit row. Caller must commit. No amounts — lifecycle only."""
+    db.add(models.TaskAuditLog(
+        task_id=task_id,
+        action=action,
+        actor_user_id=actor_user_id,
+        notes=notes,
+        region_id=REGION_ID,
+    ))
+
+
 def _publish_task_report(task: "models.Task"):
     """Publish task completion report to MQTT for Brain consumption (fire-and-forget)."""
     zone = task.zone or "main"
@@ -262,6 +279,9 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
     await db.commit()
     await db.refresh(new_task)
 
+    await _record_audit(db, new_task.id, "created")
+    await db.commit()
+
     return _task_to_response(new_task)
 
 @router.put("/{task_id}/accept", response_model=schemas.Task)
@@ -287,6 +307,7 @@ async def accept_task(
 
     task.assigned_to = body.user_id  # None for anonymous kiosk accept
     task.accepted_at = func.now()
+    await _record_audit(db, task.id, "accepted", actor_user_id=body.user_id)
     await db.commit()
     await db.refresh(task)
     return _task_to_response(task)
@@ -324,6 +345,10 @@ async def complete_task(
     sys_stats = await _get_or_create_system_stats(db)
     sys_stats.total_xp += task.bounty_xp or 0
     sys_stats.tasks_completed += 1
+
+    actor_id = auth_user.id if auth_user else task.assigned_to
+    audit_notes = body.report_status if body and body.report_status else None
+    await _record_audit(db, task.id, "completed", actor_user_id=actor_id, notes=audit_notes)
 
     await db.commit()
     await db.refresh(task)
@@ -380,9 +405,10 @@ async def dispatch_task(task_id: int, db: AsyncSession = Depends(get_db), _auth:
     
     task.is_queued = False
     task.dispatched_at = func.now()
+    await _record_audit(db, task.id, "dispatched")
     await db.commit()
     await db.refresh(task)
-    
+
     t_dict = {k: v for k, v in task.__dict__.items() if not k.startswith('_')}
     if task.task_type:
         try:
@@ -431,3 +457,39 @@ async def get_task_stats(db: AsyncSession = Depends(get_db)):
         tasks_queued=queued_count or 0,
         tasks_completed_last_hour=completed_last_hour or 0,
     )
+
+
+# Audit Log Endpoints (read-only, no amounts)
+
+
+@router.get("/audit", response_model=List[schemas.TaskAuditEntry])
+async def get_audit_feed(
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
+):
+    """Recent task lifecycle events across all tasks."""
+    limit = max(1, min(limit, 500))
+    query = (
+        select(models.TaskAuditLog)
+        .order_by(models.TaskAuditLog.timestamp.desc())
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    return [schemas.TaskAuditEntry.model_validate(row) for row in result.scalars().all()]
+
+
+@router.get("/{task_id}/audit", response_model=List[schemas.TaskAuditEntry])
+async def get_task_audit(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    _auth: AuthUser = Depends(require_auth),
+):
+    """Lifecycle events for a single task."""
+    query = (
+        select(models.TaskAuditLog)
+        .filter(models.TaskAuditLog.task_id == task_id)
+        .order_by(models.TaskAuditLog.timestamp.asc())
+    )
+    result = await db.execute(query)
+    return [schemas.TaskAuditEntry.model_validate(row) for row in result.scalars().all()]

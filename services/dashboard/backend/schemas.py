@@ -87,6 +87,19 @@ class SystemStatsResponse(BaseModel):
     tasks_queued: int = 0
     tasks_completed_last_hour: int = 0
 
+# Task Audit Log Schemas
+class TaskAuditEntry(BaseModel):
+    id: int
+    task_id: int
+    action: str
+    actor_user_id: Optional[int] = None
+    notes: Optional[str] = None
+    region_id: str = "local"
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
 # VoiceEvent Schemas
 class VoiceEventCreate(BaseModel):
     message: str
