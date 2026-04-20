@@ -32,7 +32,6 @@ from pathlib import Path
 HTTP_SERVICES = [
     ("soms-backend",  "http://localhost:8000/health"),
     ("soms-voice",    "http://localhost:8002/health"),
-    ("soms-wallet",   "http://localhost:8003/health"),
     ("soms-auth",     "http://localhost:8006/health"),
     ("soms-mock-llm", "http://localhost:8001/health"),
     ("soms-frontend", "http://localhost:80/"),
@@ -44,7 +43,6 @@ DOCKER_HEALTH_SERVICES = [
     "soms-postgres",
     "soms-brain",
     "soms-voicevox",
-    "soms-wallet-app",
     "soms-switchbot",
     "soms-perception",
     "soms-llm",

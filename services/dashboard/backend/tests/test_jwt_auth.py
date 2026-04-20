@@ -292,7 +292,7 @@ class TestGetCurrentUser:
         assert resp.json()["user"]["id"] == 2147483647
 
     def test_zero_user_id(self):
-        """System wallet uses user_id=0."""
+        """System user uses user_id=0."""
         token = make_token(sub=0)
         client = TestClient(_create_app())
         resp = client.get("/optional", headers={"Authorization": f"Bearer {token}"})

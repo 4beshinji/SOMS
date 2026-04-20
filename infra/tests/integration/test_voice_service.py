@@ -59,7 +59,6 @@ def test_task_announcement():
             "title": "コーヒー豆の補充",
             "description": "給湯室のコーヒー豆がなくなっています",
             "location": "給湯室",
-            "bounty_gold": 50,
             "urgency": 2,
             "zone": "2F"
         }
@@ -149,7 +148,6 @@ def test_variety():
             "title": "掃除機をかける",
             "description": "オフィスの床を掃除してください",
             "location": "オフィス",
-            "bounty_gold": 30,
             "urgency": 1,
             "zone": "1F"
         }

@@ -23,7 +23,6 @@ def create_test_task(title, **kwargs):
         "title": title,
         "description": kwargs.get("description", "Test task"),
         "location": kwargs.get("location", "Test Location"),
-        "bounty_gold": kwargs.get("bounty", 50),
         "urgency": kwargs.get("urgency", 2),
         "zone": kwargs.get("zone", "Test Zone"),
         **kwargs
@@ -103,7 +102,6 @@ def test_manual_reminder_generation():
         description="オフィスの床を掃除してください",
         location="オフィス",
         zone="1F",
-        bounty=30
     )
     
     if not task:
@@ -120,7 +118,6 @@ def test_manual_reminder_generation():
             "title": task.get("title"),
             "description": task.get("description"),
             "location": task.get("location"),
-            "bounty_gold": task.get("bounty_gold"),
             "urgency": task.get("urgency"),
             "zone": task.get("zone")
         }
@@ -169,14 +166,14 @@ def test_manual_reminder_generation():
         print(f"  → LLM might be using low temperature or deterministic mode")
     
     # Both contain full information?
-    essential_info = [task.get('title'), task.get('location'), str(task.get('bounty_gold'))]
+    essential_info = [task.get('title'), task.get('location')]
     
     missing_first = [info for info in essential_info if info and info not in text1]
     missing_reminder = [info for info in essential_info if info and info not in text2]
     
     if not missing_first and not missing_reminder:
         print(f"  ✓ Both announcements contain full task info")
-        print(f"    (title, location, bounty)")
+        print(f"    (title, location)")
         return True
     else:
         print(f"  ⚠ Some essential info missing:")

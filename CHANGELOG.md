@@ -6,6 +6,53 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-04-20 — v2 B2B fork
+
+**BREAKING**: the v1 credit economy was removed to make SOMS deployable in
+employment-relationship (B2B) contexts where bounty payments and an internal
+currency conflict with labor law and 資金決済法. Legacy preserved at branch
+`legacy/v1-with_wallet` and tag `v1.0-with_wallet`. See
+[`docs/architecture/v2-b2b-migration.md`](docs/architecture/v2-b2b-migration.md).
+
+### Removed
+
+- `services/wallet/` (double-entry ledger, P2P transfers, device XP, zone
+  multiplier, funding pools, demurrage) — 8 DB tables, 25+ HTTP routes
+- `services/wallet-app/` (employee PWA)
+- `services/brain/src/wallet_bridge.py` and heartbeat → wallet plumbing
+- `services/voice/src/currency_unit_stock.py` and `/api/voice/currency-units/*`
+- `Task.bounty_gold`, `Task.bounty_xp`, `SystemStats.total_xp` columns
+  (dropped via idempotent startup DDL on backend boot)
+- Admin Economy page, Dashboard bounty/XP badges + QR reward modal, zone
+  multiplier display, device status analytics section
+- Integration tests: `test_wallet_integration.py`, `test_demurrage.py`,
+  `test_wallet_dashboard_e2e.py`
+- Docs: `CURRENCY_SYSTEM.md`, `04_economy_dashboard.md`,
+  `wallet-separation.md`, voice `CONTEXT_AWARE_COMPLETION.md`
+
+### Added
+
+- `task_audit_log` table + `/tasks/audit` + `/tasks/{id}/audit` endpoints —
+  append-only lifecycle trail (created / accepted / dispatched / completed)
+  with no monetary columns; replaces the ledger as the compliance trail
+- `ActivityPage` in admin frontend
+- `docs/architecture/v2-b2b-migration.md` — canonical v2 reference
+
+### Changed
+
+- `create_task` LLM tool: `bounty` param removed; `urgency` (0–4) carries
+  priority alone
+- Task assignment: admin-assigned via existing `Task.assigned_to`; v1
+  voluntary bounty-auction model is gone
+- `docker-compose.yml`: wallet + wallet-app services removed; brain and
+  admin-frontend no longer depend on wallet
+- nginx: `/api/wallet/` location blocks removed from dashboard and admin
+  frontend configs
+- `pnpm-workspace.yaml` / `package.json`: wallet-app workspace entry and
+  build/dev scripts removed
+- CLAUDE.md and README.md rewritten for v2; 15 stale docs tagged with v2
+  banner pending full rewrite
+
 ## [0.5.0] - 2026-03-06
 
 ### Added

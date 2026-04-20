@@ -26,7 +26,6 @@ def test_dual_voice_generation():
             "title": "掃除機をかける",
             "description": "オフィスの床を掃除してください",
             "location": "オフィス",
-            "bounty_gold": 30,
             "urgency": 1,
             "zone": "1F"
         },
@@ -34,7 +33,6 @@ def test_dual_voice_generation():
             "title": "コーヒー豆の補充",
             "description": "給湯室のコーヒー豆がなくなっています",
             "location": "給湯室",
-            "bounty_gold": 50,
             "urgency": 2,
             "zone": "2F"
         },
@@ -42,7 +40,6 @@ def test_dual_voice_generation():
             "title": "プリンター用紙補充",
             "description": "プリンターの用紙が少なくなっています",
             "location": "コピー室",
-            "bounty_gold": 20,
             "urgency": 1,
             "zone": "1F"
         }
@@ -135,7 +132,6 @@ def test_backend_integration():
         "title": "テストタスク",
         "description": "バックエンド統合テスト",
         "location": "テスト場所",
-        "bounty_gold": 100,
         "urgency": 2,
         "zone": "Test Zone",
         "announcement_audio_url": "/audio/test_announce.wav",

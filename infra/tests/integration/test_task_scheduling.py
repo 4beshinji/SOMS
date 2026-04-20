@@ -22,7 +22,6 @@ async def create_task(title: str, description: str, urgency: int, zone: str = No
     payload = {
         "title": title,
         "description": description,
-        "bounty_gold": 100 * (urgency + 1),
         "task_type": ["test"],
         "location": zone or "Office",
         "urgency": urgency,

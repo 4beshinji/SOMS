@@ -158,8 +158,7 @@ class TestCompleteTaskAuth:
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
-        with \
-             patch("routers.tasks._publish_task_report"):
+        with patch("routers.tasks._publish_task_report"):
             app = _create_app(db)
             client = TestClient(app)
             resp = client.put("/tasks/1/complete", json={},
@@ -180,8 +179,7 @@ class TestCompleteTaskAuth:
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
-        with \
-             patch("routers.tasks._publish_task_report"):
+        with patch("routers.tasks._publish_task_report"):
             app = _create_app(db)
             client = TestClient(app)
             resp = client.put("/tasks/1/complete",
@@ -197,8 +195,7 @@ class TestCompleteTaskAuth:
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
-        with \
-             patch("routers.tasks._publish_task_report"):
+        with patch("routers.tasks._publish_task_report"):
             app = _create_app(db)
             client = TestClient(app)
             client.put("/tasks/1/complete",
@@ -212,8 +209,7 @@ class TestCompleteTaskAuth:
         sys_stats = make_sys_stats()
         db = make_mock_db([[task], [sys_stats]])
 
-        with \
-             patch("routers.tasks._publish_task_report"):
+        with patch("routers.tasks._publish_task_report"):
             app = _create_app(db)
             client = TestClient(app)
             resp = client.put("/tasks/1/complete", json={},
@@ -241,7 +237,7 @@ class TestCompleteTaskAuth:
 class TestAuthEdgeCases:
 
     def test_accept_auth_user_id_zero_system_wallet(self):
-        """System wallet (user_id=0) authenticated, accepting for user_id=0."""
+        """System user (user_id=0) authenticated, accepting for user_id=0."""
         task = make_task_obj(id=1)
         db = make_mock_db([[task]])
         app = _create_app(db)
@@ -253,7 +249,7 @@ class TestAuthEdgeCases:
         assert resp.status_code != 403
 
     def test_accept_auth_user_id_zero_mismatched(self):
-        """System wallet (user_id=0) trying to accept for user_id=5 → 403."""
+        """System user (user_id=0) trying to accept for user_id=5 → 403."""
         db = make_mock_db()
         app = _create_app(db)
         client = TestClient(app)

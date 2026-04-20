@@ -432,7 +432,6 @@ class TestBackendDuplicateCheck(unittest.TestCase):
         payload = json.dumps({
             "title": title,
             "description": "test",
-            "bounty_gold": 500,
             "task_type": task_type,
             "location": zone or "Office",
             "urgency": urgency,

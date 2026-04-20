@@ -57,7 +57,6 @@ TOOLS = [
                 "properties": {
                     "title": {"type": "string", "description": "タスクのタイトル"},
                     "description": {"type": "string", "description": "タスクの詳細説明"},
-                    "bounty": {"type": "integer", "description": "報酬ポイント 500-5000"},
                     "urgency": {"type": "integer", "description": "緊急度 0-4"},
                     "zone": {"type": "string", "description": "対象ゾーン"},
                 },

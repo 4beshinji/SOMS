@@ -20,7 +20,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/cloud_dependency-zero-black?style=flat-square" alt="cloud" />
-  <img src="https://img.shields.io/badge/license-see_LICENSE-lightgrey?style=flat-square" alt="license" />
+  <img src="https://img.shields.io/badge/license-PolyForm_Perimeter_1.0.0-blue?style=flat-square" alt="license" />
 </p>
 
 ---
@@ -198,4 +198,8 @@ Pure event-driven architecture on Python + MQTT. No heavyweight middleware.
 
 ## License
 
-See [LICENSE](LICENSE) file.
+SOMS is licensed under the **[PolyForm Perimeter License 1.0.0](LICENSE)**.
+
+You may use, modify, and redistribute SOMS for any purpose, including internal use within an organization, **except for providing a product or service that competes with SOMS**. See the LICENSE file or <https://polyformproject.org/licenses/perimeter/1.0.0/> for the full terms.
+
+The software is provided **as is, without warranty or support obligation**. The licensor is not liable for any damages arising out of its use.

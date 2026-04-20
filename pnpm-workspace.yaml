@@ -1,5 +1,4 @@
 packages:
   - "packages/*"
   - "services/dashboard/frontend"
-  - "services/wallet-app"
   - "services/admin/frontend"

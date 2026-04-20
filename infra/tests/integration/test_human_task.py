@@ -26,7 +26,7 @@ async def check_tasks():
                 tasks = await response.json()
                 print(f"Tasks found: {len(tasks)}")
                 for t in tasks:
-                    print(f" - {t['title']}: {t.get('description')} (Bounty: {t.get('bounty_gold')})")
+                    print(f" - {t['title']}: {t.get('description')} ")
                     if t['title'] == "Buy Coffee Beans":
                         return True
             else:

@@ -11,7 +11,6 @@ def check():
         r = requests.post("http://localhost:8000/tasks/", json={
             "title": "Task A",
             "description": "Desc A",
-            "bounty_gold": 100,
             "task_type": ["general", "clean"],
             "expires_at": None,
             "location": "Office"
@@ -33,7 +32,6 @@ def check():
     r = requests.post("http://localhost:8000/tasks/", json={
         "title": "Task A",
         "description": "Desc A Duplicate",
-        "bounty_gold": 200,
         "task_type": ["urgent"],
         "expires_at": None,
         "location": "Office"
@@ -61,7 +59,6 @@ def check():
     r = requests.post("http://localhost:8000/tasks/", json={
         "title": "Task B",
         "description": "Expiring",
-        "bounty_gold": 50,
         "task_type": ["short"],
         "expires_at": expires_at,
         "location": "Office"

@@ -40,20 +40,17 @@ if os.path.isfile(_ENV_PORTS_FILE):
 # Configuration (all overridable via environment variables)
 # ---------------------------------------------------------------------------
 PORT_BACKEND = os.getenv("SOMS_PORT_BACKEND", "8000")
-PORT_WALLET = os.getenv("SOMS_PORT_WALLET", "8003")
 PORT_AUTH = os.getenv("SOMS_PORT_AUTH", "8006")
 PORT_VOICE = os.getenv("SOMS_PORT_VOICE", "8002")
 PORT_MOCK_LLM = os.getenv("SOMS_PORT_MOCK_LLM", "8001")
 
 BACKEND_URL = os.getenv("BACKEND_URL", f"http://localhost:{PORT_BACKEND}")
-WALLET_URL = os.getenv("WALLET_URL", f"http://localhost:{PORT_WALLET}")
 AUTH_URL = os.getenv("AUTH_URL", f"http://localhost:{PORT_AUTH}")
 VOICE_URL = os.getenv("VOICE_URL", f"http://localhost:{PORT_VOICE}")
 MOCK_LLM_URL = os.getenv("MOCK_LLM_URL", f"http://localhost:{PORT_MOCK_LLM}")
 
 HTTP_TIMEOUT = 5  # seconds
 
-# All 14 SOMS containers
 CONTAINERS = [
     "soms-mqtt",
     "soms-brain",
@@ -62,8 +59,6 @@ CONTAINERS = [
     "soms-frontend",
     "soms-voicevox",
     "soms-voice",
-    "soms-wallet",
-    "soms-wallet-app",
     "soms-auth",
     "soms-llm",
     "soms-mock-llm",
@@ -157,7 +152,6 @@ def _make_docker_health_test(container):
 
 HEALTH_ENDPOINTS = [
     ("Backend",  f"{BACKEND_URL}/health"),
-    ("Wallet",   f"{WALLET_URL}/health"),
     ("Auth",     f"{AUTH_URL}/health"),
     ("Voice",    f"{VOICE_URL}/health"),
     ("Mock LLM", f"{MOCK_LLM_URL}/health"),
@@ -206,7 +200,7 @@ def test_api_tasks_list():
 
 
 def test_api_tasks_stats():
-    """GET /tasks/stats returns dict with total_xp key."""
+    """GET /tasks/stats returns dict with tasks_completed key."""
     try:
         resp = http_get(f"{BACKEND_URL}/tasks/stats")
     except urllib.error.URLError as e:
@@ -214,7 +208,7 @@ def test_api_tasks_stats():
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"HTTP {e.code}: {e.read().decode() if e.fp else ''}")
     assert isinstance(resp, dict), f"Expected dict, got {type(resp).__name__}"
-    assert "total_xp" in resp, f"Missing 'total_xp' key in: {list(resp.keys())}"
+    assert "tasks_completed" in resp, f"Missing 'tasks_completed' key in: {list(resp.keys())}"
 
 
 def test_api_sensors_latest():
@@ -226,18 +220,6 @@ def test_api_sensors_latest():
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"HTTP {e.code}: {e.read().decode() if e.fp else ''}")
     assert isinstance(resp, list), f"Expected list, got {type(resp).__name__}"
-
-
-def test_api_system_wallet():
-    """GET /wallets/0 returns dict with balance key (system wallet)."""
-    try:
-        resp = http_get(f"{WALLET_URL}/wallets/0")
-    except urllib.error.URLError as e:
-        raise SkipTest(f"wallet unavailable: {e.reason}")
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"HTTP {e.code}: {e.read().decode() if e.fp else ''}")
-    assert isinstance(resp, dict), f"Expected dict, got {type(resp).__name__}"
-    assert "balance" in resp, f"Missing 'balance' key in: {list(resp.keys())}"
 
 
 # ======================================================================
@@ -299,9 +281,8 @@ def main():
     print("\n[3] API Smoke Tests")
     test("api: GET /health (backend)", test_api_backend_health)
     test("api: GET /tasks/ returns list", test_api_tasks_list)
-    test("api: GET /tasks/stats has total_xp", test_api_tasks_stats)
+    test("api: GET /tasks/stats", test_api_tasks_stats)
     test("api: GET /sensors/latest returns list", test_api_sensors_latest)
-    test("api: GET /wallets/0 has balance", test_api_system_wallet)
 
     # -- Section 4: MQTT Connectivity --
     print("\n[4] MQTT Connectivity")
