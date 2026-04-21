@@ -1,5 +1,3 @@
-> ⚠️ **v2 B2B note**: this document predates the v2 fork and may reference the v1 credit economy (wallet, XP, bounty, demurrage). Those features are removed on `main`. See [`docs/architecture/v2-b2b-migration.md`](../architecture/v2-b2b-migration.md) for the current architecture. v1 is preserved at branch `legacy/v1-with_wallet` / tag `v1.0-with_wallet`.
-
 # トラブルシューティングガイド
 
 ## 目次
@@ -11,8 +9,7 @@
 5. [センサー / MQTT データ問題](#5-センサー--mqtt-データ問題)
 6. [フロントエンド問題](#6-フロントエンド問題)
 7. [GPU / ROCm 問題](#7-gpu--rocm-問題)
-8. [Wallet / 決済問題](#8-wallet--決済問題)
-9. [テスト実行問題](#9-テスト実行問題)
+8. [テスト実行問題](#8-テスト実行問題)
 
 ---
 
@@ -284,34 +281,7 @@ docker logs soms-perception | grep -i "cuda\|rocm\|cpu"
 
 ---
 
-## 8. Wallet / 決済問題
-
-### Wallet サービスに接続できない
-
-Wallet は `127.0.0.1:8003` でホスト限定で公開されている。
-他のコンテナからは `wallet:8000` でアクセス。
-
-```bash
-# ホストから確認
-curl http://localhost:8003/supply
-
-# コンテナから確認
-docker exec soms-backend curl http://wallet:8000/supply
-```
-
-### タスク完了時にバウンティが支払われない
-
-```bash
-# Wallet のログ確認
-docker logs soms-wallet | grep -i "error\|reward\|task"
-
-# システムウォレットの残高確認
-curl http://localhost:8003/wallets/0
-```
-
----
-
-## 9. テスト実行問題
+## 8. テスト実行問題
 
 ### `python3 infra/tests/...` が ImportError を出す
 
@@ -331,16 +301,7 @@ uv pip install -r infra/requirements-test.txt --python .venv/bin/python
 ```bash
 # ポート環境変数を設定してからテスト実行
 set -a && source infra/.env.ports && set +a
-.venv/bin/python infra/tests/integration/test_wallet_integration.py
-```
-
-### Docker コンテナ内のテスト (wallet テスト)
-
-Wallet の一部テストはコンテナ内で実行する必要がある:
-
-```bash
-# stdin パイプで実行
-cat infra/scripts/test_phase1_5.py | docker exec -i soms-wallet python3 -
+.venv/bin/python infra/tests/integration/test_sensor_api.py
 ```
 
 ---
@@ -351,7 +312,6 @@ cat infra/scripts/test_phase1_5.py | docker exec -i soms-wallet python3 -
 |---------|---------|------------|
 | Brain | `docker logs -f soms-brain` | ReAct サイクル、LLM ツール呼び出し |
 | Backend | `docker logs -f soms-backend` | API エラー、DB 接続 |
-| Wallet | `docker logs -f soms-wallet` | 取引エラー、XP 計算 |
 | Voice | `docker logs -f soms-voice` | 音声合成エラー |
 | Perception | `docker logs -f soms-perception` | カメラ検出、YOLO エラー |
 | MQTT | `docker logs -f soms-mqtt` | 接続・認証エラー |

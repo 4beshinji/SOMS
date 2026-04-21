@@ -1,5 +1,3 @@
-> ⚠️ **v2 B2B note**: this document predates the v2 fork. See [`../../architecture/v2-b2b-migration.md`](../../architecture/v2-b2b-migration.md). v1 preserved at `legacy/v1-with_wallet`.
-
 # 02. Communication Protocol (MCP over MQTT)
 
 ## 1. Protocol Rationale
@@ -143,8 +141,9 @@ The frontend nginx routes API calls to appropriate backends:
 
 | Path | Upstream |
 |------|----------|
-| `/api/wallet/` | wallet:8000 |
+| `/api/auth/` | auth:8000 |
 | `/api/voice/` | voice-service:8000 |
+| `/api/stt/` | stt:8000 |
 | `/api/` | backend:8000 |
 | `/audio/` | voice-service:8000 |
 
@@ -153,21 +152,18 @@ The frontend nginx routes API calls to appropriate backends:
 Frontend (React 19, nginx)
   ├── → Backend (REST /api/)
   ├── → Voice Service (REST /api/voice/, /audio/)
-  └── → Wallet Service (REST /api/wallet/)
+  └── → Auth Service (REST /api/auth/)
 
 Brain
   ├── → MQTT Broker (telemetry, MCP)
-  ├── → Backend (REST, task CRUD)
+  ├── → Backend (REST, task CRUD + audit log emit)
   ├── → Voice Service (REST, announce/synthesize)
   └── → LLM (Ollama / mock-llm)
+  ── exposes: HTTP :8080 (chat, /devices/status, Ollama mgmt)
 
 Backend
-  ├── → PostgreSQL (asyncpg, tasks/users/voice_events)
-  └── → Wallet Service (fire-and-forget task reward on complete)
-
-Wallet
-  ├── → PostgreSQL (asyncpg, same DB, wallet schema)
-  └── → MQTT Broker (heartbeat/device tracking)
+  ├── → PostgreSQL (asyncpg, tasks / task_audit_log / users / voice_events / spatial)
+  └── → Brain (proxy /devices/status)
 
 Perception
   ├── → MQTT Broker (publish detections, host network)

@@ -1,5 +1,3 @@
-> ⚠️ **v2 B2B note**: this document predates the v2 fork and may reference the v1 credit economy (wallet, XP, bounty, demurrage). Those features are removed on `main`. See [`docs/architecture/v2-b2b-migration.md`](../architecture/v2-b2b-migration.md) for the current architecture. v1 is preserved at branch `legacy/v1-with_wallet` / tag `v1.0-with_wallet`.
-
 # SOMS デプロイメントガイド (Deployment Guide JA)
 
 ## 1. 前提条件
@@ -122,11 +120,9 @@ docker logs -f soms-backend      # Dashboard API
 | Dashboard Backend | 8000 | soms-backend | タスクCRUD API |
 | Mock LLM | 8001 | soms-mock-llm | テスト用LLMシミュレータ |
 | Voice Service | 8002 | soms-voice | 音声合成 + LLMテキスト生成 |
-| Wallet Service | 127.0.0.1:8003 | soms-wallet | クレジット経済 (複式簿記) |
-| Wallet App (PWA) | 8004 (HTTPS: 8443) | soms-wallet-app | モバイルウォレット |
 | SwitchBot Bridge | 8005 | soms-switchbot | SwitchBot Cloud Webhook |
 | Auth Service | 127.0.0.1:8006 | soms-auth | OAuth認証 (Slack + GitHub) |
-| PostgreSQL | 127.0.0.1:5432 | soms-postgres | Dashboard/Wallet/Auth 共有DB |
+| PostgreSQL | 127.0.0.1:5432 | soms-postgres | Dashboard/Auth 共有DB |
 | VOICEVOX | 50021 | soms-voicevox | 日本語音声合成エンジン |
 | Ollama | 11434 | soms-ollama | LLM推論 (ROCm) |
 | MQTT | 1883 | soms-mqtt | メッセージブローカー |

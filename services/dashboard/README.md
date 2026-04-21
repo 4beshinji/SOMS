@@ -1,5 +1,3 @@
-> ⚠️ **v2 B2B note**: this README predates the v2 fork and may reference the v1 credit economy. See [`/docs/architecture/v2-b2b-migration.md`](../../docs/architecture/v2-b2b-migration.md) for the current architecture. v1 preserved at `legacy/v1-with_wallet`.
-
 # Dashboard Service
 
 SOMS のヒューマンインターフェース。タスク管理・センサー可視化・空間マップ・音声イベント閲覧を提供する。
@@ -30,11 +28,13 @@ Swagger UI: `http://localhost:8000/docs`
 | GET | `/tasks/` | アクティブタスク一覧 (期限切れ除く) |
 | POST | `/tasks/` | タスク作成 (重複検出 Stage 1&2) |
 | PUT | `/tasks/{id}/accept` | タスク受諾・担当者割当 |
-| PUT | `/tasks/{id}/complete` | タスク完了・バウンティ支払い |
+| PUT | `/tasks/{id}/complete` | タスク完了・audit 行記録・MQTT 報告 |
 | PUT | `/tasks/{id}/reminded` | リマインド時刻更新 |
 | GET | `/tasks/queue` | キュー済みタスク一覧 |
 | PUT | `/tasks/{id}/dispatch` | キュータスクをディスパッチ |
-| GET | `/tasks/stats` | タスク統計 (件数・XP・完了数) |
+| GET | `/tasks/stats` | タスク統計 (件数・完了数) |
+| GET | `/tasks/audit` | タスクライフサイクル監査フィード |
+| GET | `/tasks/{id}/audit` | 1タスクの監査ログ |
 
 タスク重複検出:
 - Stage 1: title + location 完全一致
@@ -71,22 +71,24 @@ Swagger UI: `http://localhost:8000/docs`
 ### データモデル
 
 ```
-Task (27 columns)
+Task
   id, title, description, location, zone
-  bounty_gold, bounty_xp, urgency (0-4)
+  urgency (0-4), skill_level (junior|intermediate|senior, 任意)
   is_completed, is_queued
   created_at, expires_at, completed_at, dispatched_at, accepted_at, last_reminded_at
   task_type (JSON文字列配列), min_people_required, estimated_duration
   announcement_audio_url, announcement_text
   completion_audio_url, completion_text
   report_status, completion_note
-  assigned_to, region_id
+  assigned_to, region_id, audience (user|admin)
 
+TaskAuditLog: id, task_id, action (created|accepted|dispatched|completed),
+  actor_user_id, notes, region_id, timestamp
 VoiceEvent: id, message, audio_url, zone, tone, created_at
 DevicePosition: device_id, zone, x, y, device_type, channels
 CameraPosition: camera_id, zone, x, y, z, fov_deg, orientation_deg
 User: id, username, display_name, is_active, region_id, global_user_id
-SystemStats: total_xp, tasks_completed, tasks_created
+SystemStats: tasks_completed, tasks_created
 ```
 
 ### Repository パターン
@@ -109,9 +111,10 @@ DInjection: repositories/deps.py (FastAPI Depends)
 | 環境変数 | デフォルト | 説明 |
 |---------|-----------|------|
 | `DATABASE_URL` | sqlite+aiosqlite (fallback) | PostgreSQL 接続 URL |
-| `WALLET_SERVICE_URL` | `http://wallet:8000` | Wallet API URL |
+| `BRAIN_URL` | `http://brain:8080` | Brain chat server (device health proxy) |
 | `MQTT_BROKER` / `MQTT_PORT` | `mosquitto` / `1883` | タスク完了報告用 MQTT |
 | `MQTT_USER` / `MQTT_PASS` | `soms` / `soms_dev_mqtt` | MQTT 認証 |
+| `JWT_SECRET` | `soms_dev_jwt_secret_change_me` | JWT 署名鍵 (auth/dashboard 共通) |
 
 ### 起動・ログ確認
 

@@ -1,5 +1,3 @@
-> ⚠️ **v2 B2B note**: this document predates the v2 fork and may reference the v1 credit economy (wallet, XP, bounty, demurrage). Those features are removed on `main`. See [`docs/architecture/v2-b2b-migration.md`](../architecture/v2-b2b-migration.md) for the current architecture. v1 is preserved at branch `legacy/v1-with_wallet` / tag `v1.0-with_wallet`.
-
 # 参加ガイド
 
 SOMSは誰でも参加できる。コードを書く必要すらない。
@@ -20,7 +18,7 @@ mosquitto_pub -h <hub_ip> -u soms -P soms_dev_mqtt \
 ```
 
 - CoreHubのWorldModelが即座にセンサーを認識
-- デバイスXPが自動蓄積 → 報酬乗数が上昇
+- Brain の `DeviceRegistry` が自動で信頼度を上げていく (`GET /devices/status` で閲覧可能)
 - SensorSwarm (ESP-NOW/UART/I2C/BLE) でWiFi不要のメッシュ網も構築可能
 
 ### 2. 自分のCoreHubをデプロイする
@@ -199,18 +197,18 @@ bilingual (英語コード + 日本語説明) も可。
 
 ### 並行開発
 
-`docs/parallel-dev/WORKER_GUIDE.md` を参照。git worktree を使用する。
+複数人での並行開発時は git worktree を使い、メインディレクトリで `git checkout` しないこと。
 
 ### コミット前チェック
 
 ```bash
 # テスト実行
 for d in services/brain/tests services/auth/tests services/voice/tests \
-  services/dashboard/backend/tests services/wallet/tests \
-  services/switchbot/tests services/perception/tests; do
+  services/dashboard/backend/tests services/switchbot/tests \
+  services/zigbee2mqtt-bridge/tests services/perception/tests; do
   .venv/bin/python -m pytest "$d" --tb=short
 done
 
 # フロントエンド
-cd services/dashboard/frontend && pnpm run build
+pnpm run build
 ```

@@ -1,5 +1,3 @@
-> ⚠️ **v2 B2B note**: this document predates the v2 fork and may reference the v1 credit economy (wallet, XP, bounty, demurrage). Those features are removed on `main`. See [`docs/architecture/v2-b2b-migration.md`](../architecture/v2-b2b-migration.md) for the current architecture. v1 is preserved at branch `legacy/v1-with_wallet` / tag `v1.0-with_wallet`.
-
 # SOMS アクセスガイド (Access Guide)
 
 このドキュメントは、SOMS（Symbiotic Office Management System）へのアクセス方法をまとめたものです。
@@ -16,8 +14,6 @@
 | Dashboard Backend API | 8000 | soms-backend | REST API ([Swagger UI](http://<SERVER_IP>:8000/docs)) |
 | Mock LLM | 8001 | soms-mock-llm | 開発用LLMシミュレータ |
 | Voice Service | 8002 | soms-voice | Text-to-Speech |
-| Wallet Service | 127.0.0.1:8003 | soms-wallet | クレジット経済API (localhostのみ) |
-| Wallet App (PWA) | 8004 (HTTPS: 8443) | soms-wallet-app | モバイルウォレット (HTTPS対応) |
 | SwitchBot Bridge | 8005 | soms-switchbot | SwitchBot Cloud Webhook |
 | Auth Service | 127.0.0.1:8006 | soms-auth | OAuth認証 + JWT発行 (localhostのみ) |
 | PostgreSQL | 127.0.0.1:5432 | soms-postgres | データベース (localhostのみ) |
