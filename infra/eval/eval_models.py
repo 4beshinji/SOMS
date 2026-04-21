@@ -121,7 +121,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "create_task",
-            "description": "ダッシュボードに人間向けタスクを作成する。オフィスの問題を検知した場合に使用。報酬（bounty）はタスクの難易度に応じて設定する。",
+            "description": "ダッシュボードに人間向けタスクを作成する。オフィスの問題を検知した場合に使用。緊急度（urgency）でタスクの優先度を表現する。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -132,10 +132,6 @@ TOOLS = [
                     "description": {
                         "type": "string",
                         "description": "タスクの詳細説明（状況と対応方法を含む）"
-                    },
-                    "bounty": {
-                        "type": "integer",
-                        "description": "報酬ポイント。簡単:500-1000、中程度:1000-2000、重労働:2000-5000"
                     },
                     "urgency": {
                         "type": "integer",
@@ -325,7 +321,7 @@ SCENARIOS = {
     "B02": {
         "name": "high_temp",
         "category": "brain",
-        "description": "高温異常 → create_task (urgency≥2, bounty≥1000)",
+        "description": "高温異常 → create_task (urgency≥2)",
         "user_msg": (
             "現在のオフィス状態:\n"
             "- mainゾーン: 温度32.8℃, 湿度65%, CO2 850ppm, 照度380lux\n"
@@ -358,7 +354,7 @@ SCENARIOS = {
     "B05": {
         "name": "coffee_empty",
         "category": "brain",
-        "description": "コーヒー豆切れ → create_task (bounty 500-1000)",
+        "description": "コーヒー豆切れ → create_task (supply)",
         "user_msg": (
             "現在のオフィス状態:\n"
             "- mainゾーン: 温度23.0℃, 湿度50%, CO2 700ppm, 照度400lux\n"
@@ -690,10 +686,8 @@ def auto_score(scenario_id: str, parsed: dict) -> dict:
                     tc["function"]["arguments"] for tc in tool_calls
                     if tc["function"]["name"] == "create_task"
                 )
-                bounty = _safe_int(args.get("bounty", 0), 0)
                 urgency = _safe_int(args.get("urgency", -1), -1)
                 title = _safe_str(args.get("title", ""))
-                scores["bounty_in_range"] = 500 <= bounty <= 5000
                 scores["urgency_in_range"] = 0 <= urgency <= 4
                 scores["title_is_japanese"] = any(
                     '\u3040' <= c <= '\u9fff' for c in title)
