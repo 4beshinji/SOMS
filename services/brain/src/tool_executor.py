@@ -74,6 +74,7 @@ class ToolExecutor:
         urgency = args.get("urgency", 2)
         zone = args.get("zone")
         audience = args.get("audience", "user")
+        skill_level = args.get("skill_level")
 
         # Parse task_types from comma-separated string
         task_types_str = args.get("task_types", "general")
@@ -86,6 +87,7 @@ class ToolExecutor:
             zone=zone,
             task_types=task_types,
             audience=audience,
+            skill_level=skill_level,
         )
 
         if result and result.get("id"):

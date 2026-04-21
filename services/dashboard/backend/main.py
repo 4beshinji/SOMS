@@ -65,6 +65,7 @@ def _migrate_add_columns(conn):
         ("device_positions", "context", "TEXT", None),
         ("voice_events", "target_zone", "VARCHAR", None),
         ("voice_events", "target_display_ids", "VARCHAR", None),
+        ("tasks", "skill_level", "VARCHAR", None),
     ]
     # Allowlisted identifiers — only these table/column names are permitted
     _ALLOWED_TABLES = {m[0] for m in migrations}

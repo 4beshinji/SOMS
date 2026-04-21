@@ -162,6 +162,7 @@ def _task_to_response(task_model: models.Task) -> schemas.Task:
         zone=task_model.zone,
         min_people_required=task_model.min_people_required,
         estimated_duration=task_model.estimated_duration,
+        skill_level=getattr(task_model, "skill_level", None),
         announcement_audio_url=task_model.announcement_audio_url,
         announcement_text=task_model.announcement_text,
         completion_audio_url=task_model.completion_audio_url,
@@ -228,6 +229,7 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
         existing_task.zone = task.zone
         existing_task.min_people_required = task.min_people_required
         existing_task.estimated_duration = task.estimated_duration
+        existing_task.skill_level = task.skill_level
         existing_task.audience = resolved_audience
         # Update voice data only if new data is provided
         if task.announcement_audio_url:
@@ -256,6 +258,7 @@ async def create_task(task: schemas.TaskCreate, db: AsyncSession = Depends(get_d
         zone=task.zone,
         min_people_required=task.min_people_required,
         estimated_duration=task.estimated_duration,
+        skill_level=task.skill_level,
         is_queued=False,
         dispatched_at=func.now(),
         announcement_audio_url=getattr(task, 'announcement_audio_url', None),

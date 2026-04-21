@@ -66,7 +66,7 @@ const TaskCard = React.memo(function TaskCard({ task, isAccepted, onAccept, onCo
                 )}
 
                 {/* Task metadata */}
-                {(task.estimated_duration || task.min_people_required || task.expires_at) && (
+                {(task.estimated_duration || task.min_people_required || task.expires_at || task.skill_level) && (
                     <div className="flex items-center gap-3 flex-wrap text-xs text-[var(--gray-500)]">
                         {task.estimated_duration != null && (
                             <span className="flex items-center gap-1">
@@ -78,6 +78,11 @@ const TaskCard = React.memo(function TaskCard({ task, isAccepted, onAccept, onCo
                             <span className="flex items-center gap-1">
                                 <Users size={12} />
                                 {task.min_people_required}人以上
+                            </span>
+                        )}
+                        {task.skill_level && (
+                            <span className="px-1.5 py-0.5 rounded bg-[var(--gray-100)] text-[var(--gray-700)]">
+                                {task.skill_level}
                             </span>
                         )}
                         {task.expires_at && !task.is_completed && (() => {

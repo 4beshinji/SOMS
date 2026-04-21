@@ -36,6 +36,11 @@ TOOLS = [
                         "type": "string",
                         "enum": ["user", "admin"],
                         "description": "タスクの対象者。user: オフィス利用者向け（換気、清掃、補充など）、admin: システム管理者向け（センサー確認、デバイス診断など）。デフォルトはuser。"
+                    },
+                    "skill_level": {
+                        "type": "string",
+                        "enum": ["junior", "intermediate", "senior"],
+                        "description": "推奨スキルレベル。junior:初心者OK、intermediate:中級者向け、senior:熟練者向け。任意。"
                     }
                 },
                 "required": ["title", "description"]

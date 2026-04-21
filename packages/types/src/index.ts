@@ -39,6 +39,7 @@ export interface Task {
   expires_at?: string;
   is_queued?: boolean;
   audience?: 'user' | 'admin';
+  skill_level?: 'junior' | 'intermediate' | 'senior';
 }
 
 export interface PurchaseHistory {

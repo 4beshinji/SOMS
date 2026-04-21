@@ -26,6 +26,7 @@ class Task(Base):
     zone = Column(String, nullable=True)
     min_people_required = Column(Integer, default=1)
     estimated_duration = Column(Integer, default=10)  # minutes
+    skill_level = Column(String, nullable=True)  # "junior" | "intermediate" | "senior"
     is_queued = Column(Boolean, default=False)
     dispatched_at = Column(DateTime(timezone=True), nullable=True)
     

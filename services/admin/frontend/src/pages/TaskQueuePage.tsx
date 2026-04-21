@@ -96,6 +96,9 @@ export default function TaskQueuePage() {
                     <p className="text-xs text-[var(--gray-500)] truncate">{task.description}</p>
                   </div>
                   <span className="text-xs text-[var(--gray-500)]">{task.zone || '-'}</span>
+                  {task.skill_level && (
+                    <span className="px-1.5 py-0.5 rounded bg-[var(--gray-100)] text-xs text-[var(--gray-700)]">{task.skill_level}</span>
+                  )}
                   <span className="text-xs text-[var(--gray-400)]">
                     {new Date(task.created_at).toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' })}
                   </span>
@@ -138,6 +141,9 @@ export default function TaskQueuePage() {
                     <p className="text-xs text-[var(--gray-500)] truncate">{task.description}</p>
                   </div>
                   <span className="text-xs text-[var(--gray-500)]">{task.zone || '-'}</span>
+                  {task.skill_level && (
+                    <span className="px-1.5 py-0.5 rounded bg-[var(--gray-100)] text-xs text-[var(--gray-700)]">{task.skill_level}</span>
+                  )}
                   <span className="text-xs text-[var(--gray-400)]">
                     {new Date(task.created_at).toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' })}
                   </span>

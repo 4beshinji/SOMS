@@ -15,6 +15,7 @@ class TaskBase(BaseModel):
     zone: Optional[str] = None
     min_people_required: int = 1
     estimated_duration: int = 10  # minutes
+    skill_level: Optional[str] = None  # "junior" | "intermediate" | "senior"
 
     # Voice data (optional, provided by Brain if voice enabled)
     announcement_audio_url: Optional[str] = None
@@ -40,6 +41,7 @@ class TaskUpdate(BaseModel):
     task_type: Optional[List[str]] = None
     urgency: Optional[int] = None
     zone: Optional[str] = None
+    skill_level: Optional[str] = None
     is_queued: Optional[bool] = None
 
 class Task(TaskBase):

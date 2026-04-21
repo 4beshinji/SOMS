@@ -36,6 +36,7 @@ class DashboardClient:
         zone: str = None,
         announce: bool = None,
         audience: str = "user",
+        skill_level: str = None,
     ):
         """
         Create a new task in the dashboard.
@@ -83,6 +84,8 @@ class DashboardClient:
             "zone": zone,
             "audience": audience,
         }
+        if skill_level:
+            payload["skill_level"] = skill_level
 
         # Generate dual voice if enabled (before task creation)
         voice_data = None
