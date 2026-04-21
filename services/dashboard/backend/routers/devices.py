@@ -7,6 +7,7 @@ import yaml
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select, delete as sa_delete
@@ -17,6 +18,7 @@ from jwt_auth import AuthUser, require_auth, get_current_user
 from models import DevicePosition, CameraPosition
 
 SOMS_ENV = os.environ.get("SOMS_ENV", "development")
+BRAIN_URL = os.environ.get("BRAIN_URL", "http://brain:8080")
 
 
 async def optional_auth(
@@ -653,3 +655,27 @@ async def delete_camera_position(
     )
     await db.commit()
     logger.info("Camera override removed: %s (reverted to YAML)", camera_id)
+
+
+# ── Device Health (proxies brain's in-memory DeviceRegistry) ──────
+
+
+@router.get("/status")
+async def get_device_health_status(_auth: AuthUser = Depends(require_auth)):
+    """Device health snapshot (state, battery, power_mode, last_seen).
+
+    Queries the brain's DeviceRegistry over HTTP. Returns `{"devices": [...]}`
+    with one row per device the brain currently tracks in memory. Read-only;
+    the registry itself is populated from MQTT heartbeats.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{BRAIN_URL}/devices/status")
+            if resp.status_code != 200:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Brain returned {resp.status_code}",
+                )
+            return resp.json()
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Brain unavailable: {e}")

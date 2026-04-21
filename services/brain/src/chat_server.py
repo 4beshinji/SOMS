@@ -180,12 +180,22 @@ def create_chat_app(brain) -> web.Application:
                 pass
         return resp
 
+    async def handle_device_status(request: web.Request) -> web.Response:
+        """Return DeviceRegistry snapshot (device health, battery, state)."""
+        try:
+            snapshot = brain.device_registry.to_snapshot()
+            return web.json_response({"devices": snapshot})
+        except Exception as e:
+            logger.error(f"Device status error: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
     app.router.add_post("/chat", handle_chat)
     app.router.add_post("/chat/stream", handle_chat_stream)
     app.router.add_get("/health", handle_health)
     app.router.add_get("/models", handle_models_list)
     app.router.add_post("/models/pull", handle_models_pull)
     app.router.add_delete("/models", handle_models_delete)
+    app.router.add_get("/devices/status", handle_device_status)
     return app
 
 

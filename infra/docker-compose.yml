@@ -103,6 +103,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-soms_dev_jwt_secret_change_me}
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
       - SOMS_ENV=${SOMS_ENV:-development}
+      - BRAIN_URL=${BRAIN_URL:-http://brain:8080}
     networks:
       - soms-net
     healthcheck:

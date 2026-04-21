@@ -1,4 +1,5 @@
 import ZoneOverviewSection from './analytics/ZoneOverviewSection';
+import DeviceHealthSection from './analytics/DeviceHealthSection';
 import TimeSeriesSection from './analytics/TimeSeriesSection';
 import LLMTimelineSection from './analytics/LLMTimelineSection';
 import HeatmapSection from './analytics/HeatmapSection';
@@ -12,6 +13,12 @@ export default function AnalyticsPage() {
         <h2 className="text-2xl font-semibold text-[var(--gray-900)] mb-1">Zone Overview</h2>
         <p className="text-[var(--gray-600)] mb-4">Current sensor readings per zone.</p>
         <ZoneOverviewSection />
+      </section>
+
+      <section className="mb-8">
+        <h2 className="text-2xl font-semibold text-[var(--gray-900)] mb-1">Device Health</h2>
+        <p className="text-[var(--gray-600)] mb-4">State, battery, and last-seen for devices the brain currently tracks.</p>
+        <DeviceHealthSection />
       </section>
 
       <section className="mb-8">

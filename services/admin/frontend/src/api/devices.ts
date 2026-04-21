@@ -5,6 +5,26 @@ import type {
   UpdateDevicePositionRequest,
 } from '@soms/types';
 
+// ── Device health (brain DeviceRegistry snapshot via backend proxy) ──
+
+export interface DeviceHealth {
+  device_id: string;
+  device_type: string | null;
+  state: string;  // online | sleeping | offline | unknown
+  battery_pct: number | null;
+  trusted: boolean;
+  capabilities: string[];
+  power_mode: string;
+  last_seen: string;  // ISO
+}
+
+export async function fetchDeviceHealth(): Promise<DeviceHealth[]> {
+  const res = await authFetch('/api/devices/status');
+  if (!res.ok) throw new Error(`Failed to fetch device health (${res.status})`);
+  const data = await res.json();
+  return data.devices ?? [];
+}
+
 // ── Device position CRUD ─────────────────────────────────────────────
 
 export async function fetchDevicePositions(): Promise<DevicePositionResponse[]> {
