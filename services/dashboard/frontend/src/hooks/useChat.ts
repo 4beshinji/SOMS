@@ -9,10 +9,25 @@ export interface ChatMessage {
   audio_url?: string | null;
 }
 
+// Dev-only seed: shown when running `vite dev` so the chat UI isn't empty for design review.
+// Disable by appending `?chat=empty` to the URL, or remove the constant for prod-only behavior.
+const DEV_SEED: ChatMessage[] = import.meta.env.DEV && !new URLSearchParams(window.location.search).has('chat')
+  ? [
+      { id: 1, role: 'user', content: 'おはよう' },
+      { id: 2, role: 'assistant', content: 'おはようございます。今朝は気温22℃、湿度58%、過ごしやすそうですね。' },
+      { id: 3, role: 'user', content: '今日のタスク何があったっけ' },
+      { id: 4, role: 'assistant', content: '現在3件のアクティブタスクがあります。会議室Bの空調、ホワイトボード消去、コーヒー豆の補充です。優先度が高いのは空調の件ですね。' },
+      { id: 5, role: 'user', content: 'コーヒー豆って今どれくらい残ってる?' },
+      { id: 6, role: 'assistant', content: '在庫センサの計測では180g、約2杯分です。最低基準を下回ったので補充タスクを起こしました。' },
+      { id: 7, role: 'user', content: 'ありがとう、後で買ってくる' },
+      { id: 8, role: 'assistant', content: 'お任せします。買い物リストの「コーヒー豆 (深煎り)」は2袋でカルディ予定になっています。変更があれば教えてください。' },
+    ]
+  : [];
+
 export function useChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(DEV_SEED);
   const [isLoading, setIsLoading] = useState(false);
-  const nextIdRef = useRef(1);
+  const nextIdRef = useRef(DEV_SEED.length + 1);
 
   const send = useCallback(
     (message: string) => {

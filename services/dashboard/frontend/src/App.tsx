@@ -49,7 +49,8 @@ function Monitor() {
   const theme = useTheme();
 
   const [avatarUrl] = useState<string | null>(() => {
-    return localStorage.getItem('soms-avatar-url') || DEFAULT_AVATAR_URL;
+    const fromQuery = new URLSearchParams(window.location.search).get('avatar');
+    return fromQuery || localStorage.getItem('soms-avatar-url') || DEFAULT_AVATAR_URL;
   });
 
   // Voice input

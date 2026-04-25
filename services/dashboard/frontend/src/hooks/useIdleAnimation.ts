@@ -37,16 +37,25 @@ export function useIdleAnimation(model: AvatarModel | null, isPlayingMotion = fa
         headBaseY.current = head.rotation.y;
       }
 
-      // Relax arms from A-pose to natural resting position (MMD only)
+      // Relax arms from rest pose to natural standing position
+      // MMD models start in A-pose (~40° relax), VRM in T-pose (~70° relax)
+      const lUpperArm = model.getBone('leftUpperArm');
+      const rUpperArm = model.getBone('rightUpperArm');
+      const lLowerArm = model.getBone('leftLowerArm');
+      const rLowerArm = model.getBone('rightLowerArm');
       if (model.format === 'mmd') {
-        const lUpperArm = model.getBone('leftUpperArm');
-        const rUpperArm = model.getBone('rightUpperArm');
-        const lLowerArm = model.getBone('leftLowerArm');
-        const rLowerArm = model.getBone('rightLowerArm');
-        if (lUpperArm) lUpperArm.rotation.z -= 0.70;   // ~40° down
+        if (lUpperArm) lUpperArm.rotation.z -= 0.70;
         if (rUpperArm) rUpperArm.rotation.z += 0.70;
         if (lLowerArm) lLowerArm.rotation.z -= 0.12;
         if (rLowerArm) rLowerArm.rotation.z += 0.12;
+      } else if (model.format === 'vrm') {
+        // VRM normalized humanoid: arms point along ±X in T-pose; rotate around Z to swing down
+        if (lUpperArm) { lUpperArm.rotation.z = 1.25; lUpperArm.rotation.y = 0.05; }
+        if (rUpperArm) { rUpperArm.rotation.z = -1.25; rUpperArm.rotation.y = -0.05; }
+        if (lLowerArm) lLowerArm.rotation.y = 0.10;
+        if (rLowerArm) rLowerArm.rotation.y = -0.10;
+        // Re-baseline so breathing/idle deltas apply on top of the relaxed pose
+        if (spine) spineBaseY.current = spine.position.y;
       }
 
       initialized.current = true;

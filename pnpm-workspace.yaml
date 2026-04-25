@@ -1,4 +1,6 @@
 packages:
-  - "packages/*"
-  - "services/dashboard/frontend"
-  - "services/admin/frontend"
+  - packages/*
+  - services/dashboard/frontend
+  - services/admin/frontend
+
+storeDir: /media/sin/ssd/SOMS-airgap-bundle/pnpm-store/store

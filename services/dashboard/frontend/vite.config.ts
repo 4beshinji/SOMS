@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { copyFileSync, mkdirSync, existsSync } from 'fs'
 import { dirname, join } from 'path'
 import { createRequire } from 'module'
+import { mockApiPlugin } from './dev-mocks'
 
 // Copy VAD + ONNX Runtime assets to public/vad/ so Vite serves them
 const require = createRequire(import.meta.url)
@@ -27,6 +28,7 @@ for (const [dir, file] of [
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
+    mockApiPlugin(),  // Dev-only API mocks; remove to use real backend via proxy below
     react(),
     tailwindcss(),
   ],
