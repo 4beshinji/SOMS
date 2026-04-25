@@ -6,6 +6,7 @@ from monitors.occupancy import OccupancyMonitor
 from monitors.whiteboard import WhiteboardMonitor
 from monitors.activity import ActivityMonitor
 from monitors.tracking import TrackingMonitor
+from monitors.engagement import EngagementMonitor
 
 __all__ = [
     "MonitorBase",
@@ -13,4 +14,5 @@ __all__ = [
     "WhiteboardMonitor",
     "ActivityMonitor",
     "TrackingMonitor",
+    "EngagementMonitor",
 ]

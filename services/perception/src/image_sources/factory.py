@@ -8,6 +8,7 @@ from image_sources.base import CameraInfo, ImageSource
 from image_sources.http_stream import HttpStreamSource
 from image_sources.mqtt_source import MqttImageSource
 from image_sources.rtsp_source import RtspSource
+from image_sources.v4l2_source import V4L2Source
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ class ImageSourceFactory:
         "http_stream": HttpStreamSource,
         "mqtt": MqttImageSource,
         "rtsp": RtspSource,
+        "v4l2": V4L2Source,
     }
 
     @classmethod

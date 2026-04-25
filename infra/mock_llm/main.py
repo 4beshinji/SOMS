@@ -210,8 +210,122 @@ async def chat_completions(request: Request):
             ]
         )
 
+    # ── Camera engagement events (USB webcam in front of dashboard) ──
+    engagement_response = _handle_engagement(full_text)
+    if engagement_response is not None:
+        return engagement_response
+
     # Normal status - no tool calls
     return _response(content="現在のオフィス環境は正常範囲内です。特に対応の必要はありません。")
+
+
+def _handle_engagement(full_text: str):
+    """Map engagement_* events / camera cues to speak() calls.
+
+    Lets the system babble plausibly even with the offline mock LLM —
+    a USB webcam alone produces enough triggers for varied conversation.
+    """
+    import random
+
+    # Each entry: (any-of keywords, tone, message pool)
+    patterns = [
+        (
+            ("engagement_waved", "waved", "手を振"),
+            "neutral",
+            [
+                "やあ、こんにちは！気づきましたよ。",
+                "お、振ってくれましたね。今日もよろしくお願いします。",
+                "ハロー！何かご用ですか？",
+                "気づきました、気づきました。お元気そうで何より。",
+            ],
+        ),
+        (
+            ("engagement_hand_raised", "hand_raised", "手を挙"),
+            "caring",
+            [
+                "はい、どうしました？聞いてますよ。",
+                "なにかお手伝いできることありますか？",
+                "質問ですか？聞こえてます、どうぞ。",
+            ],
+        ),
+        (
+            ("engagement_leaned_in", "leaned_in", "前のめり", "lean_in"),
+            "neutral",
+            [
+                "おっ、興味津々ですね。気になることでも？",
+                "ぐっと近づいてきましたね。何かお探しですか？",
+                "そんなに見つめられると照れますね。",
+            ],
+        ),
+        (
+            ("engagement_looked_at", "looked_at", "注視"),
+            "humorous",
+            [
+                "私の顔、なにかついてますか？",
+                "呼びました？じっと見られてますよ。",
+                "視線、感じてますからね。なにか伝えたいことが？",
+                "お、目が合いましたね。元気ですか？",
+            ],
+        ),
+        (
+            ("engagement_looked_away", "looked_away", "視線そらし"),
+            "humorous",
+            [
+                "あれ、そらされた……まあ、また気が向いたら見てくださいね。",
+                "ふーん。私には興味なし、と。",
+                "目を逸らされても、見守ってますからね。",
+            ],
+        ),
+        (
+            ("engagement_head_down", "head_down", "うつむき", "うつむ"),
+            "caring",
+            [
+                "お疲れですか？少しだけ休んでみませんか。",
+                "ちょっと一息つきましょうか。深呼吸でも。",
+                "肩の力、抜きましょう。無理は禁物ですよ。",
+                "うとうとしてません？コーヒーいかがですか。",
+            ],
+        ),
+        (
+            ("engagement_entered_view", "entered_view"),
+            "neutral",
+            [
+                "いらっしゃい！今日はどんな一日でしたか。",
+                "お、気づきました。お帰りなさい。",
+                "やあ、お疲れさまです。",
+            ],
+        ),
+        (
+            ("engagement_left_view", "left_view"),
+            "neutral",
+            [
+                # Typically silent; keep one rare line so the mock isn't fully mute
+                "また後で。お気をつけて。",
+            ],
+        ),
+        (
+            ("mouth_open_hint", "yawn", "あくび"),
+            "humorous",
+            [
+                "おっと、あくびですか？コーヒーでも淹れてきましょうか。",
+                "眠そうですね。ちょっと外の空気でも吸ってきます？",
+                "夜更かしです？無理は禁物ですよ。",
+            ],
+        ),
+    ]
+
+    for keys, tone, messages in patterns:
+        if any(k.lower() in full_text for k in keys):
+            return _response(
+                content="カメラ反応に応答します。",
+                tool_calls=[
+                    _make_tool_call("speak", {
+                        "message": random.choice(messages),
+                        "tone": tone,
+                    })
+                ]
+            )
+    return None
 
 
 def _response(content: str, tool_calls: list = None) -> dict:

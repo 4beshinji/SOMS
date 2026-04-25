@@ -77,6 +77,18 @@ monitors:
     zone_name: cam_192_168_128_179
     enabled: true
 
+  # USB webcam in front of the dashboard. Enable when a webcam is plugged
+  # into the host machine (perception container needs /dev/video0 mapped).
+  # Drives speak() reactions to face/posture/gesture cues via Brain.
+  - name: engagement_dashboard
+    type: EngagementMonitor
+    camera_id: dashboard_webcam
+    zone_name: dashboard
+    protocol: v4l2
+    address: "0?w=640&h=480&fps=15"
+    interval_sec: 1.0
+    enabled: false
+
 discovery:
   enabled: true
   network: "192.168.128.0/24"

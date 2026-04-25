@@ -19,7 +19,12 @@ logger = logging.getLogger(__name__)
 
 # Import components
 from scheduler import TaskScheduler
-from monitors import OccupancyMonitor, WhiteboardMonitor, ActivityMonitor
+from monitors import (
+    OccupancyMonitor,
+    WhiteboardMonitor,
+    ActivityMonitor,
+    EngagementMonitor,
+)
 from image_requester import ImageRequester
 from yolo_inference import YOLOInference
 from pose_estimator import PoseEstimator
@@ -74,20 +79,37 @@ async def main():
         camera_id = monitor_config["camera_id"]
         zone_name = monitor_config.get("zone_name", "default")
 
-        # Auto-create HTTP image source from cam_{ip} camera_id
+        # Build image source. Explicit `protocol` + `address` in YAML wins;
+        # otherwise we infer an HTTP source from a cam_{ip} camera_id.
         source = None
-        parts = camera_id.replace("cam_", "").split("_")
-        if len(parts) == 4 and all(p.isdigit() for p in parts):
-            ip = ".".join(parts)
+        explicit_protocol = monitor_config.get("protocol")
+        explicit_address = monitor_config.get("address")
+        if explicit_protocol and explicit_address:
             from image_sources.base import CameraInfo
             cam_info = CameraInfo(
                 camera_id=camera_id,
-                protocol="http_stream",
-                address=f"http://{ip}:81/",
+                protocol=explicit_protocol,
+                address=explicit_address,
                 zone_name=zone_name,
             )
             source = ImageSourceFactory.create(cam_info)
-            logger.info(f"Static monitor {camera_id}: HTTP source http://{ip}:81/")
+            logger.info(
+                f"Static monitor {camera_id}: {explicit_protocol} source "
+                f"{explicit_address}"
+            )
+        else:
+            parts = camera_id.replace("cam_", "").split("_")
+            if len(parts) == 4 and all(p.isdigit() for p in parts):
+                ip = ".".join(parts)
+                from image_sources.base import CameraInfo
+                cam_info = CameraInfo(
+                    camera_id=camera_id,
+                    protocol="http_stream",
+                    address=f"http://{ip}:81/",
+                    zone_name=zone_name,
+                )
+                source = ImageSourceFactory.create(cam_info)
+                logger.info(f"Static monitor {camera_id}: HTTP source http://{ip}:81/")
 
         if monitor_type == "OccupancyMonitor":
             monitor = OccupancyMonitor(camera_id, zone_name, image_source=source)
@@ -98,6 +120,12 @@ async def main():
                 camera_id, zone_name,
                 fall_detection_config=fall_detection_config,
                 image_source=source,
+            )
+        elif monitor_type == "EngagementMonitor":
+            monitor = EngagementMonitor(
+                camera_id, zone_name,
+                image_source=source,
+                interval_sec=float(monitor_config.get("interval_sec", 1.0)),
             )
         else:
             logger.warning(f"Unknown monitor type: {monitor_type}")

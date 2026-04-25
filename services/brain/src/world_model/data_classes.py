@@ -237,6 +237,9 @@ class ZoneState(BaseModel):
     # Passthrough sensor data for unknown/generic channels
     extra_sensors: Dict[str, float] = Field(default_factory=dict)
 
+    # Latest engagement snapshot (USB webcam in front of dashboard etc.)
+    engagement_snapshot: Optional[Dict] = None
+
     # Metadata
     last_update: float = Field(default_factory=time.time)
     

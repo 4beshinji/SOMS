@@ -426,6 +426,10 @@ services:
       - /dev/kfd:/dev/kfd
       - /dev/dri/card1:/dev/dri/card1
       - /dev/dri/renderD128:/dev/dri/renderD128
+      # Uncomment when a USB webcam is plugged into the host (drives the
+      # dashboard EngagementMonitor). Leaving this active without /dev/video0
+      # present will prevent the container from starting.
+      # - /dev/video0:/dev/video0
     group_add:
       - video
     security_opt:

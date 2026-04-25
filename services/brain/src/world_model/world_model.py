@@ -223,7 +223,12 @@ class WorldModel:
             else:
                 self._update_environment(zone, channel, payload, device_id)
         elif device_type in ("camera", "occupancy"):
-            self._update_occupancy(zone, payload)
+            if channel == "engagement":
+                self._update_engagement_snapshot(zone, payload, device_id)
+            elif channel == "engagement_event":
+                self._update_engagement_event(zone, payload, device_id)
+            else:
+                self._update_occupancy(zone, payload)
         elif device_type == "activity":
             self._update_activity(zone, payload)
         elif device_type == "spatial":
@@ -496,6 +501,46 @@ class WorldModel:
             pir_active=zone.occupancy.pir_detected
         )
     
+    def _update_engagement_snapshot(self, zone: ZoneState, payload: dict, camera_id: str):
+        """Cache the latest engagement snapshot for LLM context (no events)."""
+        zone.engagement_snapshot = {
+            "camera_id": camera_id,
+            "timestamp": payload.get("timestamp", time.time()),
+            "person_count": payload.get("person_count", 0),
+            "persons": payload.get("persons", []),
+        }
+
+    def _update_engagement_event(self, zone: ZoneState, payload: dict, camera_id: str):
+        """Append an edge-triggered engagement event to the zone events list."""
+        event_type = payload.get("event", "engagement_unknown")
+        # All engagement events are info-level so the brain treats them as
+        # speak-only triggers (no task creation by default).
+        event = Event(
+            timestamp=payload.get("timestamp", time.time()),
+            event_type=f"engagement_{event_type}",
+            severity="info",
+            data={
+                "camera_id": camera_id,
+                "track_key": payload.get("track_key"),
+                "face_orientation": payload.get("face_orientation"),
+                "attention": payload.get("attention"),
+                "posture": payload.get("posture"),
+                "head_yaw_hint": payload.get("head_yaw_hint"),
+                "head_pitch_hint": payload.get("head_pitch_hint"),
+                "mouth_open_hint": payload.get("mouth_open_hint"),
+                "gesture": payload.get("gesture"),
+            },
+        )
+        self._add_event(zone, event)
+        logger.info(
+            "Engagement event in %s [%s]: orient=%s att=%s posture=%s",
+            zone.zone_id,
+            event_type,
+            payload.get("face_orientation"),
+            payload.get("attention"),
+            payload.get("posture"),
+        )
+
     def _update_activity(self, zone: ZoneState, payload: dict):
         """Update activity data from Perception ActivityMonitor."""
         if "person_count" in payload:
@@ -1213,6 +1258,43 @@ class WorldModel:
                 summary += "- 最近のイベント:\n"
                 for event in recent_events[-3:]:  # Last 3 events
                     summary += f"  - {event.description}\n"
+
+            # Engagement snapshot (USB webcam in front of dashboard, etc.)
+            if zone.engagement_snapshot:
+                snap = zone.engagement_snapshot
+                age = current_time - snap.get("timestamp", 0)
+                if age < 30 and snap.get("person_count", 0) > 0:
+                    persons = snap.get("persons", [])
+                    cues = []
+                    for p in persons[:3]:
+                        bits = []
+                        orient = p.get("face_orientation")
+                        if orient and orient != "unknown":
+                            bits.append(f"顔向き:{orient}")
+                        att = p.get("attention")
+                        if att == "looking_at":
+                            bits.append("注視中")
+                        elif att == "not_looking":
+                            bits.append("視線そらし")
+                        post = p.get("posture")
+                        if post and post != "unknown":
+                            bits.append(f"姿勢:{post}")
+                        if p.get("mouth_open_hint"):
+                            bits.append("口開き(あくび?)")
+                        if bits:
+                            cues.append("・".join(bits))
+                    if cues:
+                        summary += f"- ダッシュボード前: {' / '.join(cues)}\n"
+
+            # Recent engagement events (last 90 sec)
+            recent_eng = [
+                e for e in zone.events
+                if e.event_type.startswith("engagement_")
+                and current_time - e.timestamp < 90
+            ]
+            if recent_eng:
+                names = [e.event_type.replace("engagement_", "") for e in recent_eng[-5:]]
+                summary += f"- 直近のカメラ反応: {', '.join(names)}\n"
 
             context_parts.append(summary)
         
