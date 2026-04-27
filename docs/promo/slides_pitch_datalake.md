@@ -352,7 +352,7 @@ SOMS:
 
 | 役割 | 技術 | プライバシー関連 |
 |---|---|---|
-| 脳 | Qwen2.5 14B + Ollama (ROCm) | ローカル推論。外部API不要 |
+| 脳 | Qwen3.5 14B + llama.cpp (ROCm) | ローカル推論。外部API不要 |
 | 視覚 | YOLOv11 (検出 + 姿勢推定) | RAM処理即破棄。映像保存0秒 |
 | 神経 | MQTT + MCP (JSON-RPC 2.0) | Local通信のみ。federation/ で出口管理 |
 | 触覚 | ESP32 SensorSwarm (Hub+Leaf) | **Local DP をデバイス上で実行** |

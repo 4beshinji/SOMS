@@ -50,13 +50,15 @@
 ### シナリオ B: 実機本番環境 (AMD ROCm GPU + エッジデバイス)
 
 1.  **`.env` の編集**:
-    -   `LLM_API_URL=http://ollama:11434/v1` (Docker内部通信)
-    -   `LLM_MODEL=qwen3.5:14b`
+    -   `LLM_API_URL=http://llm:8080/v1` (Docker内部通信。`llm` サービスのコンテナ内ポートは 8080、ホスト公開ポートは 11434)
+    -   `LLM_MODEL=qwen3.5:9b` (クライアント識別用の文字列。実体は `LLM_MODEL_FILE` で選択)
+    -   `LLM_MODEL_FILE=qwen3.5-9b-q4km.gguf` (起動時に `--model /models/<file>` で読み込まれる GGUF ファイル名。14B 版を使う場合はそのファイルを指定)
+    -   `LLM_MODEL_PATH=./llm/models` (GGUF を配置するホスト側ディレクトリ。コンテナの `/models:ro` にマウントされる)
     -   `RTSP_URL` を実際のカメラのIPアドレスに設定
     -   PostgreSQL認証情報を本番用に変更
 
 2.  **GPU デバイスの確認**:
-    -   `docker-compose.yml` 内の `ollama` / `perception` サービスの `devices` マッピングを確認:
+    -   `docker-compose.yml` 内の `llm` / `perception` サービスの `devices` マッピングを確認:
       ```yaml
       devices:
         - /dev/kfd:/dev/kfd
@@ -65,32 +67,41 @@
       ```
     -   **重要**: `/dev/dri` 全体を渡すとiGPUリセット→GNOMEクラッシュの原因になります。dGPU のみを指定してください。
 
-3.  **Ollama モデルの準備**:
+3.  **GGUF モデルの準備**:
     ```bash
-    # Ollamaコンテナ起動後にモデルをダウンロード
-    docker compose -f infra/docker-compose.yml up -d ollama
-    docker exec -it soms-ollama ollama pull qwen3.5:14b
+    # GGUF を ${LLM_MODEL_PATH:-./llm/models} 配下に配置する
+    # (コンテナ起動時に --model /models/<file>.gguf で読み込まれる)
+    mkdir -p infra/llm/models
+    # 例: Hugging Face からダウンロード (huggingface-cli を使う場合)
+    huggingface-cli download Qwen/Qwen2.5-9B-Instruct-GGUF \
+      qwen3.5-9b-q4km.gguf --local-dir infra/llm/models
+    # またはブラウザで直接ダウンロードして infra/llm/models/ に置く
     ```
+    > 注: `ollama pull` は不要です。llama.cpp サーバーは起動時にファイルを直接読み込みます。
 
 4.  **全サービスの起動**:
     ```bash
     docker compose -f infra/docker-compose.yml up -d --build
     ```
+    起動後、`curl http://localhost:11434/health` で llama.cpp サーバーの稼働を確認できます。
 
-### シナリオ C: ホストOllama使用 (Docker外でLLM実行)
+### シナリオ C: ホストで llama-server を直接起動 (Docker外でLLM実行)
 
-Ollama をホストマシンで直接実行し、Docker内のサービスから接続する場合:
+GPU トラブルシュートやモデル切り替えを高速に行いたい場合、`llama-server` をホスト OS で直接起動し Docker 内のサービスから接続できます:
 
 ```bash
-# ホスト側でOllamaを起動
-ollama serve  # 0.0.0.0:11434 でリスン
+# ホスト側で llama-server を起動 (ROCm ビルド)
+llama-server --model /path/to/qwen3.5-9b-q4km.gguf \
+  --host 0.0.0.0 --port 11434 \
+  --n-gpu-layers 99 --ctx-size 32768 \
+  --parallel 4 --cont-batching --flash-attn on
 
 # .env を編集
 LLM_API_URL=http://host.docker.internal:11434/v1
-LLM_MODEL=qwen3.5:14b
+LLM_MODEL=qwen3.5:9b
 ```
 
-`docker-compose.yml` の `brain` / `voice-service` に `extra_hosts: host.docker.internal:host-gateway` が設定済みです。
+`docker-compose.yml` の `brain` / `voice-service` に `extra_hosts: host.docker.internal:host-gateway` が設定済みです。この場合、Docker Compose 側の `llm` サービスは起動不要です (`docker compose up` 時に該当サービスを除外してください)。
 
 ## 4. サービスの確認
 
@@ -124,14 +135,14 @@ docker logs -f soms-backend      # Dashboard API
 | Auth Service | 127.0.0.1:8006 | soms-auth | OAuth認証 (Slack + GitHub) |
 | PostgreSQL | 127.0.0.1:5432 | soms-postgres | Dashboard/Auth 共有DB |
 | VOICEVOX | 50021 | soms-voicevox | 日本語音声合成エンジン |
-| Ollama | 11434 | soms-ollama | LLM推論 (ROCm) |
+| llama.cpp Server | 11434 (host) → 8080 (container) | soms-llm | LLM推論 (llama.cpp + ROCm) |
 | MQTT | 1883 | soms-mqtt | メッセージブローカー |
 | Perception | host network | soms-perception | YOLOv11 画像認識 + MTMC追跡 |
 
 ## 6. トラブルシューティング
 
 -   **MQTT Connection Refused**: `docker ps` で `soms-mqtt` が起動しているか確認。
--   **LLM Out of Memory**: `rocm-smi` でVRAM使用量を確認。より小さいモデル (`qwen3.5:7b`) に切り替えるか、量子化レベルを下げてください。
+-   **LLM Out of Memory**: `rocm-smi` でVRAM使用量を確認。より小さい量子化 (Q4_K_S や Q3_K_M) の GGUF を `infra/llm/models/` に配置し、`LLM_MODEL_FILE` で切り替えてください。
 -   **Permission Denied**: ユーザーが `docker` および `video`/`render` グループに追加されているか確認: `sudo usermod -aG docker,video,render $USER`
 -   **iGPU クラッシュ**: `/dev/dri` 全体ではなく dGPU デバイスのみを `devices:` に指定してください。
 -   **PostgreSQL 接続エラー**: `docker logs soms-postgres` でログを確認。`.env` の `POSTGRES_USER`/`POSTGRES_PASSWORD` がdocker-compose.ymlの設定と一致しているか確認。

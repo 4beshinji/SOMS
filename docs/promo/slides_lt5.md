@@ -148,7 +148,7 @@ AIは判断する。人間は動く。ちゃんと払う。
 
 | 役割 | 技術 | ひとこと |
 |---|---|---|
-| 脳 | Qwen2.5 14B + Ollama (ROCm) | 51 tok/s。応答3.3秒 |
+| 脳 | Qwen3.5 14B + llama.cpp (ROCm) | 51 tok/s 以上。応答3.3秒 |
 | 視覚 | YOLOv11 (検出 + 姿勢推定) | 座りすぎ検知で健康アドバイス |
 | 神経 | MQTT + MCP (JSON-RPC 2.0) | ESP32でもLLMのツール呼び出しに応答 |
 | 触覚 | ESP32 SensorSwarm (Hub + Leaf) | WiFi不要のLeafはバッテリー駆動 |

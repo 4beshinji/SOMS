@@ -21,21 +21,22 @@ The system uses **MQTT** for loose coupling. The "Central Intelligence" is a log
 
 ## 3. Model Architecture
 
-### 3.1 Model Selection: Qwen2.5:14b
-We use **Qwen2.5:14b** with Q4_K_M quantization, running on **Ollama** with ROCm support.
+### 3.1 Model Selection: Qwen3.5 (9B / 14B GGUF)
+We use **Qwen3.5** with Q4_K_M quantization in GGUF format, served by **llama.cpp** with ROCm support. The default deployment uses the 9B variant (`qwen3.5-9b-q4km.gguf`); a 14B GGUF can be substituted for higher accuracy when VRAM permits.
 
 - **Instruction Following**: Superior performance in structured output (JSON) and tool-calling schemas.
 - **Coding & Logic**: High capabilities in logical reasoning, essential for valid tool calls.
 - **Multilingual Support**: Strong Japanese + English performance for bilingual office environment.
-- **Context Window**: Large context for sensor logs and conversation history.
-- **Efficiency**: 14B with 4-bit quantization fits comfortably in 16GB VRAM.
+- **Context Window**: 32K context (`--ctx-size 32768`) for sensor logs and conversation history.
+- **Efficiency**: 9B with 4-bit quantization runs well within 16GB VRAM, leaving headroom for KV cache (q8_0) and Perception's YOLO models.
 
-### 3.2 Inference Engine: Ollama
-- **Image**: `ollama/ollama:rocm` Docker image.
-- **API**: OpenAI-compatible REST API at port 11434.
-- **Model Management**: `ollama pull qwen2.5:14b` downloads and manages model weights.
-- **Volume**: `ollama_models:/root/.ollama` for persistent model storage.
-- **Host Access**: Services connect via `http://ollama:11434/v1` (Docker internal) or `http://host.docker.internal:11434/v1` (host Ollama).
+### 3.2 Inference Engine: llama.cpp server
+- **Image**: `soms-llama-server:rocm`, built locally from `infra/llm/Dockerfile.rocm`.
+- **Container / service**: container `soms-llm`, compose service `llm`.
+- **API**: OpenAI-compatible REST API. Internal container port **8080**, host-published port **11434** (`SOMS_PORT_LLM`). Endpoints: `/v1/chat/completions`, `/v1/completions`, `/v1/models`. Health: `GET /health`.
+- **Model loading**: GGUF files live in `${LLM_MODEL_PATH:-./llm/models}` on the host, mounted read-only at `/models`. The server loads a single GGUF at startup via `--model /models/${LLM_MODEL_FILE:-qwen3.5-9b-q4km.gguf}` — there is no dynamic pull / swap mechanism. To change models, place a different GGUF file under `infra/llm/models/`, set `LLM_MODEL_FILE`, and restart the container.
+- **Throughput**: Continuous batching (`--cont-batching --parallel 4`) lets Brain, Voice, and Perception share the engine concurrently. Flash-attention (`--flash-attn on`) and KV-cache quantization (`--cache-type-k q8_0 --cache-type-v q8_0`) reduce VRAM footprint.
+- **Host access**: Services connect via `http://llm:8080/v1` (Docker internal). For development, a `llama-server` process on the host can be reached via `http://host.docker.internal:11434/v1` (the `brain` and `voice-service` containers have `extra_hosts: host.docker.internal:host-gateway` configured).
 
 ### 3.3 Mock LLM (Development/Testing)
 A keyword-based LLM simulator (`infra/mock_llm/`) provides an OpenAI-compatible API for testing without GPU.
@@ -117,5 +118,5 @@ Brain
   ├── → MQTT Broker (paho-mqtt, subscribe: office/#, hydro/#, aqua/#, mcp/+/response/#)
   ├── → Dashboard Backend (REST: POST/GET/PUT /tasks)
   ├── → Voice Service (REST: POST /api/voice/announce_with_completion, /synthesize)
-  └── → LLM (Ollama or mock-llm, OpenAI-compatible API)
+  └── → LLM (llama.cpp server `llm:8080` or mock-llm, OpenAI-compatible API)
 ```

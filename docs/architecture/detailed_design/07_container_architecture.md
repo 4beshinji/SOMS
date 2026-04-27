@@ -17,7 +17,7 @@ The system uses **Docker Compose** for container orchestration. All dependencies
 | `voicevox` | Custom (VOICEVOX CPU) | soms-voicevox | 50021 | Japanese TTS Engine | CPU |
 | `voice-service` | Custom (Python 3.11) | soms-voice | 8002 | Voice API + LLM Text Gen | CPU |
 | `wallet` | Custom (Python 3.11) | soms-wallet | 8003 | Credit Ledger | CPU |
-| `ollama` | `ollama/ollama:rocm` | soms-ollama | 11434 | LLM Inference | **GPU** |
+| `llm` | `soms-llama-server:rocm` (built locally from `infra/llm/Dockerfile.rocm`) | soms-llm | 11434 (host) → 8080 (container) | LLM Inference (llama.cpp + ROCm) | **GPU** |
 | `mock-llm` | Custom (Python 3.11) | soms-mock-llm | 8001 | Test LLM Simulator | CPU |
 | `perception` | Custom (PyTorch ROCm) | soms-perception | host | YOLOv11 Vision | **GPU** |
 
@@ -40,7 +40,7 @@ mosquitto ───────────────────────�
     │          │
     ├──→ voice-service ──→ voicevox
     │
-    └──→ ollama (or mock-llm)
+    └──→ llm (llama.cpp server, or mock-llm)
 
   frontend (nginx) ──→ backend, voice-service, wallet
 ```
@@ -54,13 +54,13 @@ mosquitto ───────────────────────�
 6. `voice-service` (voicevox)
 7. `brain` (mosquitto)
 8. `frontend` (backend)
-9. `ollama`, `mock-llm`, `perception` (independent)
+9. `llm`, `mock-llm`, `perception` (independent)
 
 ## 4. GPU Passthrough (AMD ROCm)
 
 ### Device Mapping
 ```yaml
-ollama:
+llm:
   devices:
     - /dev/kfd:/dev/kfd                     # AMD Kernel Fusion Driver
     - /dev/dri/card1:/dev/dri/card1         # dGPU render node
@@ -74,7 +74,7 @@ ollama:
 ### GPU Assignment
 | Device | Path | Purpose |
 |--------|------|---------|
-| dGPU (RX 9700) | card1, renderD128 | ROCm compute (Ollama, Perception) |
+| dGPU (RX 9700) | card1, renderD128 | ROCm compute (llama.cpp, Perception) |
 | iGPU (Raphael) | card2, renderD129 | Display only — never pass to Docker |
 
 ### Perception Special Case
@@ -101,7 +101,7 @@ perception:
 | `soms_mqtt_log` | mosquitto | MQTT logs |
 | `soms_pg_data` | postgres | PostgreSQL data |
 | `soms_audio_data` | voice-service | Generated audio files |
-| `ollama_models` | ollama | Model weights |
+| `${LLM_MODEL_PATH:-./llm/models}` (bind mount, read-only) | llm | GGUF model weights — files placed here are loaded via `--model /models/<file>.gguf` at startup |
 | `soms_db_data` | (legacy) | SQLite — no longer used, should be removed |
 
 ### Source Code Bind Mounts
@@ -134,12 +134,12 @@ All services except Perception communicate on the `soms-net` bridge network.
 | wallet | 8003 | `0.0.0.0:8003` | Wallet API direct access |
 | postgres | 5432 | `0.0.0.0:5432` | DB direct access |
 | voicevox | 50021 | `0.0.0.0:50021` | VOICEVOX direct access |
-| ollama | 11434 | `0.0.0.0:11434` | LLM API direct access |
+| llm | `${SOMS_PORT_LLM:-11434}` → 8080 | `0.0.0.0:11434` | llama.cpp LLM API direct access (container listens on 8080) |
 
 **Security note** (M-1): PostgreSQL and Wallet ports should be restricted to `127.0.0.1` in production.
 
 ### Host Docker Bridge
-Brain and Voice Service use `extra_hosts: host.docker.internal:host-gateway` to reach host-running Ollama when `LLM_API_URL=http://host.docker.internal:11434/v1`.
+Brain and Voice Service use `extra_hosts: host.docker.internal:host-gateway` to reach a `llama-server` running directly on the host OS when `LLM_API_URL=http://host.docker.internal:11434/v1`. This is useful for development scenarios where the LLM is iterated on outside Docker.
 
 ## 7. Build & Deployment
 
@@ -157,7 +157,7 @@ docker compose -f infra/docker-compose.yml up -d --build brain
 
 ### Migration
 1. Copy `docker-compose.yml`, `.env`, and source directories.
-2. Copy named volumes (PostgreSQL data, Ollama models, audio).
+2. Copy named volumes (PostgreSQL data, audio) and the `infra/llm/models/` directory containing GGUF weights.
 3. Run `docker compose up -d`.
 
 ## 8. Known Issues

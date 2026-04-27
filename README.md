@@ -103,8 +103,8 @@ docker exec soms-mqtt mosquitto_sub -u soms -P soms_dev_mqtt -t 'office/#' -v
 
 | Layer | What it does | Implementation |
 |-------|-------------|----------------|
-| **AI Core** | ReAct cognitive loop — Think / Act / Observe every 30s | `services/brain/` |
-| **Perception** | YOLOv11 — occupancy, activity, fall detection, multi-camera tracking | `services/perception/` |
+| **AI Core** | ReAct cognitive loop on local Qwen3.5 (llama.cpp / ROCm) — Think / Act / Observe every 30s | `services/brain/` |
+| **Perception** | YOLOv11 — occupancy, activity, fall detection, engagement, multi-camera tracking | `services/perception/` |
 | **Audit trail** | Append-only task lifecycle log (no amounts) | `task_audit_log` in dashboard DB |
 | **Edge** | SensorSwarm mesh (ESP-NOW/UART/I2C/BLE) + SwitchBot bridge | `edge/` |
 | **Comms** | MQTT message bus — MCP over JSON-RPC 2.0 | Mosquitto |
@@ -148,8 +148,9 @@ Related projects: **[auto_JA](../auto_JA/)** (IoT agriculture) &middot; **[HEMS]
 | Auth Service | 127.0.0.1:8006 | soms-auth |
 | Voice + VOICEVOX | 8002 / 50021 | soms-voice / soms-voicevox |
 | SwitchBot Bridge | 8005 | soms-switchbot |
-| Ollama (LLM) | 11434 | soms-ollama |
+| LLM (llama.cpp / ROCm) | 11434 | soms-llm |
 | Mock LLM | 8001 | soms-mock-llm |
+| Perception / Anomaly / STT | — | soms-perception / soms-anomaly / soms-stt |
 | MQTT Broker | 1883 | soms-mqtt |
 | PostgreSQL | 127.0.0.1:5432 | soms-postgres |
 
@@ -168,19 +169,19 @@ done
 | Brain | 333 | | Auth | 82 |
 | Dashboard | 221 | | SwitchBot | 59 |
 | Voice | 56 | | Zigbee2MQTT | 124 |
-| Perception | 196 | | | |
+| Perception | 212 | | | |
 
 ## Tech Stack
 
 | | |
 |-|-|
-| **LLM** | Ollama + Qwen 2.5 (ROCm / AMD GPU) |
+| **LLM** | llama.cpp server + Qwen3.5 9B/14B GGUF (ROCm / AMD GPU), continuous batching |
 | **Backend** | Python 3.11, FastAPI, SQLAlchemy async, PostgreSQL 16 |
 | **Frontend** | React 19, TypeScript, Vite 7, Tailwind CSS 4 |
 | **Vision** | YOLOv11, OpenCV, PyTorch (ROCm) |
-| **TTS** | VOICEVOX (Japanese speech synthesis) |
+| **TTS / STT** | VOICEVOX (Japanese speech synthesis) + local STT service |
 | **Edge** | ESP32 MicroPython, SensorSwarm, PlatformIO C++ |
-| **Infra** | Docker Compose (15 services), Mosquitto MQTT, nginx |
+| **Infra** | Docker Compose (18 services), Mosquitto MQTT, nginx |
 
 Pure event-driven architecture on Python + MQTT. No heavyweight middleware.
 

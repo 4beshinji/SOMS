@@ -158,8 +158,8 @@ Brain
   ├── → MQTT Broker (telemetry, MCP)
   ├── → Backend (REST, task CRUD + audit log emit)
   ├── → Voice Service (REST, announce/synthesize)
-  └── → LLM (Ollama / mock-llm)
-  ── exposes: HTTP :8080 (chat, /devices/status, Ollama mgmt)
+  └── → LLM (llama.cpp server `llm:8080` / mock-llm)
+  ── exposes: HTTP :8080 (chat, /devices/status, model mgmt)
 
 Backend
   ├── → PostgreSQL (asyncpg, tasks / task_audit_log / users / voice_events / spatial)

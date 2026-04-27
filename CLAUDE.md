@@ -52,7 +52,7 @@ docker logs -f soms-brain
 docker logs -f soms-perception
 ```
 
-Service names in docker-compose: `mosquitto`, `brain`, `postgres`, `backend`, `frontend`, `voicevox`, `voice-service`, `auth`, `ollama`, `mock-llm`, `perception`, `switchbot`, `zigbee2mqtt`, `zigbee2mqtt-bridge`, `admin-frontend`
+Service names in docker-compose: `mosquitto`, `brain`, `postgres`, `backend`, `frontend`, `voicevox`, `voice-service`, `auth`, `llm` (llama.cpp server), `mock-llm`, `perception`, `switchbot`, `zigbee2mqtt`, `zigbee2mqtt-bridge`, `admin-frontend`
 
 ### Frontend Development
 
@@ -125,7 +125,7 @@ python3 services/perception/test_yolo_detect.py
 | Voice Service | 8002 | soms-voice |
 | PostgreSQL | 127.0.0.1:5432 (localhost only) | soms-postgres |
 | VOICEVOX Engine | 50021 | soms-voicevox |
-| Ollama (LLM) | 11434 | soms-ollama |
+| llama.cpp Server (LLM) | 11434 (host) → 8080 (container) | soms-llm |
 | Auth Service | 127.0.0.1:8006 (localhost only) | soms-auth |
 | SwitchBot Bridge (Webhook) | 8005 | soms-switchbot |
 | Zigbee2MQTT Frontend | 8008 | soms-zigbee2mqtt |
@@ -385,7 +385,7 @@ VOICEVOX speaker ID 47 (ナースロボ_タイプT). `rejection_stock.py` pre-ge
 - **Backend**: Python 3.11, FastAPI, SQLAlchemy (async), paho-mqtt >=2.0, Pydantic 2.x, loguru
 - **Frontend**: React 19, TypeScript, Vite 7, Tailwind CSS 4, TanStack Query 5, Framer Motion, Lucide icons; pnpm as package manager
 - **ML/Vision**: Python 3.10 (ROCm base image), Ultralytics YOLOv11 (yolo11s.pt + yolo11s-pose.pt), OpenCV, PyTorch (ROCm)
-- **LLM**: Ollama with ROCm for AMD GPUs (Qwen3.5 9B target model)
+- **LLM**: llama.cpp server (`soms-llama-server:rocm`) on AMD ROCm GPUs, loading Qwen3.5 GGUF (default 9B Q4_K_M; 14B optional). OpenAI-compatible API at container port 8080 (host 11434), continuous batching (`--cont-batching --parallel 4`), 32K context, flash-attn, q8_0 KV cache.
 - **TTS**: VOICEVOX (Japanese speech synthesis)
 - **Edge**: MicroPython on ESP32 (BME680, MH-Z19 CO2, DHT22), PlatformIO C++ for camera nodes
 - **Infra**: Docker Compose, Mosquitto MQTT, PostgreSQL 16 (asyncpg), nginx
@@ -422,8 +422,11 @@ When working as one of multiple concurrent Claude Code workers, read these docum
 
 Key variables in `.env` (see `env.example`):
 
-- `LLM_API_URL` — `http://mock-llm:8000/v1` (dev) or `http://ollama:11434/v1` (Docker内部) or `http://host.docker.internal:11434/v1` (ホストOllama)
-- `LLM_MODEL` — Model name for Ollama (e.g. `qwen3.5:9b`)
+- `LLM_API_URL` — `http://mock-llm:8000/v1` (dev) or `http://llm:8080/v1` (Docker内部, llama.cpp。コンテナ内ポートは 8080、ホスト公開は 11434) or `http://host.docker.internal:11434/v1` (ホストで llama-server を直接起動する場合)
+- `LLM_MODEL` — Client-facing model identifier string (e.g. `qwen3.5:9b`); the actual GGUF is selected by `LLM_MODEL_FILE`
+- `LLM_MODEL_FILE` — GGUF filename loaded by llama.cpp at startup (default: `qwen3.5-9b-q4km.gguf`). Place the file under `${LLM_MODEL_PATH:-./llm/models}` (mounted at `/models:ro`)
+- `LLM_MODEL_PATH` — Host directory containing GGUF files (default: `./llm/models`)
+- `LLM_CTX_SIZE` / `LLM_PARALLEL` — llama.cpp context size (default 32768) and parallel slots (default 4)
 - `MQTT_BROKER` / `MQTT_PORT` — Broker address (default: `mosquitto:1883`)
 - `MQTT_USER` / `MQTT_PASS` — MQTT credentials (default: `soms` / `soms_dev_mqtt`)
 - `DATABASE_URL` — `postgresql+asyncpg://user:pass@postgres:5432/soms` (Docker)

@@ -157,7 +157,7 @@ docker logs soms-mock-llm
 # Brain の LLM URL 確認
 docker exec soms-brain env | grep LLM_API_URL
 # 期待値: http://mock-llm:8000/v1 (開発環境)
-#          http://ollama:11434/v1  (Ollama 使用時)
+#          http://llm:8080/v1      (llama.cpp 使用時; コンテナ内ポートは 8080)
 ```
 
 **Mock LLM のキーワードマッチ確認:**
@@ -172,18 +172,25 @@ mosquitto_pub -h localhost -p 1883 -u soms -P soms_dev_mqtt \
   -t 'office/main/sensor/env_01/temperature' -m '{"value": 28.5}'
 ```
 
-### Ollama に切り替える
+### llama.cpp (本番 LLM) に切り替える
 
 ```bash
 # infra/.env を編集
-LLM_API_URL=http://ollama:11434/v1
-LLM_MODEL=qwen2.5:14b
+LLM_API_URL=http://llm:8080/v1     # コンテナ内部ポートは 8080 (ホスト公開は 11434)
+LLM_MODEL=qwen3.5:9b               # クライアント識別用文字列
+LLM_MODEL_FILE=qwen3.5-9b-q4km.gguf  # 実体の GGUF ファイル名
 
-# Ollama サービスを起動
-docker compose -f infra/docker-compose.yml up -d ollama
+# GGUF を配置 (初回のみ) — ${LLM_MODEL_PATH:-./llm/models} がコンテナの /models:ro にマウントされる
+mkdir -p infra/llm/models
+# Hugging Face 等から GGUF をダウンロードして infra/llm/models/ に置く
+# 例: huggingface-cli download Qwen/Qwen2.5-9B-Instruct-GGUF qwen3.5-9b-q4km.gguf --local-dir infra/llm/models
 
-# モデルをプル (初回のみ)
-docker exec soms-ollama ollama pull qwen2.5:14b
+# llm サービスを起動
+docker compose -f infra/docker-compose.yml up -d llm
+
+# 動作確認
+curl http://localhost:11434/health
+curl http://localhost:11434/v1/models
 ```
 
 ### Brain が重複タスクを作成し続ける (既知の問題 L-9)
@@ -257,7 +264,7 @@ pnpm run dev
 
 ## 7. GPU / ROCm 問題
 
-### Ollama が GPU を認識しない
+### llama.cpp が GPU を認識しない
 
 ```bash
 # ROCm インストール確認

@@ -18,7 +18,7 @@
 | Auth Service | 127.0.0.1:8006 | soms-auth | OAuth認証 + JWT発行 (localhostのみ) |
 | PostgreSQL | 127.0.0.1:5432 | soms-postgres | データベース (localhostのみ) |
 | VOICEVOX Engine | 50021 | soms-voicevox | 音声合成エンジン |
-| Ollama (LLM) | 11434 | soms-ollama | ローカルLLM (OpenAI互換API) |
+| llama.cpp Server (LLM) | 11434 (host) → 8080 (container) | soms-llm | ローカルLLM (llama.cpp + ROCm, OpenAI互換API) |
 | MQTT Broker | 1883 (TCP) / 9001 (WS) | soms-mqtt | IoTメッセージング |
 
 ### MQTT 接続
@@ -36,7 +36,7 @@
 sudo ufw allow 80/tcp      # Dashboard
 sudo ufw allow 8000/tcp    # Backend API
 sudo ufw allow 8004/tcp    # Wallet App
-sudo ufw allow 11434/tcp   # Ollama LLM
+sudo ufw allow 11434/tcp   # llama.cpp LLM (host-published port)
 sudo ufw allow 1883/tcp    # MQTT (TCP)
 sudo ufw allow 9001/tcp    # MQTT (WebSocket)
 ```
