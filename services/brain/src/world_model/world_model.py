@@ -14,6 +14,22 @@ from .sensor_fusion import SensorFusion
 
 logger = logging.getLogger(__name__)
 
+# Pattern to strip characters commonly used for prompt injection
+_INJECTION_CHARS = str.maketrans("", "", "\r\x00")
+
+
+def _sanitize_text(text: str, max_len: int = 200) -> str:
+    """Sanitize untrusted text before embedding into LLM context.
+
+    Strips control characters and truncates to max_len.
+    """
+    if not isinstance(text, str):
+        return ""
+    text = text.translate(_INJECTION_CHARS)
+    # Collapse consecutive newlines to single space
+    text = " ".join(text.split())
+    return text[:max_len]
+
 
 MAX_EVENTS_PER_ZONE = 100
 
@@ -388,7 +404,12 @@ class WorldModel:
     def _update_event_channel(self, zone, channel, value, device_id, reading_key, current_time):
         """Process event/pulse sensor data (motion, vibration)."""
         if channel == "motion_count":
-            self._event_counter.record_count(reading_key, int(value), current_time)
+            try:
+                count = int(value)
+            except (TypeError, ValueError):
+                logger.warning("Invalid motion_count value: %r (device=%s)", value, device_id)
+                return
+            self._event_counter.record_count(reading_key, count, current_time)
         elif value:
             self._event_counter.record_event(reading_key, current_time)
 
@@ -686,16 +707,16 @@ class WorldModel:
             event_type="vlm_analysis",
             severity="info",
             data={
-                "analysis_type": analysis_type,
-                "trigger": payload.get("trigger", "unknown"),
-                "content": payload.get("content", "")[:200],
+                "analysis_type": _sanitize_text(analysis_type, max_len=50),
+                "trigger": _sanitize_text(str(payload.get("trigger", "unknown")), max_len=50),
+                "content": _sanitize_text(str(payload.get("content", "")), max_len=200),
             }
         )
         self._add_event(zone, event)
         logger.info(
             "VLM analysis in %s [%s]: %s",
             zone.zone_id, analysis_type,
-            payload.get("content", "")[:80],
+            str(payload.get("content", ""))[:80],
         )
 
     def _accumulate_heatmap(self, zone: ZoneState, current_time: float):
@@ -855,10 +876,10 @@ class WorldModel:
             event_type="task_report",
             severity="info",
             data={
-                "task_id": payload.get("task_id", device_id),
-                "title": payload.get("title", ""),
-                "report_status": payload.get("report_status", "unknown"),
-                "completion_note": payload.get("completion_note", ""),
+                "task_id": _sanitize_text(str(payload.get("task_id", device_id)), max_len=50),
+                "title": _sanitize_text(str(payload.get("title", "")), max_len=100),
+                "report_status": _sanitize_text(str(payload.get("report_status", "unknown")), max_len=30),
+                "completion_note": _sanitize_text(str(payload.get("completion_note", "")), max_len=200),
             }
         )
         self._add_event(zone, event)
