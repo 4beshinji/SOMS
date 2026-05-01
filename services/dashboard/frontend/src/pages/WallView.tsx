@@ -100,6 +100,30 @@ const fetchLiveSpatial = async (zone: string): Promise<LivePerCamera[]> => {
   return Array.isArray(data) ? data : [];
 };
 
+interface SafetyEvent {
+  timestamp: string;
+  zone: string;
+  event_type: string;
+  source_device: string | null;
+  severity: string | null;
+  data: Record<string, unknown>;
+}
+const fetchRecentEvents = async (zone?: string): Promise<SafetyEvent[]> => {
+  const params = new URLSearchParams({ limit: '20' });
+  if (zone) params.set('zone', zone);
+  const data = await safeJson<SafetyEvent[]>(
+    `/api/sensors/events?${params}`,
+    []
+  );
+  return Array.isArray(data) ? data : [];
+};
+
+const isRecentISO = (iso: string, maxMinutes: number): boolean => {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t < maxMinutes * 60_000;
+};
+
 // ------------------------------------------------------------------
 // trend helpers
 // ------------------------------------------------------------------
@@ -223,6 +247,14 @@ export default function WallView() {
     refetchInterval: PRESENCE_REFETCH_MS,
   });
 
+  // Recent safety / world-model events — used to compose the alert
+  // sentence in §1 with real zone + camera + detection time.
+  const eventsQuery = useQuery({
+    queryKey: ['events', PRIMARY_ZONE],
+    queryFn: () => fetchRecentEvents(),    // pull cross-zone, filter below
+    refetchInterval: PRESENCE_REFETCH_MS,
+  });
+
   // clock — minute precision is enough for a wall display
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -265,6 +297,20 @@ export default function WallView() {
   const co2Flagged = co2Val !== null && co2Val >= 800;
   const alertTask = visibleTasks.find(t => t.urgency >= 4);
 
+  // ── most recent safety event in the last hour ───────────────────
+  // Prefers fall_detected over generic anomalies. Used to drive the
+  // alert sentence in the summary prose with real zone + camera id.
+  const recentEvents = eventsQuery.data ?? [];
+  const recentFall = recentEvents.find(
+    e => e.event_type === 'fall_detected' && isRecentISO(e.timestamp, 60)
+  );
+  const recentAnomaly = !recentFall && recentEvents.find(
+    e =>
+      (e.severity === 'critical' || e.severity === 'warning') &&
+      e.event_type !== 'fall_detected' &&
+      isRecentISO(e.timestamp, 60)
+  );
+
   // ── camera + sensor counts from spatial config (registered devices)
   const cameraCount = Object.keys(spatialConfigQuery.data?.cameras ?? {}).length;
   const sensorCount = Object.keys(spatialConfigQuery.data?.devices ?? {}).length
@@ -295,15 +341,38 @@ export default function WallView() {
         </span>
       );
     }
-    if (alertTask) {
+
+    if (recentFall) {
+      const zone = zoneLabel(recentFall.zone);
+      const zoneText = zone.jp || zone.en;
+      const camId = recentFall.source_device;
+      const detectedAt = formatHHMM(recentFall.timestamp);
       parts.push(
         <span key="a">
-          {' '}西側の cam.main_b では <span className="wall-em">姿勢の崩れ</span>を観測しました。
+          {' '}{zoneText}
+          {camId && <> の <span className="wall-num">{camId}</span></>}
+          {' '}では <span className="wall-em">姿勢の崩れ</span>を観測しました ({detectedAt} 検出)。
+        </span>
+      );
+    } else if (recentAnomaly) {
+      const zone = zoneLabel(recentAnomaly.zone);
+      const zoneText = zone.jp || zone.en;
+      const detectedAt = formatHHMM(recentAnomaly.timestamp);
+      parts.push(
+        <span key="a">
+          {' '}{zoneText} で <span className="wall-em">未対応の注意事項</span>があります ({detectedAt})。
+        </span>
+      );
+    } else if (alertTask) {
+      // Backstop: a critical task exists but no fresh event we can quote.
+      parts.push(
+        <span key="a">
+          {' '}<span className="wall-em">注意の依頼</span>が 1 件届いています。
         </span>
       );
     }
     return parts;
-  }, [presVal, co2Flagged, alertTask]);
+  }, [presVal, co2Flagged, recentFall, recentAnomaly, alertTask]);
 
   // group + cap tasks for the manifest
   const tasksTop = visibleTasks.slice(0, 6);
