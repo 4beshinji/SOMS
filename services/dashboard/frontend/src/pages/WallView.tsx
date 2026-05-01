@@ -15,17 +15,126 @@ import { useTaskManager } from '../hooks/useTaskManager';
 import './WallView.css';
 
 // ------------------------------------------------------------------
-// data fetch
+// data fetch — every endpoint returns sane defaults on failure so the
+// view always renders even when the backend is partially offline.
 // ------------------------------------------------------------------
-const fetchLatestSensors = async (): Promise<SensorReading[]> => {
+const PRIMARY_ZONE = 'main';
+const TREND_WINDOW_MIN = 30;     // CO₂ / temp / humidity look-back
+const PRESENCE_REFETCH_MS = 8_000;
+const SENSOR_REFETCH_MS = 15_000;
+const TREND_REFETCH_MS = 30_000;
+const SLOW_REFETCH_MS = 60_000;
+
+const safeJson = async <T,>(url: string, fallback: T): Promise<T> => {
   try {
-    const res = await fetch('/api/sensors/latest');
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
+    const res = await fetch(url);
+    if (!res.ok) return fallback;
+    return (await res.json()) as T;
   } catch {
-    return [];
+    return fallback;
   }
+};
+
+const fetchLatestSensors = (): Promise<SensorReading[]> =>
+  safeJson<SensorReading[]>('/api/sensors/latest', []).then(d =>
+    Array.isArray(d) ? d : []
+  );
+
+interface TimeSeriesPoint {
+  timestamp: string;
+  avg: number;
+  max: number;
+  min: number;
+  count: number;
+}
+interface TimeSeriesResponse {
+  zone: string | null;
+  channel: string | null;
+  window: string;
+  points: TimeSeriesPoint[];
+}
+
+const fetchRecentSeries = async (
+  channel: string,
+  zone: string,
+  minutesBack: number
+): Promise<TimeSeriesPoint[]> => {
+  const end = new Date();
+  const start = new Date(end.getTime() - minutesBack * 60_000);
+  const params = new URLSearchParams({
+    channel, zone, window: 'raw',
+    start: start.toISOString(),
+    end:   end.toISOString(),
+    limit: '500',
+  });
+  const data = await safeJson<TimeSeriesResponse | null>(
+    `/api/sensors/time-series?${params}`,
+    null
+  );
+  return data?.points ?? [];
+};
+
+interface LlmActivity { cycles: number; total_tool_calls: number; avg_duration_sec: number; hours: number; }
+const fetchLlmActivity = (hours = 24): Promise<LlmActivity | null> =>
+  safeJson<LlmActivity | null>(`/api/sensors/llm-activity?hours=${hours}`, null);
+
+interface SpatialConfig { devices: Record<string, unknown>; cameras: Record<string, unknown>; }
+const fetchSpatialConfig = async (): Promise<SpatialConfig> => {
+  const data = await safeJson<{
+    devices?: Record<string, unknown>;
+    cameras?: Record<string, unknown>;
+  } | null>('/api/sensors/spatial/config', null);
+  return { devices: data?.devices ?? {}, cameras: data?.cameras ?? {} };
+};
+
+interface LivePerCamera {
+  zone: string;
+  camera_id: string | null;
+  persons: Array<unknown>;
+}
+const fetchLiveSpatial = async (zone: string): Promise<LivePerCamera[]> => {
+  const data = await safeJson<LivePerCamera[]>(
+    `/api/sensors/spatial/live?zone=${encodeURIComponent(zone)}`,
+    []
+  );
+  return Array.isArray(data) ? data : [];
+};
+
+// ------------------------------------------------------------------
+// trend helpers
+// ------------------------------------------------------------------
+type TrendKind = 'up' | 'down' | 'flat';
+interface Trend { kind: TrendKind; delta: number; }
+
+const computeTrend = (
+  points: TimeSeriesPoint[],
+  flatThreshold: number
+): Trend | null => {
+  if (points.length < 2) return null;
+  const first = points[0].avg;
+  const last  = points[points.length - 1].avg;
+  const delta = last - first;
+  return {
+    kind: Math.abs(delta) < flatThreshold ? 'flat' : delta > 0 ? 'up' : 'down',
+    delta,
+  };
+};
+
+const formatTrend = (
+  trend: Trend | null,
+  fmt: (n: number) => string,
+  warnUp = false
+): ReactNode => {
+  if (!trend || trend.kind === 'flat') return '— 安定';
+  const arrow = trend.kind === 'up' ? '▲ +' : '▼ −';
+  const valueText = `${arrow}${fmt(Math.abs(trend.delta))}`;
+  return (
+    <>
+      <span className={warnUp && trend.kind === 'up' ? 'wall-warn' : ''}>
+        {valueText}
+      </span>{' '}/ {TREND_WINDOW_MIN}分
+    </>
+  );
 };
 
 // ------------------------------------------------------------------
@@ -71,11 +180,47 @@ const truncate = (s: string, max = 22) =>
 export default function WallView() {
   const { visibleTasks } = useTaskManager();
 
+  // ── live data feeds (all gracefully degrade) ─────────────────────
   const sensorsQuery = useQuery({
     queryKey: ['sensors', 'latest'],
     queryFn: fetchLatestSensors,
-    refetchInterval: 15_000,
+    refetchInterval: SENSOR_REFETCH_MS,
     staleTime: 10_000,
+  });
+
+  const co2SeriesQuery = useQuery({
+    queryKey: ['series', 'co2', PRIMARY_ZONE],
+    queryFn: () => fetchRecentSeries('co2', PRIMARY_ZONE, TREND_WINDOW_MIN),
+    refetchInterval: TREND_REFETCH_MS,
+  });
+  const tempSeriesQuery = useQuery({
+    queryKey: ['series', 'temperature', PRIMARY_ZONE],
+    queryFn: () => fetchRecentSeries('temperature', PRIMARY_ZONE, TREND_WINDOW_MIN),
+    refetchInterval: TREND_REFETCH_MS,
+  });
+  const humidSeriesQuery = useQuery({
+    queryKey: ['series', 'humidity', PRIMARY_ZONE],
+    queryFn: () => fetchRecentSeries('humidity', PRIMARY_ZONE, TREND_WINDOW_MIN),
+    refetchInterval: TREND_REFETCH_MS,
+  });
+
+  const llmActivityQuery = useQuery({
+    queryKey: ['llm-activity', 24],
+    queryFn: () => fetchLlmActivity(24),
+    refetchInterval: SLOW_REFETCH_MS,
+  });
+
+  const spatialConfigQuery = useQuery({
+    queryKey: ['spatial-config'],
+    queryFn: fetchSpatialConfig,
+    refetchInterval: 5 * 60_000,        // rarely changes
+    staleTime: 60_000,
+  });
+
+  const liveSpatialQuery = useQuery({
+    queryKey: ['spatial-live', PRIMARY_ZONE],
+    queryFn: () => fetchLiveSpatial(PRIMARY_ZONE),
+    refetchInterval: PRESENCE_REFETCH_MS,
   });
 
   // clock — minute precision is enough for a wall display
@@ -85,22 +230,48 @@ export default function WallView() {
     return () => clearInterval(id);
   }, []);
 
+  // ── derive sensor values ─────────────────────────────────────────
   const sensors = sensorsQuery.data ?? [];
   const findChannel = (channel: string) =>
+    sensors.find(s => s.channel === channel && s.zone === PRIMARY_ZONE) ??
     sensors.find(s => s.channel === channel);
 
-  const co2     = findChannel('co2');
-  const temp    = findChannel('temperature');
-  const humid   = findChannel('humidity');
-  const pres    = findChannel('occupancy') ?? findChannel('person_count');
+  const co2   = findChannel('co2');
+  const temp  = findChannel('temperature');
+  const humid = findChannel('humidity');
 
-  const co2Val   = co2   ? Math.round(co2.value)        : null;
-  const tempVal  = temp  ? temp.value.toFixed(1)        : null;
-  const humidVal = humid ? Math.round(humid.value)      : null;
-  const presVal  = pres  ? Math.round(pres.value)       : 0;
+  const co2Val   = co2   ? Math.round(co2.value)   : null;
+  const tempVal  = temp  ? temp.value.toFixed(1)   : null;
+  const humidVal = humid ? Math.round(humid.value) : null;
+
+  // ── presence: live spatial is the source of truth (camera detections)
+  const liveSpatial = liveSpatialQuery.data ?? [];
+  const presVal = liveSpatial.reduce(
+    (sum, item) => sum + (Array.isArray(item.persons) ? item.persons.length : 0),
+    0
+  );
+  const presenceCameras = liveSpatial
+    .map(item => item.camera_id)
+    .filter((id): id is string => Boolean(id));
+  const presenceTrendText = presenceCameras.length > 0
+    ? presenceCameras.map(id => id.replace(/^cam\./, '')).join(' / ')
+    : sensorsQuery.isError ? '—' : '観察中';
+
+  // ── trends ──────────────────────────────────────────────────────
+  const co2Trend   = computeTrend(co2SeriesQuery.data ?? [], 15);   // ±15 ppm
+  const tempTrend  = computeTrend(tempSeriesQuery.data ?? [], 0.3); // ±0.3 ℃
+  const humidTrend = computeTrend(humidSeriesQuery.data ?? [], 1.5);// ±1.5 %
 
   const co2Flagged = co2Val !== null && co2Val >= 800;
   const alertTask = visibleTasks.find(t => t.urgency >= 4);
+
+  // ── camera + sensor counts from spatial config (registered devices)
+  const cameraCount = Object.keys(spatialConfigQuery.data?.cameras ?? {}).length;
+  const sensorCount = Object.keys(spatialConfigQuery.data?.devices ?? {}).length
+    || sensors.length;
+  const cyclesText = llmActivityQuery.data
+    ? `${llmActivityQuery.data.cycles.toLocaleString()} 回`
+    : '— 回';
 
   // build summary prose from live state (fallback strings if nothing known)
   const summaryProse = useMemo(() => {
@@ -188,16 +359,20 @@ export default function WallView() {
               <dl className="wall-summary-meta">
                 <div>
                   <div className="wall-meta-l">cycles · 24h</div>
-                  <div className="wall-meta-v">— 回</div>
+                  <div className="wall-meta-v">{cyclesText}</div>
                 </div>
                 <div>
                   <div className="wall-meta-l">cameras</div>
-                  <div className="wall-meta-v">3 台<span className="wall-accent"> ◯</span></div>
+                  <div className="wall-meta-v">
+                    {cameraCount > 0 ? `${cameraCount} 台` : '—'}
+                    {cameraCount > 0 && <span className="wall-accent"> ◯</span>}
+                  </div>
                 </div>
                 <div>
                   <div className="wall-meta-l">sensors</div>
                   <div className="wall-meta-v">
-                    {sensors.length} 台<span className="wall-accent"> ◯</span>
+                    {sensorCount > 0 ? `${sensorCount} 台` : '—'}
+                    {sensorCount > 0 && <span className="wall-accent"> ◯</span>}
                   </div>
                 </div>
                 <div>
@@ -224,7 +399,7 @@ export default function WallView() {
                 unit="ppm"
                 jp="二酸化炭素"
                 en="co₂"
-                trend={co2Flagged ? <><span className="wall-warn">▲</span> 高め</> : '— 安定'}
+                trend={formatTrend(co2Trend, n => Math.round(n).toString(), co2Flagged)}
                 flagged={co2Flagged}
               />
               <ReadingCell
@@ -232,21 +407,21 @@ export default function WallView() {
                 unit="℃"
                 jp="気温"
                 en="temperature"
-                trend="— 安定"
+                trend={formatTrend(tempTrend, n => n.toFixed(1))}
               />
               <ReadingCell
                 value={humidVal ?? '—'}
                 unit="%"
                 jp="湿度"
                 en="humidity"
-                trend="— 安定"
+                trend={formatTrend(humidTrend, n => Math.round(n).toString())}
               />
               <ReadingCell
                 value={presVal}
                 unit="名"
                 jp="在室"
                 en="presence"
-                trend={pres ? 'cam.main_a / b / entry' : '—'}
+                trend={presenceTrendText}
               />
             </div>
           </div>
@@ -284,7 +459,11 @@ export default function WallView() {
         </div>
         <div className="wall-foot-c">soms · symbiotic observation &amp; management</div>
         <div className="wall-foot-r">
-          {sensorsQuery.isError ? 'sensors offline' : `${sensors.length} sensors / ${visibleTasks.length} active`}
+          {sensorsQuery.isError
+            ? 'sensors offline'
+            : llmActivityQuery.data
+              ? `cycle ${pad(llmActivityQuery.data.cycles, 4)} / ${visibleTasks.length} active`
+              : `${visibleTasks.length} active`}
         </div>
       </footer>
     </main>
