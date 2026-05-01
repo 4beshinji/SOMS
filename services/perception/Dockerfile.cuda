@@ -1,0 +1,24 @@
+# Perception service — NVIDIA CUDA build
+# Mirrors Dockerfile (ROCm). Uses official PyTorch CUDA image.
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Maintain directory structure for config path resolution:
+#   main.py uses: Path(__file__).parent.parent / "config" / "monitors.yaml"
+WORKDIR /app/src
+
+# OpenCV runtime deps
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+COPY config/ /app/config/
+COPY src/ /app/src/
+
+CMD ["python", "main.py"]

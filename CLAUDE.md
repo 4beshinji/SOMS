@@ -41,8 +41,12 @@ cp env.example .env
 # Full simulation (no GPU/hardware required) — uses mock LLM + virtual edge devices
 ./infra/scripts/start_virtual_edge.sh
 
-# Production (requires AMD ROCm GPU + real hardware)
+# Production (AMD ROCm GPU + real hardware)
 docker compose -f infra/docker-compose.yml up -d --build
+
+# Production (NVIDIA GPU) — requires nvidia-container-toolkit on host
+docker compose -f infra/docker-compose.yml \
+               -f infra/docker-compose.nvidia.yml up -d --build
 
 # Rebuild a single service
 docker compose -f infra/docker-compose.yml up -d --build <service-name>

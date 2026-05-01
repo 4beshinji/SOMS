@@ -1,0 +1,68 @@
+# NVIDIA GPU override for SOMS.
+#
+# Usage:
+#   docker compose -f infra/docker-compose.yml \
+#                  -f infra/docker-compose.nvidia.yml up -d --build
+#
+# Prerequisites on the host:
+#   - NVIDIA driver
+#   - nvidia-container-toolkit (>= 1.14) installed and registered:
+#       sudo nvidia-ctk runtime configure --runtime=docker
+#       sudo systemctl restart docker
+#
+# This file replaces ROCm-specific build targets, GPU device passthrough,
+# and HSA env vars on the three GPU-using services: llm, perception, stt.
+# Use `!reset` to clear list-type fields (devices, environment) inherited
+# from the base compose file rather than letting Compose concatenate them.
+
+services:
+  llm:
+    build:
+      context: ./llm
+      dockerfile: Dockerfile.cuda
+    image: soms-llama-server:cuda
+    devices: !reset []
+    environment: !reset
+      # Drop HSA_*/HIPBLASLT_* — replace with a clean (empty) NVIDIA env set.
+      # Add CUDA-specific tuning here if needed (e.g. CUDA_VISIBLE_DEVICES).
+      []
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${NVIDIA_GPU_COUNT:-1}
+              capabilities: [gpu]
+
+  perception:
+    build:
+      context: ../services/perception
+      dockerfile: Dockerfile.cuda
+    devices: !reset
+      # /dev/video0 stays available for USB webcam if uncommented in base.
+      []
+    environment:
+      # Override only the ROCm-specific knob; other vars from base are kept.
+      HSA_OVERRIDE_GFX_VERSION: ""
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${NVIDIA_GPU_COUNT:-1}
+              capabilities: [gpu]
+
+  stt:
+    build:
+      context: ..
+      dockerfile: services/stt/Dockerfile.cuda
+    devices: !reset []
+    environment:
+      HSA_OVERRIDE_GFX_VERSION: ""
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${NVIDIA_GPU_COUNT:-1}
+              capabilities: [gpu]

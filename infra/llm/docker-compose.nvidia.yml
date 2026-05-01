@@ -1,0 +1,23 @@
+# NVIDIA GPU override for the standalone llama-server stack.
+#
+# Usage:
+#   cd infra/llm
+#   docker compose -f docker-compose.yml -f docker-compose.nvidia.yml up -d --build
+#
+# Requires NVIDIA driver + nvidia-container-toolkit on the host.
+
+services:
+  llama-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.cuda
+    image: soms-llama-server:cuda
+    devices: !reset []
+    environment: !reset []
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${NVIDIA_GPU_COUNT:-1}
+              capabilities: [gpu]

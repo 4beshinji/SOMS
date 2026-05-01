@@ -1,0 +1,38 @@
+# llama.cpp server (CUDA) — NVIDIA GPU build
+# Mirrors Dockerfile.rocm; switches GGML backend from HIP to CUDA.
+FROM nvidia/cuda:12.6.2-devel-ubuntu24.04 AS build
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cmake git build-essential libcurl4-openssl-dev ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG LLAMA_CPP_VERSION=master
+RUN git clone --depth 1 --branch ${LLAMA_CPP_VERSION} \
+    https://github.com/ggml-org/llama.cpp.git /llama.cpp
+
+WORKDIR /llama.cpp
+
+# CMAKE_CUDA_ARCHITECTURES covers Pascal (60,61), Volta (70), Turing (75),
+# Ampere (80,86,89), Ada (89), Hopper (90), Blackwell (100,120).
+# Override at build time with --build-arg CUDA_ARCHS=89 for a single GPU.
+ARG CUDA_ARCHS="75;80;86;89;90"
+RUN cmake -B build \
+    -DGGML_CUDA=ON \
+    -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+    -DLLAMA_CURL=ON \
+    -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --config Release -j$(nproc) --target llama-server
+
+FROM nvidia/cuda:12.6.2-runtime-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcurl4 libgomp1 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /llama.cpp/build/bin/llama-server /usr/local/bin/llama-server
+COPY --from=build /llama.cpp/build/bin/*.so* /usr/local/lib/
+RUN ldconfig
+
+ENTRYPOINT ["llama-server"]
