@@ -4,6 +4,7 @@ import { Bot, User, Trash2, ChevronDown, Moon, Sun } from 'lucide-react';
 import { ErrorBoundary } from '@soms/ui';
 import UIPreview from './UIPreview';
 import ZoneEditor from './pages/ZoneEditor';
+import WallView from './pages/WallView';
 import MonitorHeader from './components/MonitorHeader';
 import TaskCard from './components/TaskCard';
 import ShoppingPanel from './components/ShoppingPanel';
@@ -245,14 +246,18 @@ function AuthenticatedApp() {
 }
 
 const _params = new URLSearchParams(window.location.search);
-const _page = _params.has('preview')
-  ? 'preview'
-  : _params.has('zone-editor')
-    ? 'zone-editor'
-    : 'main';
+const _page = _params.get('view') === 'wall'
+  ? 'wall'
+  : _params.has('preview')
+    ? 'preview'
+    : _params.has('zone-editor')
+      ? 'zone-editor'
+      : 'main';
 
 export default function App() {
   switch (_page) {
+    case 'wall':
+      return <WallView />;
     case 'preview':
       return <UIPreview />;
     case 'zone-editor':
